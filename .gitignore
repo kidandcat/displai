@@ -1,0 +1,11 @@
+# Spike artifacts
+spike/.venv/
+spike/models/
+spike/out/
+spike/out2/
+spike/audio/
+spike/voice-samples/
+__pycache__/
+
+# macOS
+.DS_Store
