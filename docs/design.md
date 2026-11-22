@@ -5,12 +5,13 @@ Status: draft, 2026-11-22. Numbers measured on an Apple M1 Pro (16 GB), macOS 26
 ## 1. What it is
 
 A voice-first desktop assistant for macOS, built with Flutter. You talk; it answers with a short
-spoken sentence and shows everything else on screen (cards, tables, forms, video, later 3D).
+spoken sentence and, when it helps, shows content on screen (cards, tables, forms, video, later 3D).
+When nothing is shown, the screen is a living, audio-reactive "presence" animation (JARVIS-style).
 There is no chat UI.
 
 The brain is the user's own **Claude Code** (their install, their login), running headless
 underneath the app. The app gives Claude Code a set of **display tools** through an MCP server
-embedded in the app, plus a system prompt that makes it work visually ("speak little, show a lot").
+embedded in the app, plus a system prompt that makes it work visually ("speak little; show when it helps").
 
 Later, a mobile app acts as a remote for the desktop (Claude Code does not run on phones).
 
@@ -19,6 +20,8 @@ Later, a mobile app acts as a remote for the desktop (Claude Code does not run o
 - Voice is the primary channel. Every on-screen choice must also be selectable by voice ("la segunda").
 - Everything audio runs locally: VAD, STT, TTS, wake word. No cloud speech, no speech-to-speech APIs.
 - The model decides what to show; the app owns how it looks (a fixed, themed widget catalog).
+- Showing is optional. A voice-only answer is fine; the model shows content only when it adds
+  something (structure, choices, media, numbers to compare). Otherwise the presence animation stays.
 - Open source. Models are downloaded on first run, not committed or bundled.
 
 ## 2. Architecture
@@ -203,7 +206,37 @@ Other numbers:
 - Later: macOS voice processing (`AVAudioEngine` input node with voice processing enabled) for AEC,
   which enables full-duplex and voice barge-in.
 
-## 6. UX
+## 6. Presence animation
+
+When no view is shown (startup, after `clear`, or after a voice-only answer), the window shows a
+full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
+
+- **Rendering: a fragment shader** (GLSL `.frag` declared under `flutter: shaders:` in `pubspec.yaml`,
+  loaded with `FragmentProgram.fromAsset`, drawn by a `CustomPainter` that sets uniforms every frame).
+  Impeller is the renderer on macOS, so this runs on the GPU. A pure `CustomPainter` (Canvas paths,
+  blurs) is the fallback, but glow, noise fields and many particles are far cheaper in a shader.
+- **Look (first pass, to iterate with Jairo)**: a central core with concentric, segmented rings
+  rotating at different speeds, a soft bloom, a field of faint particles/scan lines, cyan on
+  near-black. Rings deform radially with the audio spectrum; the core brightness follows loudness.
+- **Uniforms**: `uTime`, `uResolution`, `uLevel` (smoothed RMS, 0–1), `uBands` (8 spectrum bands
+  passed as two `vec4`), `uState` (idle / listening / thinking / speaking, cross-faded),
+  `uAccent` (color).
+- **Audio sources**:
+  - *Speaking*: `flutter_soloud`'s mixer visualization (`setVisualizationEnabled` →
+    `AudioVisualizationData` with wave and FFT, 0–1) on the TTS output, so the animation follows the
+    voice that is actually playing.
+  - *Listening*: RMS and a small FFT (512 samples) computed in Dart from the mic PCM stream we
+    already read for VAD.
+  - *Thinking*: no audio; a procedural pulse plus a sweep whose speed follows stream activity
+    (text and tool deltas arriving).
+  - *Idle*: slow breathing.
+  Values are smoothed with attack/release envelopes so motion feels organic, not jittery.
+- **Transitions**: when `show` arrives, the presence shrinks into a small orb in the status bar
+  (it keeps reacting to the voice there) and the view fades in; on `clear` it expands back.
+- Budget: the shader must stay well under a frame at 60 fps on an M1 at full window size; measure
+  with the performance overlay during v0.
+
+## 7. UX
 
 - Full-window display, no chat. Bottom: mic state, thinking strip, last transcript (fades).
 - **Timeline**: every `show` pushes the previous view to a horizontal history strip; "vuelve a la
@@ -212,7 +245,7 @@ Other numbers:
   resolve "la segunda", "el último", "ese".
 - Settings: model alias, voice, input device, hotkey, "use my Claude Code settings" toggle.
 
-## 7. v0 scope
+## 8. v0 scope
 
 In:
 - macOS desktop app (Flutter), single window.
@@ -222,6 +255,8 @@ In:
 - Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `get_state`.
 - A2UI rendering via genui with high-level catalog items; progressive rendering of `show`.
 - Timeline of shown views; ordinals for voice selection.
+- Presence animation (fragment shader) reacting to mic and TTS audio, with the shrink-to-orb
+  transition when a view is shown.
 - First-run model download with progress.
 
 Out (later):
@@ -231,7 +266,7 @@ Out (later):
 - Windows/Linux builds.
 - Multiple sessions, memory beyond what Claude Code already has.
 
-## 8. Decisions
+## 9. Decisions
 
 1. Repo `kidandcat/displai`, public, **MIT** license.
 2. Default voice: **Supertonic 3** (no phonemizer, so no GPL espeak-ng dependency). Piper/Kokoro stay
