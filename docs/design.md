@@ -92,7 +92,7 @@ i.e. we would have to ship espeak-ng (GPL-3.0) ourselves. Supertonic does not ne
 | STT | NeMo Parakeet TDT 0.6B **v3** int8 (25 EU languages) | 464 MB | CC-BY-4.0 | 165–225 ms per 2.4–3.1 s utterance; 4/4 test phrases correct |
 | STT alt | NeMo FastConformer transducer es int8 | 102 MB | CC-BY-4.0 | 48–73 ms; dropped a leading "Oye" |
 | STT alt | Kroko streaming zipformer es | 118 MB | see model card | streaming, but cut the last words in our test |
-| TTS | **Supertonic 3** int8 (31 languages incl. es) | 122 MB | code MIT, weights OpenRAIL-M | short sentence ~0.4–0.5 s, RTF ~0.17–0.2; no phonemizer |
+| TTS (default) | **Supertonic 3** int8 (31 languages incl. es) | 122 MB | code MIT, weights OpenRAIL-M | short sentence ~0.4–0.5 s, RTF ~0.17–0.2; no phonemizer |
 | TTS alt | Piper es_ES (miro-high, davefx) | 64 MB | per voice (miro: CC0) | short sentence ~75 ms, RTF ~0.04; **needs espeak-ng** |
 | TTS alt | Kokoro v1.0 fp32 (ef_dora, em_alex) | 333 MB | Apache-2.0 | RTF ~0.37 (int8 slower: ~0.6); **needs espeak-ng** |
 | Wake word | sherpa-onnx KWS | — | — | only English/Chinese models published |
@@ -217,7 +217,7 @@ Other numbers:
 In:
 - macOS desktop app (Flutter), single window.
 - Claude Code session manager (spawn, warm, stream-json, interrupt, restart on crash).
-- Local VAD + Parakeet v3 STT + one TTS voice (pending Jairo's pick), sentence streaming.
+- Local VAD + Parakeet v3 STT + Supertonic 3 TTS, sentence streaming.
 - Push-to-talk hotkey, half-duplex, barge-in by hotkey, earcon, thinking strip.
 - Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `get_state`.
 - A2UI rendering via genui with high-level catalog items; progressive rendering of `show`.
@@ -231,13 +231,12 @@ Out (later):
 - Windows/Linux builds.
 - Multiple sessions, memory beyond what Claude Code already has.
 
-## 8. Open decisions (need Jairo)
+## 8. Decisions
 
-1. GitHub repo name and visibility (proposed `kidandcat/displai`, public) and license.
-   If the default voice is Supertonic, the app can stay permissive (MIT or Apache-2.0); shipping Piper
-   or Kokoro means bundling espeak-ng (GPL-3.0) or asking the user to install it.
-2. Default voice: Supertonic 3 (slower, no GPL dependency) vs Piper es_ES (fastest, needs espeak-ng).
-3. Default model alias for the brain: `opus` (better, slower display calls) or `sonnet` (faster turns).
+1. Repo `kidandcat/displai`, public, **MIT** license.
+2. Default voice: **Supertonic 3** (no phonemizer, so no GPL espeak-ng dependency). Piper/Kokoro stay
+   possible later as an opt-in that uses a user-installed espeak-ng.
+3. Default model alias: **`opus`**; user can switch to `sonnet` / `haiku` in settings.
 
 ## Appendix: spike
 
