@@ -1,18 +1,19 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import 'app/assistant.dart';
-import 'display/display.dart';
-import 'presence/presence.dart';
+import 'app/main_view.dart';
+import 'remote/remote_app.dart';
 import 'voice/model_store.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const DisplaiApp());
+  // On a phone DisplAI is the remote of a desktop that does all the processing.
+  runApp(Platform.isAndroid || Platform.isIOS ? const RemoteApp() : const DisplaiApp());
 }
-
-const _background = Color(0xFF05070A);
-const _accent = Color(0xFF4FD8FF);
 
 class DisplaiApp extends StatelessWidget {
   const DisplaiApp({super.key});
@@ -21,11 +22,7 @@ class DisplaiApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'DisplAI',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: Brightness.dark,
-          colorScheme: ColorScheme.fromSeed(seedColor: _accent, brightness: Brightness.dark),
-          scaffoldBackgroundColor: _background,
-        ),
+        theme: displaiTheme(),
         home: const HomePage(),
       );
 }
@@ -97,7 +94,10 @@ class _HomePageState extends State<HomePage> {
           ? ListenableBuilder(listenable: _models, builder: (context, _) => _ModelsScreen(models: _models))
           : ListenableBuilder(
               listenable: Listenable.merge([a, a.display]),
-              builder: (context, _) => _Main(assistant: a),
+              builder: (context, _) => MainView(
+                assistant: a,
+                actions: [if (a.ready) _PhoneButton(assistant: a)],
+              ),
             ),
     );
   }
@@ -118,7 +118,7 @@ class _ModelsScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('DisplAI', style: t.headlineMedium?.copyWith(color: _accent, letterSpacing: 4)),
+            Text('DisplAI', style: t.headlineMedium?.copyWith(color: kAccent, letterSpacing: 4)),
             const SizedBox(height: 24),
             if (models.error != null) ...[
               Text('No se pudieron descargar los modelos de voz.', style: t.bodyLarge),
@@ -139,170 +139,82 @@ class _ModelsScreen extends StatelessWidget {
   }
 }
 
-class _Main extends StatelessWidget {
-  const _Main({required this.assistant});
+/// Opens the pairing code for the phone remote; lit while a phone is connected.
+class _PhoneButton extends StatelessWidget {
+  const _PhoneButton({required this.assistant});
 
   final Assistant assistant;
 
   @override
   Widget build(BuildContext context) {
-    final a = assistant;
-    if (a.error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text('No se pudo arrancar: ${a.error}', style: const TextStyle(color: Colors.white70)),
-        ),
-      );
-    }
-    final showing = !a.display.isEmpty;
-    return Column(
-      children: [
-        Expanded(
-          // The display is transparent while empty, so the presence animation shows through
-          // (with the timeline strip still on top).
-          child: RepaintBoundary(
-            key: a.screenKey,
-            child: ColoredBox(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              child: Stack(
-            fit: StackFit.expand,
-            children: [
-              AnimatedOpacity(
-                opacity: showing ? 0 : 1,
-                duration: const Duration(milliseconds: 350),
-                child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence),
-              ),
-              DisplayView(controller: a.display),
-              if (a.confirmation != null)
-                Positioned.fill(child: _ConfirmCard(assistant: a, summary: a.confirmation!)),
-              // While something is on screen the presence shrinks to a large orb in the corner.
-              if (showing)
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: IgnorePointer(
-                    child: PresenceView(signal: a.presence, compact: true, compactSize: 180),
-                  ),
+    final on = assistant.onPhone;
+    return IconButton(
+      tooltip: on ? 'Móvil conectado' : 'Conectar el móvil',
+      onPressed: () => showDialog<void>(context: context, builder: (_) => _PairingDialog(assistant: assistant)),
+      icon: Icon(on ? Icons.phone_android : Icons.phonelink_setup_outlined,
+          color: on ? kAccent : Colors.white54),
+    );
+  }
+}
+
+/// The QR code the DisplAI app on the phone scans to pair with this Mac.
+class _PairingDialog extends StatefulWidget {
+  const _PairingDialog({required this.assistant});
+
+  final Assistant assistant;
+
+  @override
+  State<_PairingDialog> createState() => _PairingDialogState();
+}
+
+class _PairingDialogState extends State<_PairingDialog> {
+  late String _link = widget.assistant.pairingLink();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return ListenableBuilder(
+      listenable: widget.assistant,
+      builder: (context, _) {
+        final phone = widget.assistant.phone;
+        final status = widget.assistant.onPhone
+            ? 'Móvil conectado. Mientras lo esté, el Mac no escucha ni habla.'
+            : phone != null && phone.link.online
+                ? 'Esperando al móvil…'
+                : 'Conectando con el intermediario…';
+        return AlertDialog(
+          title: const Text('Conectar el móvil'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(12),
+                  child: QrImageView(data: _link, size: 260, backgroundColor: Colors.white),
                 ),
-            ],
-              ),
+                const SizedBox(height: 16),
+                Text('Escanéalo con la app DisplAI del móvil. El móvil será el micrófono, el altavoz y '
+                    'la pantalla; todo se sigue procesando en este Mac.',
+                    style: t.bodyMedium, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                Text(status, style: t.bodySmall?.copyWith(color: kAccent), textAlign: TextAlign.center),
+              ],
             ),
           ),
-        ),
-        _StatusBar(assistant: a),
-      ],
-    );
-  }
-}
-
-class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.assistant});
-
-  final Assistant assistant;
-
-  @override
-  Widget build(BuildContext context) {
-    final a = assistant;
-    final t = Theme.of(context).textTheme;
-    final line = !a.ready
-        ? 'Cargando la voz…'
-        : a.activity.isNotEmpty
-            ? a.activity
-            : a.lastHeard;
-    return Container(
-      height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0x1AFFFFFF)))),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: a.muted ? 'Activar micrófono (espacio)' : 'Silenciar micrófono (espacio)',
-            onPressed: a.ready ? a.toggleMute : null,
-            icon: Icon(a.muted ? Icons.mic_off : Icons.mic, color: a.muted ? Colors.redAccent : _accent),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              line,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: t.bodyMedium?.copyWith(
-                color: a.activity.isNotEmpty ? _accent : Colors.white60,
-                fontStyle: a.activity.isNotEmpty ? FontStyle.italic : FontStyle.normal,
-              ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final link = await widget.assistant.newPairing();
+                if (mounted) setState(() => _link = link);
+              },
+              child: const Text('Nuevo código'),
             ),
-          ),
-          if (a.ready && a.workers.runningCount > 0) ...[
-            const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, color: _accent),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              a.workers.runningCount == 1
-                  ? '1 trabajo en segundo plano'
-                  : '${a.workers.runningCount} trabajos en segundo plano',
-              style: t.bodySmall?.copyWith(color: _accent),
-            ),
-            const SizedBox(width: 16),
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
           ],
-          if (a.muted)
-            Text('Micrófono silenciado · espacio para activar',
-                style: t.bodySmall?.copyWith(color: Colors.redAccent.withValues(alpha: 0.8))),
-        ],
-      ),
-    );
-  }
-}
-
-/// A risky action waiting for the user's OK (also asked by voice: "sí" / "no").
-class _ConfirmCard extends StatelessWidget {
-  const _ConfirmCard({required this.assistant, required this.summary});
-
-  final Assistant assistant;
-  final String summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return ColoredBox(
-      color: const Color(0xB3000000),
-      child: Center(
-        child: Container(
-          width: 560,
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0D1B22),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.6)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.amberAccent),
-                const SizedBox(width: 10),
-                Text('¿Lo hago?', style: t.titleLarge),
-              ]),
-              const SizedBox(height: 16),
-              SelectableText(summary, style: t.bodyLarge?.copyWith(fontFamily: 'Menlo', height: 1.4)),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Text('Di «sí» o «no»', style: t.bodySmall?.copyWith(color: Colors.white54)),
-                  const Spacer(),
-                  TextButton(onPressed: () => assistant.answerConfirmation(false), child: const Text('No')),
-                  const SizedBox(width: 8),
-                  FilledButton(onPressed: () => assistant.answerConfirmation(true), child: const Text('Sí, hazlo')),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

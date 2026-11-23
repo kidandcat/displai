@@ -334,6 +334,20 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
         '(id video1)';
   }
 
+  /// Wipes the display and its timeline (before a replay of the display calls, when the
+  /// display moves between the desktop and the phone remote).
+  void reset() {
+    _dropPartial();
+    for (final e in _entries) {
+      _adapter.deleteSurface(e.surfaceId);
+    }
+    _entries.clear();
+    _cursor = -1;
+    _lastCursor = -1;
+    _overflow = 0;
+    _notify();
+  }
+
   String _clear() {
     _dropPartial();
     if (isEmpty) return 'ok: already empty';

@@ -1,20 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'dart:ui' as ui;
-
-import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart' show GlobalKey, WidgetsBinding;
+import 'package:flutter/widgets.dart' show GlobalKey;
 import 'package:path_provider/path_provider.dart';
 
 import '../audio/native_audio.dart';
 import '../brain/claude_session.dart';
 import '../brain/system_prompt.dart';
 import '../display/display.dart';
+import '../display/display_runner.dart';
 import '../mcp/display_mcp_server.dart';
 import '../presence/presence.dart';
+import '../remote/phone_host.dart';
+import '../remote/protocol.dart';
 import '../computer/computer_tools.dart';
 import '../routines/routines.dart';
 import '../store/store.dart';
@@ -27,13 +28,14 @@ import '../workers/workers.dart';
 import '../voice/listener.dart';
 import '../voice/model_store.dart';
 import '../voice/speaker.dart';
+import 'assistant_ui.dart';
 
 /// Wires voice, brain and display together (docs/design.md §2 and §5).
 ///
 /// Mic (echo-cancelled) → [Listener] → [ClaudeSession] → sentences → [Speaker] → [NativeAudio].
 /// Display tool calls arrive through the embedded MCP server; partial tool input streams into
 /// the [DisplayController] while Claude is still writing it.
-class Assistant extends ChangeNotifier {
+class Assistant extends ChangeNotifier implements AssistantUi {
   Assistant({required this.models, this.model = 'opus', this.effort = 'low', this.voice = 1});
 
   final ModelStore models;
@@ -48,8 +50,19 @@ class Assistant extends ChangeNotifier {
   static const continuationWindow = Duration(seconds: 2);
 
   final audio = NativeAudio();
+  @override
   final display = DisplayController();
+  @override
   final presence = PresenceSignal();
+
+  /// The paired phone remote, once a pairing key exists (see [pairingLink]).
+  PhoneHost? phone;
+
+  /// What built the display, so it can move to the phone and back.
+  final _displayLog = DisplayLog();
+
+  /// A phone is connected: it is the mic, the speaker and the display ("Mac callado").
+  bool get onPhone => phone?.active ?? false;
 
   late final Listener _listener;
   late final Speaker _speaker;
@@ -77,6 +90,7 @@ class Assistant extends ChangeNotifier {
   final _reply = StringBuffer();
 
   /// Wraps what DisplAI shows (display, presence, cards) so the brain can capture it.
+  @override
   final GlobalKey screenKey = GlobalKey(debugLabel: 'displai-screen');
 
   static const _snapshotTool = McpTool(
@@ -87,6 +101,7 @@ class Assistant extends ChangeNotifier {
   );
 
   /// A risky action waiting for the user's yes/no (shown as a card, asked by voice).
+  @override
   String? confirmation;
   Completer<bool>? _confirm;
   Timer? _confirmTimeout;
@@ -97,17 +112,28 @@ class Assistant extends ChangeNotifier {
 
   static const confirmTimeout = Duration(seconds: 45);
 
+  @override
   bool ready = false;
+  @override
   String? error;
 
   bool _muted = false;
+  @override
   bool get muted => _muted;
 
   /// Last thing the user said (shown in the status bar).
+  @override
   String lastHeard = '';
 
   /// What the brain is doing right now, e.g. "Buscando en la web…" (empty when nothing).
+  @override
   String activity = '';
+
+  @override
+  int get backgroundJobs => ready ? workers.runningCount : 0;
+
+  @override
+  String get linkNote => onPhone ? 'Móvil conectado · el Mac está en silencio' : '';
 
   // Turn state.
   int _generation = 0;
@@ -120,7 +146,10 @@ class Assistant extends ChangeNotifier {
   DateTime? _turnSpeechEnd;
   Float32List? _earcon;
 
-  bool get speaking => _pendingTts > 0 || audio.isPlaying;
+  /// The voice is playing, on the phone while it is connected, else on the Mac.
+  bool get _playing => onPhone ? phone!.playing : audio.isPlaying;
+
+  bool get speaking => _pendingTts > 0 || _playing;
   bool get busy => _claude.busy || speaking;
 
   Future<void> start() async {
@@ -173,14 +202,13 @@ class Assistant extends ChangeNotifier {
       final format = await audio.start(playRate: _speaker.sampleRate);
       debugPrint('audio: $format');
       _earcon = _makeEarcon(_speaker.sampleRate);
+      presence.addListener(_pushState);
+      if (store.get('remote_key') != null) _startPhone();
 
       _subs
         ..add(audio.mic.listen(_onMic))
         ..add(audio.output.listen((o) => presence.addAudio(o.$1, o.$2)))
-        ..add(audio.idle.listen((_) {
-          _updatePresence();
-          _drainNotices();
-        }))
+        ..add(audio.idle.listen((_) => _onAudioIdle()))
         ..add(_listener.events.listen(_onHeard))
         ..add(_speaker.speech.listen(_onSpeech))
         ..add(_claude.events.listen(_onBrain))
@@ -196,6 +224,97 @@ class Assistant extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------------------------------------------------------------- phone remote
+
+  String get _relay =>
+      Platform.environment['DISPLAI_RELAY'] ?? store.get('remote_relay') ?? RemoteProtocol.defaultRelay;
+
+  /// The link the phone scans to pair (creates the pairing key the first time).
+  String pairingLink() {
+    var key = store.get('remote_key');
+    if (key == null) {
+      key = RemoteProtocol.newKey();
+      store.set('remote_key', key);
+    }
+    if (phone == null) _startPhone();
+    return RemoteProtocol.pairingLink(_relay, key);
+  }
+
+  /// Forgets the old pairing (the phone that has it can no longer connect) and makes a new one.
+  Future<String> newPairing() async {
+    final old = phone;
+    if (old != null) {
+      if (old.active) {
+        old.active = false;
+        _phoneLeft();
+      }
+      phone = null;
+      await old.close();
+    }
+    store.set('remote_key', RemoteProtocol.newKey());
+    return pairingLink();
+  }
+
+  void _startPhone() {
+    final p = phone = PhoneHost(relay: _relay, key: store.get('remote_key')!, playRate: _speaker.sampleRate, log: _displayLog)
+      ..onMic = _onPhoneMic
+      ..onEvent = _onDisplayEvent
+      ..onConfirm = answerConfirmation
+      ..onMute = ((on) => muted = on)
+      ..onIdle = _onAudioIdle
+      ..onJoin = _phoneJoined
+      ..onLeave = _phoneLeft;
+    p.addListener(notifyListeners);
+  }
+
+  void _phoneJoined() {
+    // The Mac goes quiet: its voice stops, its mic is ignored, the phone takes over.
+    unawaited(audio.stop());
+    _listener.reset();
+    _pushState();
+    _updatePresence();
+    notifyListeners();
+  }
+
+  void _phoneLeft() {
+    _listener.reset();
+    // Bring the display back to the Mac as the phone had it.
+    display.reset();
+    _displayLog.replay((name, args) => display.callTool(name, args));
+    _updatePresence();
+    _drainNotices();
+    notifyListeners();
+  }
+
+  void _onPhoneMic(Float32List samples) {
+    if (_muted) return;
+    _listener.add(samples);
+  }
+
+  void _onAudioIdle() {
+    _updatePresence();
+    _drainNotices();
+  }
+
+  void _pushState() {
+    final p = phone;
+    if (p == null || !p.active) return;
+    p.pushState({
+      'mode': presence.mode.name,
+      'activity': activity,
+      'heard': lastHeard,
+      'jobs': backgroundJobs,
+      'confirmation': confirmation,
+      'muted': _muted,
+    });
+  }
+
+  @override
+  void notifyListeners() {
+    _pushState();
+    super.notifyListeners();
+  }
+
   set muted(bool value) {
     if (value == _muted) return;
     _muted = value;
@@ -204,12 +323,13 @@ class Assistant extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
   void toggleMute() => muted = !_muted;
 
   // ---------------------------------------------------------------- input
 
   void _onMic(Float32List samples) {
-    if (_muted) return;
+    if (_muted || onPhone) return;
     _listener.add(samples);
     if (!audio.isPlaying) presence.addAudio(samples, 16000);
   }
@@ -275,9 +395,10 @@ class Assistant extends ChangeNotifier {
     _generation++;
     _pendingTts = 0;
     _sentence.clear();
-    unawaited(audio.stop());
+    _stopAudio();
     _claude.interrupt();
     display.cancelPartial();
+    phone?.cancelPartial();
     _setActivity('');
     _updatePresence();
   }
@@ -290,7 +411,9 @@ class Assistant extends ChangeNotifier {
     _sentence.clear();
     _firstAudioAt = null;
     _setActivity('Pensando…');
-    unawaited(_claude.send('[${formatStamp(DateTime.now())}] $text'));
+    final p = phone;
+    final where = p != null && p.active ? ' [phone ${p.width.round()}x${p.height.round()}]' : '';
+    unawaited(_claude.send('[${formatStamp(DateTime.now())}]$where $text'));
     _updatePresence();
     notifyListeners();
   }
@@ -317,7 +440,13 @@ class Assistant extends ChangeNotifier {
         });
       case ToolInput():
         presence.bumpActivity(0.1);
-        if (_isDisplayTool(e.name)) display.streamPartial(e.name, e.partialJson);
+        if (_isDisplayTool(e.name)) {
+          if (onPhone) {
+            phone!.partial(e.name, e.partialJson);
+          } else {
+            display.streamPartial(e.name, e.partialJson);
+          }
+        }
       case Compacting():
         // Takes a few seconds once the context is full; say why the answer is late.
         _setActivity(e.active ? 'Resumiendo la conversación…' : 'Pensando…');
@@ -325,6 +454,7 @@ class Assistant extends ChangeNotifier {
         _logReply(interrupted: e.interrupted);
         if (e.interrupted) {
           display.cancelPartial();
+          phone?.cancelPartial();
         } else {
           _flushSentences(final_: true);
         }
@@ -399,43 +529,34 @@ class Assistant extends ChangeNotifier {
         return p.call(name, args, _requestConfirmation);
       }
     }
-    if (name == _snapshotTool.name) return _snapshot();
-    final text = display.callTool(name, args);
-    if (text.startsWith('error:')) return ToolResult.error(text);
-    if (const {'show', 'update', 'form', 'back'}.contains(name)) {
-      // Let the view lay out (and report what does not fit) before answering.
-      // Bounded: a hidden or minimised window produces no frames.
-      await _frame();
-      await _frame();
-      final cut = display.overflow;
-      if (cut > 0) {
-        return ToolResult('$text\nwarning: the view does not fit the screen; about ${cut.round()} px '
-            'at the bottom are cut off (the display never scrolls). Update it to show less or split '
-            'it into several views.');
-      }
+    if (onPhone) {
+      final r = await _onPhoneTool(name, args);
+      if (r != null) return r;
+      // The phone left or did not answer: the call runs here (it is replayed if it comes back).
     }
+    if (name == _snapshotTool.name) return _snapshot();
+    final text = await DisplayRunner.run(display, name, args);
+    if (text.startsWith('error:')) return ToolResult.error(text);
+    _displayLog.record(name, args);
     return ToolResult(text);
   }
 
-  /// Waits for the next frame. Forced, because Flutter stops drawing while the window is hidden
-  /// behind others (lifecycle hidden), and the display must still lay out and be captured.
-  static Future<void> _frame() {
-    WidgetsBinding.instance.scheduleForcedFrame();
-    return WidgetsBinding.instance.endOfFrame.timeout(const Duration(milliseconds: 400), onTimeout: () {});
+  /// Runs a display tool (or snapshot) on the phone; null when it did not answer.
+  Future<ToolResult?> _onPhoneTool(String name, Map<String, dynamic> args) async {
+    final m = await phone!.call(name, args);
+    if (m == null) return null;
+    final text = '${m['text'] ?? ''}';
+    if (m['error'] == true) return ToolResult.error(text);
+    final png = m['png'];
+    if (name != _snapshotTool.name) _displayLog.record(name, args);
+    return ToolResult(text, png: png is String ? base64Decode(png) : null);
   }
 
   Future<ToolResult> _snapshot() async {
-    await _frame();
-    final boundary = screenKey.currentContext?.findRenderObject();
-    if (boundary is! RenderRepaintBoundary) return const ToolResult.error('error: display not ready');
-    final size = boundary.size;
-    final ratio = math.min(2.0, 1280 / math.max(size.width, size.height));
-    final image = await boundary.toImage(pixelRatio: ratio);
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    if (data == null) return const ToolResult.error('error: could not encode the capture');
-    return ToolResult('DisplAI display, ${size.width.round()}×${size.height.round()} logical px',
-        png: data.buffer.asUint8List());
+    final shot = await DisplayRunner.capture(screenKey);
+    if (shot == null) return const ToolResult.error('error: display not ready');
+    final (png, size) = shot;
+    return ToolResult('DisplAI display, ${size.width.round()}×${size.height.round()} logical px', png: png);
   }
 
   static String _activityFor(String tool) => switch (tool) {
@@ -467,6 +588,7 @@ class Assistant extends ChangeNotifier {
   }
 
   /// The user's answer to the pending confirmation (card buttons, voice, or a timeout).
+  @override
   void answerConfirmation(bool yes) {
     final c = _confirm;
     if (c == null) return;
@@ -515,13 +637,26 @@ class Assistant extends ChangeNotifier {
       final end = _turnSpeechEnd;
       if (end != null) debugPrint('first voice ${_firstAudioAt!.difference(end).inMilliseconds}ms after speech end');
     }
-    unawaited(audio.play(s.samples));
+    _play(s.samples);
     _updatePresence();
+  }
+
+  void _play(Float32List samples) {
+    if (onPhone) {
+      phone!.sendVoice(samples);
+    } else {
+      unawaited(audio.play(samples));
+    }
+  }
+
+  void _stopAudio() {
+    phone?.stopVoice();
+    unawaited(audio.stop());
   }
 
   void _earconTick() {
     final e = _earcon;
-    if (e != null && !audio.isPlaying) unawaited(audio.play(e));
+    if (e != null && !_playing) _play(e);
   }
 
   /// A soft 40 ms tick that says "heard you".
@@ -546,7 +681,7 @@ class Assistant extends ChangeNotifier {
 
   void _updatePresence() {
     if (!ready) return;
-    final mode = audio.isPlaying || _pendingTts > 0 && _firstAudioAt != null
+    final mode = _playing || _pendingTts > 0 && _firstAudioAt != null
         ? PresenceMode.speaking
         : _claude.busy || _pendingTts > 0
             ? PresenceMode.thinking
@@ -562,6 +697,8 @@ class Assistant extends ChangeNotifier {
       s.cancel();
     }
     _noticeTimer?.cancel();
+    presence.removeListener(_pushState);
+    unawaited(phone?.close());
     if (ready) {
       routines.dispose();
       workers.dispose();

@@ -13,7 +13,8 @@ The brain is the user's own **Claude Code** (their install, their login), runnin
 underneath the app. The app gives Claude Code a set of **display tools** through an MCP server
 embedded in the app, plus a system prompt that makes it work visually ("speak little; show when it helps").
 
-Later, a mobile app acts as a remote for the desktop (Claude Code does not run on phones).
+A phone app (Android first) acts as a remote for the desktop: mic, speaker and display on the phone,
+all processing on the desktop (Claude Code does not run on phones). See §3.7.
 
 ### Principles
 
@@ -220,6 +221,32 @@ lives in `~/Library/Application Support/com.kidandcat.displai/` (`DISPLAI_DATA_D
 Worker reports and routine prompts wait in a queue until the brain is free: not thinking or talking, no
 confirmation pending, and the user not speaking.
 
+### 3.7 Phone remote
+
+The same Flutter app runs on Android as a remote: the phone is the mic, the speaker and the display;
+speech recognition, the brain, the voice and all tools stay on the desktop. Same conversation, same memory.
+
+- **Relay** (`relay/`, Go, `wss://displai.jairo.cloud/ws?role=host|remote`): both sides dial out, so neither
+  needs a public address. `Authorization: Bearer <key>` (≥ 32 chars); the room is `sha256(key)`. It forwards
+  frames between the two roles and sends only `{"t":"peer","up":…}`. A newer connection with the same role
+  replaces the old one (close code 4000). `DISPLAI_RELAY` overrides the relay URL.
+- **Pairing**: the desktop's phone button shows a QR with `displai://pair?r=<relay>&k=<key>` (key in the
+  `kv` table, "Nuevo código" rotates it). The phone scans it or opens the link, and keeps it in `remote.json`.
+- **Protocol** (`app/lib/remote/protocol.dart`): binary frames are audio, byte 0 = kind (1 mic, phone→desktop;
+  2 voice, desktop→phone) then PCM16LE. JSON frames:
+  - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,confirmation,muted}`, `stop`, `reset`,
+    `tool{id?,name,args}` (no id = replay), `partial{name,json}`, `cancel_partial`;
+  - phone→desktop: `hello{w,h,platform}`, `result{id,text,error,png?}`, `idle{n}`, `event{text}`,
+    `confirm{yes}`, `mute{on}`.
+- **While the phone is connected the desktop is quiet**: its mic is ignored, the phone's mic feeds the VAD
+  and STT, the voice and the earcon go to the phone, and display tools run on the phone (10 s timeout, then
+  locally). Brain messages get a `[phone WxH]` prefix so it designs for the phone screen. Mutating display
+  calls are logged (last 20 views) and replayed: to the phone when it joins, to the desktop when it leaves.
+- **Phone audio** (`VoiceAudio.kt`): `AudioRecord` with the `VOICE_COMMUNICATION` source at 16 kHz and an
+  `AudioTrack` for voice communication on the loudspeaker, so the platform's echo processing allows barge-in.
+  The phone reports `idle{n}` when the voice it got has played, which ends the desktop's "speaking" state.
+- `app/tool/remote_smoke.dart` is a headless remote for testing without a phone.
+
 ## 4. Latency (measured)
 
 Spike: `spike/e2e.py`. A recorded utterance is fed to the VAD in real time; Parakeet transcribes;
@@ -351,8 +378,10 @@ In:
 - Persistent, auto-compacting conversation; memories, history search, skills, background workers and
   routines (§3.6).
 
+- Android phone remote through the relay (§3.7).
+
 Out (later):
-- Mobile remote app.
+- iOS phone remote.
 - Spoken wake word.
 - 3D (`flutter_scene`), charts, webviews/YouTube.
 - Windows/Linux builds.
