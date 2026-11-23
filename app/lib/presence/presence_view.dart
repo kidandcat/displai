@@ -9,14 +9,14 @@ import 'package:flutter/widgets.dart';
 import 'presence_fallback_painter.dart';
 import 'presence_signal.dart';
 
-/// Default HUD accent: cool cyan.
-const Color kPresenceAccent = Color(0xFF4FD8FF);
+/// Default HUD accent: violet.
+const Color kPresenceAccent = Color(0xFFA87CFF);
 
 /// Accent the presence fades to while the microphone is muted.
-const Color kPresenceMutedAccent = Color(0xFFFF3B4A);
+const Color kPresenceMutedAccent = Color(0xFFFF2A2A);
 
 /// Near-black background used behind the full-window presence.
-const Color kPresenceBackground = Color(0xFF020406);
+const Color kPresenceBackground = Color(0xFF040206);
 
 /// Per-frame values shared by the shader and fallback painters.
 class PresenceFrame extends ChangeNotifier {

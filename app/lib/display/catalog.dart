@@ -456,7 +456,7 @@ class _TableView extends StatelessWidget {
           if (columns.isNotEmpty)
             Container(
               padding: hPad.add(EdgeInsets.symmetric(vertical: 16 * s)),
-              color: const Color(0x0D22D3EE),
+              color: const Color(0x0DA78BFA),
               child: Row(
                 children: [
                   if (ord > 0) SizedBox(width: badgeW),
@@ -476,7 +476,7 @@ class _TableView extends StatelessWidget {
                 padding: hPad.add(EdgeInsets.symmetric(vertical: 14 * s)),
                 decoration: BoxDecoration(
                   color: hover
-                      ? const Color(0x1A22D3EE)
+                      ? const Color(0x1AA78BFA)
                       : (i.isOdd ? const Color(0x08FFFFFF) : null),
                   border: const Border(
                     top: BorderSide(color: DisplayColors.border, width: 0.6),
@@ -680,7 +680,7 @@ Widget _chips(CatalogItemContext ctx, _Json data) {
                 ),
                 decoration: BoxDecoration(
                   color: hover
-                      ? const Color(0x2622D3EE)
+                      ? const Color(0x26A78BFA)
                       : DisplayColors.surface,
                   borderRadius: BorderRadius.circular(40 * s),
                   border: Border.all(
@@ -736,10 +736,10 @@ Widget _buttons(CatalogItemContext ctx, _Json data) {
                   decoration: BoxDecoration(
                     color: primary
                         ? (hover
-                              ? DisplayColors.accentTeal
+                              ? DisplayColors.accentSecondary
                               : DisplayColors.accent)
                         : (hover
-                              ? const Color(0x2622D3EE)
+                              ? const Color(0x26A78BFA)
                               : Colors.transparent),
                     borderRadius: BorderRadius.circular(14 * s),
                     border: Border.all(color: DisplayColors.accent, width: 1.4),

@@ -390,7 +390,7 @@ class _Choice extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: selected
-                ? const Color(0x3322D3EE)
+                ? const Color(0x33A78BFA)
                 : DisplayColors.background,
             borderRadius: BorderRadius.circular(40 * s),
             border: Border.all(
@@ -507,7 +507,7 @@ class _SubmitButton extends StatelessWidget {
         duration: const Duration(milliseconds: 140),
         padding: EdgeInsets.symmetric(horizontal: 34 * s, vertical: 17 * s),
         decoration: BoxDecoration(
-          color: hover ? DisplayColors.accentTeal : DisplayColors.accent,
+          color: hover ? DisplayColors.accentSecondary : DisplayColors.accent,
           borderRadius: BorderRadius.circular(14 * s),
         ),
         child: Text(

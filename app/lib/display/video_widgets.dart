@@ -320,7 +320,7 @@ class _Controls extends StatelessWidget {
               padding: EdgeInsets.symmetric(vertical: 8 * s),
               colors: const VideoProgressColors(
                 playedColor: DisplayColors.accent,
-                bufferedColor: Color(0x5522D3EE),
+                bufferedColor: Color(0x55A78BFA),
                 backgroundColor: Color(0x33FFFFFF),
               ),
             ),

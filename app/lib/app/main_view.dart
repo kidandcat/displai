@@ -5,8 +5,8 @@ import '../display/display.dart';
 import '../presence/presence.dart';
 import 'assistant_ui.dart';
 
-const kBackground = Color(0xFF05070A);
-const kAccent = Color(0xFF4FD8FF);
+const kBackground = Color(0xFF07050A);
+const kAccent = Color(0xFFA87CFF);
 
 ThemeData displaiTheme() => ThemeData(
       brightness: Brightness.dark,

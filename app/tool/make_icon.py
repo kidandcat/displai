@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 TAU = 2 * np.pi
-ACCENT = np.array([0x4F, 0xD8, 0xFF]) / 255.0
+ACCENT = np.array([0xA8, 0x7C, 0xFF]) / 255.0
 
 # A frozen moment of the orb: speaking, with a lively spectrum.
 TIME = 5.3
@@ -95,7 +95,7 @@ def render(res, span=1.0):
     col = np.zeros((n_px, 3))
     light = np.array([-0.55, 0.7, 0.55])
     light /= np.linalg.norm(light)
-    cool = ACCENT * 0.55 + np.array([0.45, 0.55, 1.0]) * 0.45
+    cool = ACCENT * 0.55 + np.array([0.5, 0.42, 1.0]) * 0.45
 
     idx = np.nonzero(hit)[0]
     if idx.size:
@@ -148,7 +148,7 @@ def render(res, span=1.0):
         ndv = np.maximum(n @ -rd, 0.0)
         fres = (1.0 - ndv) ** 3
         k = (smoothstep(0.2, 0.9, 1.0 - ndv) * 0.45)[:, None]
-        rim = ACCENT * (1 - k) + np.array([0.62, 0.45, 1.0]) * k
+        rim = ACCENT * (1 - k) + np.array([0.88, 0.45, 1.0]) * k
         col[idx] += rim * (fres * (0.75 + 0.9 * lvl * react + 0.3 * W_THINK))[:, None]
         hv = light - rd
         hv /= np.linalg.norm(hv)
@@ -220,7 +220,7 @@ def render(res, span=1.0):
     # Backdrop: near black with a faint accent glow (no motes: they read as noise at icon size).
     r = np.linalg.norm(p, axis=1)
     top = np.clip(0.5 + p[:, 1], 0, 1)[:, None]  # 0 at the bottom edge, 1 at the top
-    bg = np.array([0.012, 0.02, 0.035])[None, :] * (1 - top) + np.array([0.03, 0.06, 0.09])[None, :] * top
+    bg = np.array([0.022, 0.012, 0.035])[None, :] * (1 - top) + np.array([0.065, 0.035, 0.09])[None, :] * top
     bg = bg + ACCENT[None, :] * (0.13 * np.exp(-r * 3.2))[:, None]
     bg *= (1.0 - 0.35 * smoothstep(0.35, 0.75, r))[:, None]
     out = bg + col * (1.0 - bg)
@@ -282,7 +282,7 @@ ADAPTIVE_XML = """<?xml version="1.0" encoding="utf-8"?>
 
 COLOR_XML = """<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#05080D</color>
+    <color name="ic_launcher_background">#08050D</color>
 </resources>
 """
 

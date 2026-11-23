@@ -6,19 +6,19 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// Palette: near-black, cyan/teal accent.
+/// Palette: near-black, violet/fuchsia accent.
 abstract final class DisplayColors {
-  static const Color background = Color(0xFF04080A);
-  static const Color surface = Color(0xFF0A1317);
-  static const Color surfaceHigh = Color(0xFF0F1D23);
-  static const Color border = Color(0x2E3FD8EE);
-  static const Color borderStrong = Color(0x8C22D3EE);
-  static const Color accent = Color(0xFF22D3EE);
-  static const Color accentTeal = Color(0xFF2DD4BF);
-  static const Color accentDim = Color(0xFF0E7490);
-  static const Color text = Color(0xFFE6F3F7);
-  static const Color textMuted = Color(0xFF8DA5AF);
-  static const Color textFaint = Color(0xFF5A707A);
+  static const Color background = Color(0xFF06040A);
+  static const Color surface = Color(0xFF110D17);
+  static const Color surfaceHigh = Color(0xFF181220);
+  static const Color border = Color(0x2EA78BFA);
+  static const Color borderStrong = Color(0x8CA78BFA);
+  static const Color accent = Color(0xFFA78BFA);
+  static const Color accentSecondary = Color(0xFFE879F9);
+  static const Color accentDim = Color(0xFF6D28D9);
+  static const Color text = Color(0xFFF1EDF7);
+  static const Color textMuted = Color(0xFFA79DB3);
+  static const Color textFaint = Color(0xFF6E6579);
   static const Color positive = Color(0xFF34D399);
   static const Color negative = Color(0xFFF87171);
 }
@@ -135,7 +135,7 @@ class OrdinalBadge extends StatelessWidget {
       constraints: BoxConstraints(minWidth: size, minHeight: size),
       padding: EdgeInsets.symmetric(horizontal: 6 * s),
       decoration: BoxDecoration(
-        color: filled ? DisplayColors.accent : const Color(0x1A22D3EE),
+        color: filled ? DisplayColors.accent : const Color(0x1AA78BFA),
         borderRadius: BorderRadius.circular(size / 2),
         border: Border.all(color: DisplayColors.borderStrong, width: 1.2),
       ),
@@ -201,8 +201,8 @@ class RichDisplayText extends StatelessWidget {
             style: TextStyle(
               fontFamily: 'Menlo',
               fontSize: (style.fontSize ?? 20) * 0.9,
-              color: DisplayColors.accentTeal,
-              backgroundColor: const Color(0x1A2DD4BF),
+              color: DisplayColors.accentSecondary,
+              backgroundColor: const Color(0x1AE879F9),
             ),
           ),
         );
@@ -296,7 +296,7 @@ ThemeData displayThemeData() {
     colorScheme: const ColorScheme.dark(
       primary: DisplayColors.accent,
       onPrimary: DisplayColors.background,
-      secondary: DisplayColors.accentTeal,
+      secondary: DisplayColors.accentSecondary,
       surface: DisplayColors.surface,
       onSurface: DisplayColors.text,
     ),

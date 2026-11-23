@@ -61,7 +61,7 @@ class DisplayView extends StatelessWidget {
               gradient: RadialGradient(
                 center: Alignment(-0.85, -1.0),
                 radius: 1.6,
-                colors: [Color(0xFF0B1B21), DisplayColors.background],
+                colors: [Color(0xFF150F1F), DisplayColors.background],
               ),
             ),
       child: Column(
@@ -235,7 +235,7 @@ class _Header extends StatelessWidget {
               : const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [DisplayColors.accent, DisplayColors.accentTeal],
+                      colors: [DisplayColors.accent, DisplayColors.accentSecondary],
                     ),
                   ),
                 ),
@@ -312,7 +312,7 @@ class _TimelineStripState extends State<_TimelineStrip> {
     return Container(
       height: 62 * s,
       decoration: const BoxDecoration(
-        color: Color(0xE6030607),
+        color: Color(0xE6060409),
         border: Border(top: BorderSide(color: DisplayColors.border)),
       ),
       child: ListView.separated(
@@ -333,7 +333,7 @@ class _TimelineStripState extends State<_TimelineStrip> {
               padding: EdgeInsets.symmetric(horizontal: 14 * s),
               decoration: BoxDecoration(
                 color: active
-                    ? const Color(0x2622D3EE)
+                    ? const Color(0x26A78BFA)
                     : hover
                     ? DisplayColors.surfaceHigh
                     : DisplayColors.surface,

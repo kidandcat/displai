@@ -129,7 +129,7 @@ void main() {
 
   vec3 col = vec3(0.0);
   vec3 L = normalize(vec3(-0.55, 0.7, 0.55));
-  vec3 cool = mix(uAccent, vec3(0.45, 0.55, 1.0), 0.45);
+  vec3 cool = mix(uAccent, vec3(0.5, 0.42, 1.0), 0.45);
 
   if (hit > 0.5) {
     // --- Energy core: march through the sphere ---------------------------
@@ -183,7 +183,7 @@ void main() {
     vec3 n = normalize(ro + rd * hs.x);
     float ndv = max(dot(n, -rd), 0.0);
     float fres = pow(1.0 - ndv, 3.0);
-    vec3 rim = mix(uAccent, vec3(0.62, 0.45, 1.0), smoothstep(0.2, 0.9, 1.0 - ndv) * 0.45);
+    vec3 rim = mix(uAccent, vec3(0.88, 0.45, 1.0), smoothstep(0.2, 0.9, 1.0 - ndv) * 0.45);
     col += rim * fres * (0.75 + 0.9 * lvl * react + 0.3 * wThink);
     vec3 h = normalize(L - rd);
     col += vec3(1.0) * pow(max(dot(n, h), 0.0), 90.0) * 0.85;
@@ -269,7 +269,7 @@ void main() {
   if (full > 0.5) {
     // Near-black backdrop with a faint accent glow and slow drifting motes.
     float r = length(p);
-    vec3 bg = vec3(0.006, 0.012, 0.018) + uAccent * 0.035 * exp(-r * 3.5);
+    vec3 bg = vec3(0.012, 0.008, 0.018) + uAccent * 0.035 * exp(-r * 3.5);
     bg *= 1.0 - 0.5 * smoothstep(0.35, 1.0, length(p * vec2(0.75, 1.0)));
     vec2 g = p * 26.0 + vec2(0.0, uTime * 0.05);
     vec2 cell = floor(g);
