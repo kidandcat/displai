@@ -1,7 +1,7 @@
 // DisplAI presence: a 3D orb that reacts to voice.
 //
 // A glass sphere with a volumetric energy core, a holographic lat/long grid on
-// its shell and three tilted rings orbiting it, all ray-traced in perspective.
+// its shell and three tilted rings orbiting it, all ray-traced (orthographic, so every ring shares the center).
 //
 // Uniform layout (float indices for FragmentShader.setFloat):
 //   0      uTime        seconds since start
@@ -40,8 +40,7 @@ out vec4 fragColor;
 
 const float PI = 3.14159265;
 const float TAU = 6.28318531;
-const float CAM_D = 4.5; // camera distance (unit sphere at the origin)
-const float FOCAL = 2.0;
+const float CAM_D = 4.5; // ray origin depth (unit sphere at the origin)
 
 float hash12(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -115,10 +114,11 @@ void main() {
 
   // Camera: the unit sphere spans `screenR` (in min-side units) on screen.
   float screenR = mix(0.14, 0.205, compact);
-  float k = FOCAL / sqrt(CAM_D * CAM_D - 1.0) / screenR;
-  vec3 ro = vec3(0.0, 0.0, CAM_D);
-  vec3 rd = normalize(vec3(p * k, -FOCAL));
-  float pxW = px * k * CAM_D / FOCAL; // one pixel, in world units at the orb
+  // Orthographic: every ring is a circle around the origin, so on screen all
+  // of them share the sphere's center (perspective shifts tilted rings).
+  vec3 ro = vec3(p / screenR, CAM_D);
+  vec3 rd = vec3(0.0, 0.0, -1.0);
+  float pxW = px / screenR; // one pixel, in world units
 
   // The whole object slowly turns; thinking spins it faster.
   mat3 M = rotX(0.42 + 0.08 * sin(uSpin * 0.09)) * rotY(uTime * 0.06 + uSpin * 0.12);
@@ -192,7 +192,7 @@ void main() {
   }
 
   // --- Halo around the silhouette ----------------------------------------
-  float dRay = length(cross(ro, rd)); // ray distance to the center
+  float dRay = length(ro.xy); // ray distance to the center
   float halo = exp(-max(dRay - shellR, 0.0) * 5.0) * (1.0 - hit);
   col += uAccent * halo * mix(0.2, 0.1, compact) * (1.0 + 1.2 * lvl * react + 0.4 * wThink);
 
@@ -219,7 +219,7 @@ void main() {
     vec3 q = ro + rd * t;
     float rr = length(q);
     float ang = atan(dot(q, v), dot(q, u)) / TAU + 0.5;
-    float aa = pxW * t / CAM_D / max(abs(dn), 0.18);
+    float aa = pxW / max(abs(dn), 0.18);
     float aaT = aa / (TAU * max(rr, 1e-3));
     float ringR = 1.28 + 0.17 * fi + polar * 0.1;
     float d = rr - ringR;
