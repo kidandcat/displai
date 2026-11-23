@@ -150,10 +150,13 @@ class _PresenceViewState extends State<PresenceView>
       // Integrated rotation phase: speeding up never makes the rings jump.
       ..spin +=
           dt *
+          // Idle turns slowly; any activity spins the rings visibly faster.
           (1.0 +
-              2.2 * w[2] +
-              1.2 * w[2] * signal.activity +
-              0.6 * react * signal.level);
+              2.0 * w[1] +
+              3.0 * w[3] +
+              5.0 * w[2] +
+              2.5 * w[2] * signal.activity +
+              3.0 * react * signal.level);
     _frame.bands.setAll(0, signal.bands);
     _frame.markDirty();
   }

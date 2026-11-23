@@ -1,4 +1,7 @@
-// DisplAI presence animation: a JARVIS-style HUD "face" that reacts to voice.
+// DisplAI presence: a 3D orb that reacts to voice.
+//
+// A glass sphere with a volumetric energy core, a holographic lat/long grid on
+// its shell and three tilted rings orbiting it, all ray-traced in perspective.
 //
 // Uniform layout (float indices for FragmentShader.setFloat):
 //   0      uTime        seconds since start
@@ -9,12 +12,12 @@
 //   12..15 uState       cross-fade weights: idle, listening, thinking, speaking
 //   16..18 uAccent      accent color (linear-ish RGB 0..1)
 //   19     uSpin        integrated rotation phase (speeds up while thinking)
-//   20     uActivity    stream activity 0..1 (thinking sweep intensity)
-//   21     uCompact     0 = full window, 1 = small status-bar orb
+//   20     uActivity    stream activity 0..1 (thinking intensity)
+//   21     uCompact     0 = full window, 1 = small corner orb (additive, no backdrop)
 //
-// Cost: no loops, one hash, ~20 exp/smoothstep, two atan. Everything is a
-// closed-form distance function of the pixel, so it scales with pixel count
-// only and stays well under a frame on large monitors.
+// Cost: analytic sphere and ring-plane intersections plus a 22-step march
+// through the core, only for rays that hit the sphere. Rays that miss it pay
+// for the rings and the background only.
 
 #version 460 core
 
@@ -37,6 +40,8 @@ out vec4 fragColor;
 
 const float PI = 3.14159265;
 const float TAU = 6.28318531;
+const float CAM_D = 4.5; // camera distance (unit sphere at the origin)
+const float FOCAL = 2.0;
 
 float hash12(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -64,172 +69,215 @@ float segs(float turn, float n, float duty, float aaT) {
   return smoothstep(0.0, e, f) * (1.0 - smoothstep(duty - e, duty, f));
 }
 
+mat3 rotX(float a) {
+  float c = cos(a);
+  float s = sin(a);
+  return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c);
+}
+
+mat3 rotY(float a) {
+  float c = cos(a);
+  float s = sin(a);
+  return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
+}
+
+// Ray / sphere at the origin: (near, far); near > far on a miss.
+vec2 sphere(vec3 ro, vec3 rd, float r) {
+  float b = dot(ro, rd);
+  float h = b * b - (dot(ro, ro) - r * r);
+  if (h < 0.0) return vec2(1e5, -1e5);
+  h = sqrt(h);
+  return vec2(-b - h, -b + h);
+}
+
+// Smooth, texture-free 3D field in [-1, 1], domain-warped so it swirls.
+float field(vec3 q, float t) {
+  vec3 w = q + 0.45 * sin(q.yzx * 2.3 + t * vec3(0.9, 1.1, 0.7));
+  return sin(w.x * 3.1 + t) * sin(w.y * 2.7 - t * 1.3) * sin(w.z * 3.4 + t * 0.8);
+}
+
 void main() {
   vec2 frag = FlutterFragCoord().xy;
   float minRes = max(min(uResolution.x, uResolution.y), 1.0);
   float compact = step(0.5, uCompact);
   float full = 1.0 - compact;
 
-  // Compact mode zooms in so the kept rings fill the orb.
-  float zoom = mix(1.0, 0.62, compact);
-  vec2 p = (frag - 0.5 * uResolution) / minRes * zoom;
-  float px = zoom / minRes; // one logical pixel in shader units
-  float aa = px;
-  float r = length(p);
-  float turn = atan(p.y, p.x) / TAU + 0.5;
-  float aaT = px / (TAU * max(r, 1e-3));
+  vec2 p = (frag - 0.5 * uResolution) / minRes;
+  p.y = -p.y;
+  float px = 1.0 / minRes;
 
   float wIdle = uState.x;
   float wListen = uState.y;
   float wThink = uState.z;
   float wSpeak = uState.w;
-  float react = wListen + wSpeak;
-  float lvl = uLevel * react;
-  float breath = 0.5 + 0.5 * sin(uTime * 0.85);
+  float lvl = clamp(uLevel, 0.0, 1.0);
+  float react = clamp(wListen + wSpeak, 0.0, 1.0);
 
-  // Mirrored spectrum layout: lows at the top, highs at the bottom.
-  float specT = abs(atan(p.x, -p.y)) / PI;
-  float spec = bandAt(specT) * react;
+  // Camera: the unit sphere spans `screenR` (in min-side units) on screen.
+  float screenR = mix(0.14, 0.205, compact);
+  float k = FOCAL / sqrt(CAM_D * CAM_D - 1.0) / screenR;
+  vec3 ro = vec3(0.0, 0.0, CAM_D);
+  vec3 rd = normalize(vec3(p * k, -FOCAL));
+  float pxW = px * k * CAM_D / FOCAL; // one pixel, in world units at the orb
 
-  // Radial displacement shared by the rings: spectrum shape, loudness swell,
-  // idle breathing and a tiny organic wobble.
-  float wob = 0.0022 * sin(turn * TAU * 3.0 + uTime * 0.6) *
-              sin(turn * TAU * 2.0 - uTime * 0.45);
-  float disp = spec * (0.020 + 0.010 * wSpeak) + lvl * 0.010 + wob +
-               breath * 0.004 * wIdle;
+  // The whole object slowly turns; thinking spins it faster.
+  mat3 M = rotX(0.42 + 0.06 * sin(uTime * 0.23)) * rotY(uTime * 0.12 + uSpin * 0.05);
 
-  float minW = px * 0.5 * compact; // keep lines >= 1 px wide in the orb
+  float shellR = 1.0 + 0.012 * sin(uTime * 1.4) * (wIdle + wListen) + 0.045 * lvl * react;
+  vec2 hs = sphere(ro, rd, shellR);
+  float hit = step(0.0, hs.x) * step(hs.x, hs.y);
+
   vec3 col = vec3(0.0);
-  float hot = 0.0;
+  vec3 L = normalize(vec3(-0.55, 0.7, 0.55));
+  vec3 cool = mix(uAccent, vec3(0.45, 0.55, 1.0), 0.45);
 
-  // --- Core -------------------------------------------------------------
-  float thinkPulse = (0.5 + 0.5 * sin(uTime * 4.2)) * wThink;
-  float coreI = 0.55 + 0.18 * breath * wIdle + 1.1 * lvl + 0.35 * thinkPulse;
-  float coreR = 0.025 * (1.0 + 0.6 * lvl + 0.2 * thinkPulse);
-  float rc = r / coreR;
-  hot += exp(-rc * rc) * coreI;
-  col += uAccent * (exp(-r * 24.0) * 0.55 * coreI + exp(-r * 6.0) * 0.07 * (1.0 + 1.5 * lvl) * full); // no diffuse haze in the orb: it reads as a backdrop
+  if (hit > 0.5) {
+    // --- Energy core: march through the sphere ---------------------------
+    float t0 = hs.x;
+    float dt = (hs.y - hs.x) / 22.0;
+    float tt = uTime * (0.55 + 1.6 * wThink + 0.6 * wSpeak);
+    float coreR = 0.27 + 0.14 * lvl * react + 0.025 * sin(uTime * 1.9) + 0.05 * wThink;
+    vec3 acc = vec3(0.0);
+    for (int i = 0; i < 22; i++) {
+      vec3 q = ro + rd * (t0 + (float(i) + 0.5) * dt);
+      vec3 qo = M * q;
+      float r = length(q);
+      float f = field(qo * 1.35, tt);
+      float x = r / coreR;
+      float dens = exp(-x * x * 2.0) * (0.6 + 0.4 * f) + exp(-x * x * 9.0) * 1.5; // white-hot heart
+      // Voice lobes: the spectrum pushes energy out by direction.
+      float az = atan(qo.z, qo.x) / TAU + 0.5;
+      float band = bandAt(abs(fract(az * 2.0) * 2.0 - 1.0));
+      float shellD = (r - 0.6) / 0.17;
+      dens += react * band * 0.9 * exp(-shellD * shellD) * (0.55 + 0.45 * f);
+      // Thin bright filaments where the field crosses zero.
+      float fil = exp(-abs(f) * 18.0) * (1.0 - smoothstep(0.2, 0.6, r)) * (0.3 + 0.4 * wThink);
+      vec3 c = mix(cool, uAccent, smoothstep(0.0, 0.5, dens));
+      c = mix(c, vec3(1.0), smoothstep(0.55, 1.1, dens));
+      acc += c * (dens * 2.6 + fil) * dt;
+    }
+    col += acc * (1.0 + 0.5 * wThink + 0.8 * lvl * wSpeak);
 
-  // --- Ring 0: fast twin arcs hugging the core (full only) ---------------
+    // --- Holographic grid on the shell (front bright, back dim) ----------
+    for (int s = 0; s < 2; s++) {
+      float t = s == 0 ? hs.x : hs.y;
+      vec3 n = normalize(ro + rd * t);
+      vec3 qo = M * n;
+      float lat = asin(clamp(qo.y, -1.0, 1.0));
+      float lon = atan(qo.z, qo.x);
+      float gStep = PI / 7.0;
+      float dLat = abs(fract(lat / gStep + 0.5) - 0.5) * gStep;
+      float dLon = abs(fract(lon / gStep + 0.5) - 0.5) * gStep * cos(lat);
+      float view = abs(dot(n, rd));
+      float aaG = pxW / shellR / max(view, 0.25);
+      float g = max(line(dLat, 0.0, aaG), line(dLon, 0.0, aaG) * smoothstep(0.0, 0.35, cos(lat)));
+      float lit = 0.04 + 0.3 * react * bandAt(fract(lon / TAU + 0.5));
+      // Thinking: a bright latitude sweeps up and down the shell.
+      float sweep = sin(uTime * 1.6) * 1.2;
+      float sw = exp(-abs(lat - sweep) * 18.0) * wThink * 0.55;
+      float side = s == 0 ? 1.0 : 0.3;
+      col += uAccent * (g * lit + sw * (0.3 + 0.7 * g)) * side;
+    }
+
+    // --- Glass: fresnel rim, iridescence, highlights ---------------------
+    vec3 n = normalize(ro + rd * hs.x);
+    float ndv = max(dot(n, -rd), 0.0);
+    float fres = pow(1.0 - ndv, 3.0);
+    vec3 rim = mix(uAccent, vec3(0.62, 0.45, 1.0), smoothstep(0.2, 0.9, 1.0 - ndv) * 0.45);
+    col += rim * fres * (0.75 + 0.9 * lvl * react + 0.3 * wThink);
+    vec3 h = normalize(L - rd);
+    col += vec3(1.0) * pow(max(dot(n, h), 0.0), 90.0) * 0.85;
+    // Soft bounce light from below, in the accent color.
+    col += uAccent * pow(max(dot(n, normalize(vec3(0.3, -0.8, 0.4))), 0.0), 6.0) * 0.12;
+  }
+
+  // --- Halo around the silhouette ----------------------------------------
+  float dRay = length(cross(ro, rd)); // ray distance to the center
+  float halo = exp(-max(dRay - shellR, 0.0) * 5.0) * (1.0 - hit);
+  col += uAccent * halo * mix(0.2, 0.1, compact) * (1.0 + 1.2 * lvl * react + 0.4 * wThink);
+
+  // --- Orbiting rings ------------------------------------------------------
+  // Six rings, mostly coplanar (Saturn-like, seen from slightly above) plus one
+  // polar orbit for depth. They turn with uSpin, whose rate the app raises with
+  // activity (listening < speaking < thinking), so an active orb visibly spins.
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float polar = step(3.5, fi) * step(fi, 4.5); // ring 4
+    float tilt = mix(0.30 + 0.05 * fi, 1.12, polar) + 0.04 * sin(uTime * 0.27 + fi * 2.0);
+    float yaw = 1.5708 + (mod(fi, 2.0) - 0.5) * 0.6 + 0.25 * sin(uTime * 0.07 + fi * 1.7) + polar * 0.9;
+    vec3 nrm = normalize(vec3(sin(tilt) * cos(yaw), cos(tilt), sin(tilt) * sin(yaw)));
+    vec3 u = normalize(cross(nrm, vec3(0.0, 0.0, 1.0)));
+    vec3 v = cross(nrm, u);
+    float dn = dot(rd, nrm);
+    float t = -dot(ro, nrm) / (abs(dn) < 1e-4 ? 1e-4 : dn);
+    if (t <= 0.0) continue;
+    vec3 q = ro + rd * t;
+    float rr = length(q);
+    float ang = atan(dot(q, v), dot(q, u)) / TAU + 0.5;
+    float aa = pxW * t / CAM_D / max(abs(dn), 0.18);
+    float aaT = aa / (TAU * max(rr, 1e-3));
+    float ringR = 1.28 + 0.17 * fi + polar * 0.1;
+    float d = rr - ringR;
+    // Alternate directions; inner rings turn faster.
+    float dir = 1.0 - 2.0 * mod(fi, 2.0);
+    float spin = uSpin * dir * (0.045 - 0.005 * fi);
+    float m = 0.0;
+    if (i == 0) {
+      // Thin solid ring with two bright runners.
+      float runners = segs(ang + spin * 2.5, 2.0, 0.07 + 0.05 * wThink, aaT);
+      m = line(d, 0.005, aa) * 0.5 + line(d, 0.011, aa) * runners * 1.1;
+    } else if (i == 1) {
+      // Tick dial with major marks.
+      float ticks = segs(ang + spin, 90.0, 0.3, aaT) * line(d, 0.02, aa);
+      float major = segs(ang + spin + 0.002, 12.0, 0.02, aaT) * line(d, 0.04, aa);
+      m = max(ticks * 0.42, major * 0.9);
+    } else if (i == 2) {
+      // Voice spectrum: radial bars, quiet when idle.
+      float len = 0.012 + bandAt(abs(fract(ang * 2.0) * 2.0 - 1.0)) * 0.13 + lvl * 0.02;
+      float db = d - 0.5 * len;
+      m = segs(ang + spin, 72.0, 0.4, aaT) * line(db, 0.5 * len, aa) * (0.18 + 0.7 * react);
+    } else if (i == 3) {
+      // Three thick outlined arcs.
+      float arcs = segs(ang + spin, 3.0, 0.22, aaT);
+      float w = 0.026;
+      m = (line(d, w, aa) * 0.2 + line(abs(d) - w, 0.004, aa) * 0.9) * arcs;
+    } else if (i == 4) {
+      // Polar orbit: a fine line with one comet and its tail.
+      float head = fract(ang + spin * 3.0);
+      float tail = exp(-(1.0 - head) * 7.0) * step(0.0, head);
+      m = line(d, 0.004, aa) * (0.22 + 0.9 * tail);
+    } else {
+      // Outer orbit: fine dashes and two long brackets.
+      float dashes = segs(ang + spin, 120.0, 0.45, aaT) * line(d, 0.003, aa) * 0.35;
+      float brackets = segs(ang + spin + 0.1, 2.0, 0.16, aaT) * line(d + 0.025, 0.006, aa) * 0.8;
+      m = dashes + brackets;
+    }
+    // Behind the glass the ring is dimmer, and bluer.
+    float behind = hit * step(hs.x, t);
+    vec3 rc = mix(uAccent, cool, behind);
+    col += rc * m * mix(1.0, 0.3, behind) * (0.85 + 0.25 * wThink + 0.3 * lvl * react);
+  }
+
+  // Tone map (soft clip).
+  col = 1.0 - exp(-col * 1.4);
+
   if (full > 0.5) {
-    float d = r - 0.045 - disp * 0.15;
-    float m = segs(turn + uSpin * 0.16, 2.0, 0.32, aaT);
-    col += uAccent * line(d, max(0.0011, minW), aa) * m * 0.85;
-  }
-
-  // --- Ring 1: thin solid ring ------------------------------------------
-  {
-    float d = r - 0.075 - disp * 0.35;
-    col += uAccent * (line(d, max(0.0010, minW), aa) * 0.8 + exp(-abs(d) * 110.0) * 0.18);
-  }
-
-  // --- Ring 2: tick dial (full only) ------------------------------------
-  if (full > 0.5) {
-    float d = r - 0.105 - disp * 0.5;
-    float t = turn + uSpin * 0.02;
-    float ticks = segs(t, 72.0, 0.22, aaT) * line(d, 0.0045, aa);
-    float major = segs(t + 0.003, 12.0, 0.012, aaT) * line(d, 0.0085, aa);
-    col += uAccent * max(ticks * 0.45, major * 0.85);
-  }
-
-  // --- Ring 3: three thick outlined arcs, counter-rotating ---------------
-  {
-    float d = r - 0.145 - disp * 0.7;
-    float w = max(0.0065, minW * 2.0);
-    float m = segs(turn - uSpin * 0.035, 3.0, 0.27, aaT);
-    float fill = line(d, w, aa) * 0.22;
-    float edge = line(abs(d) - w, max(0.0007, minW), aa) * 0.9;
-    float inner = line(d + 0.013, max(0.0006, minW), aa) * 0.22 * full;
-    col += uAccent * ((fill + edge) * m + inner);
-  }
-
-  // --- Ring 4: fine dashes (full only) ----------------------------------
-  if (full > 0.5) {
-    float d = r - 0.19 - disp * 0.85;
-    float m = segs(turn + uSpin * 0.012, 96.0, 0.5, aaT);
-    col += uAccent * line(d, 0.0016, aa) * m * 0.5;
-  }
-
-  // --- Spectrum bars between ring 4 and ring 5 (audio states) -----------
-  {
-    float n = mix(96.0, 28.0, compact);
-    float base = 0.203 + disp * 0.85;
-    float len = 0.004 + spec * 0.04 + lvl * 0.006;
-    float d = r - base - 0.5 * len;
-    float m = segs(turn, n, 0.42, aaT);
-    float bars = line(d, 0.5 * len, aa) * m;
-    // Brighter towards the tip, so loud bands read as "lit".
-    float tip = 0.35 + 0.65 * clamp((r - base) / max(len, 1e-3), 0.0, 1.0);
-    col += uAccent * bars * tip * (0.12 + 0.6 * react) * (0.3 + 0.7 * react);
-  }
-
-  // --- Ring 5: thin line with two fast highlights + thinking sweep ------
-  {
-    float d = r - 0.24 - disp;
-    float base = line(d, max(0.0009, minW), aa) * 0.35;
-    float hiM = segs(turn + uSpin * 0.06, 2.0, 0.07 + 0.05 * wThink, aaT);
-    float hi = line(d, max(0.0022, minW * 1.5), aa) * hiM * 0.9;
-    col += uAccent * (base + hi + exp(-abs(d) * 140.0) * 0.12);
-  }
-
-  // --- Ring 6: outer faint scale (full only) ----------------------------
-  if (full > 0.5) {
-    float d = r - 0.30 - disp * 0.6;
-    float t = turn - uSpin * 0.006;
-    float minor = segs(t, 180.0, 0.28, aaT) * line(d, 0.0022, aa) * 0.22;
-    float major = segs(t + 0.002, 36.0, 0.03, aaT) * line(d - 0.002, 0.0055, aa) * 0.4;
-    float rim = line(d - 0.013, 0.0006, aa) * 0.12;
-    col += uAccent * (max(minor, major) + rim);
-  }
-
-  // --- Thinking: expanding pulses and a radar sweep ---------------------
-  if (wThink > 0.001) {
-    float f0 = fract(uTime * 0.45);
-    float f1 = fract(uTime * 0.45 + 0.5);
-    float p0 = exp(-abs(r - 0.04 - f0 * 0.28) * 150.0) * (1.0 - f0) * (1.0 - f0);
-    float p1 = exp(-abs(r - 0.04 - f1 * 0.28) * 150.0) * (1.0 - f1) * (1.0 - f1);
-    float sweepTurn = fract(uSpin * 0.22);
-    float behind = fract(sweepTurn - turn);
-    float wedge = smoothstep(0.055, 0.075, r) * (1.0 - smoothstep(0.27, 0.31, r));
-    float trail = exp(-behind * 9.0) * (0.10 + 0.12 * uActivity) * wedge;
-    float head = exp(-behind * 260.0) * 0.45 * wedge;
-    col += uAccent * wThink * ((p0 + p1) * 0.5 + trail + head * full);
-  }
-
-  // --- Particles and scan band (full only) ------------------------------
-  if (full > 0.5) {
-    vec2 g = p * 26.0 + vec2(0.0, uTime * 0.06);
-    vec2 cell = floor(g);
-    float h = hash12(cell);
-    vec2 off = vec2(h, fract(h * 17.31)) * 0.6 + 0.2;
-    float pxc = px * 26.0;
-    float dist = length(fract(g) - off);
-    float dotv = 1.0 - smoothstep(pxc * 0.6, pxc * 1.8, dist);
-    float twinkle = 0.5 + 0.5 * sin(uTime * (0.7 + 1.6 * h) + h * 40.0);
-    float on = step(0.62, h);
-    float fade = smoothstep(0.09, 0.32, r);
-    col += uAccent * dotv * on * twinkle * fade * (0.22 + 0.4 * lvl);
-
-    float scanY = fract(uTime * 0.06) * 1.6 - 0.8;
-    float sy = (p.y - scanY) * 14.0;
-    col += uAccent * exp(-sy * sy) * 0.035;
-  }
-
-  // Tone map (soft clip) and add the white-hot core.
-  col += (vec3(1.0) * 0.75 + uAccent * 0.5) * hot;
-  col = 1.0 - exp(-col * 1.45);
-
-  if (full > 0.5) {
-    // Fine scan lines and a vignetted near-black background.
-    col *= 0.9 + 0.1 * sin(frag.y * TAU / 3.0);
-    vec3 bg = vec3(0.006, 0.012, 0.018) + uAccent * 0.03 * exp(-r * 3.0);
+    // Near-black backdrop with a faint accent glow and slow drifting motes.
+    float r = length(p);
+    vec3 bg = vec3(0.006, 0.012, 0.018) + uAccent * 0.035 * exp(-r * 3.5);
     bg *= 1.0 - 0.5 * smoothstep(0.35, 1.0, length(p * vec2(0.75, 1.0)));
-    fragColor = vec4(bg + col, 1.0);
+    vec2 g = p * 26.0 + vec2(0.0, uTime * 0.05);
+    vec2 cell = floor(g);
+    float hsh = hash12(cell);
+    vec2 off = vec2(hsh, fract(hsh * 17.31)) * 0.6 + 0.2;
+    float pxc = px * 26.0;
+    float dotv = 1.0 - smoothstep(pxc * 0.6, pxc * 1.8, length(fract(g) - off));
+    float twinkle = 0.5 + 0.5 * sin(uTime * (0.7 + 1.6 * hsh) + hsh * 40.0);
+    bg += uAccent * dotv * step(0.64, hsh) * twinkle * smoothstep(0.2, 0.45, r) * (0.18 + 0.3 * lvl);
+    fragColor = vec4(bg + col * (1.0 - bg), 1.0);
   } else {
-    // Transparent orb: fade the glow out before the rect edge and add the
-    // light on top of whatever is behind (premultiplied, alpha 0 = additive),
-    // so the content under the orb is never darkened or hidden.
-    col *= 1.0 - smoothstep(0.40 * zoom, 0.5 * zoom, r);
+    // Corner orb: light only (premultiplied, alpha 0 = additive), faded before the rect edge.
+    col *= 1.0 - smoothstep(0.44, 0.5, length(p));
     fragColor = vec4(col, 0.0);
   }
 }
