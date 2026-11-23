@@ -24,6 +24,7 @@ class PresenceFallbackPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     final rect = Offset.zero & size;
+    final accent = frame.tint(this.accent);
     if (!compact) {
       canvas.drawRect(rect, Paint()..color = kPresenceBackground);
     }

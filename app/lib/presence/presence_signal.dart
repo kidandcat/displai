@@ -81,6 +81,16 @@ class PresenceSignal extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _muted = false;
+
+  /// Whether the microphone is muted; the view fades the accent to red.
+  bool get muted => _muted;
+  set muted(bool value) {
+    if (value == _muted) return;
+    _muted = value;
+    notifyListeners();
+  }
+
   /// Smoothed loudness, 0..1.
   double get level => _level;
 

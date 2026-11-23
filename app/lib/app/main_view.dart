@@ -22,7 +22,6 @@ class MainView extends StatelessWidget {
     required this.assistant,
     this.actions = const [],
     this.compactOrb = 180,
-    this.tapOrbToMute = false,
   });
 
   final AssistantUi assistant;
@@ -32,9 +31,6 @@ class MainView extends StatelessWidget {
 
   /// Size of the corner orb while something is on screen.
   final double compactOrb;
-
-  /// Tapping the orb (in the center or in the corner) mutes or unmutes the mic (the phone).
-  final bool tapOrbToMute;
 
   void _tapOrb() {
     if (!assistant.ready) return;
@@ -73,12 +69,12 @@ class MainView extends StatelessWidget {
                   ),
                   DisplayView(controller: a.display),
                   // The full orb: the sphere and its inner rings, ~0.3 of the short side around the center.
-                  if (!showing && tapOrbToMute)
+                  // Tapping it (or the corner orb) mutes or unmutes the mic.
+                  if (!showing)
                     LayoutBuilder(
                       builder: (context, box) => Center(
                         child: ClipOval(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
+                          child: _OrbTap(
                             onTap: _tapOrb,
                             child: SizedBox.square(dimension: 0.6 * box.biggest.shortestSide),
                           ),
@@ -90,15 +86,10 @@ class MainView extends StatelessWidget {
                     Positioned(
                       top: 12,
                       right: 12,
-                      child: tapOrbToMute
-                          ? GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: _tapOrb,
-                              child: PresenceView(signal: a.presence, compact: true, compactSize: compactOrb),
-                            )
-                          : IgnorePointer(
-                              child: PresenceView(signal: a.presence, compact: true, compactSize: compactOrb),
-                            ),
+                      child: _OrbTap(
+                        onTap: _tapOrb,
+                        child: PresenceView(signal: a.presence, compact: true, compactSize: compactOrb),
+                      ),
                     ),
                 ],
               ),
@@ -179,4 +170,18 @@ class StatusBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Tap target over the orb, with a pointer cursor on desktop.
+class _OrbTap extends StatelessWidget {
+  const _OrbTap({required this.onTap, required this.child});
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap, child: child),
+      );
 }

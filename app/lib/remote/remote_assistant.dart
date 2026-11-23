@@ -117,6 +117,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
         lastHeard = '${m['heard'] ?? ''}';
         backgroundJobs = (m['jobs'] as num?)?.toInt() ?? 0;
         muted = m['muted'] == true;
+        presence.muted = muted;
         notifyListeners();
       case 'stop':
         unawaited(audio.stop());
@@ -190,6 +191,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
   @override
   void toggleMute() {
     muted = !muted;
+    presence.muted = muted;
     link.send({'t': 'mute', 'on': muted});
     notifyListeners();
   }

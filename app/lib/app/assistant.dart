@@ -303,6 +303,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   set muted(bool value) {
     if (value == _muted) return;
     _muted = value;
+    presence.muted = value;
     if (value) _listener.reset();
     _updatePresence();
     notifyListeners();

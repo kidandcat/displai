@@ -12,6 +12,9 @@ import 'presence_signal.dart';
 /// Default HUD accent: cool cyan.
 const Color kPresenceAccent = Color(0xFF4FD8FF);
 
+/// Accent the presence fades to while the microphone is muted.
+const Color kPresenceMutedAccent = Color(0xFFFF3B4A);
+
 /// Near-black background used behind the full-window presence.
 const Color kPresenceBackground = Color(0xFF020406);
 
@@ -25,6 +28,13 @@ class PresenceFrame extends ChangeNotifier {
 
   /// Cross-fade weights for idle, listening, thinking, speaking (sum = 1).
   final Float32List state = Float32List(4)..[0] = 1;
+
+  /// Mute blend, 0 (normal accent) .. 1 (muted red), eased over time.
+  double muted = 0;
+
+  /// [accent] blended toward [kPresenceMutedAccent] by [muted].
+  Color tint(Color accent) =>
+      muted <= 0 ? accent : Color.lerp(accent, kPresenceMutedAccent, muted)!;
 
   void markDirty() => notifyListeners();
 }
@@ -78,6 +88,9 @@ class _PresenceViewState extends State<PresenceView>
   // Seconds for a state cross-fade to get ~63% of the way.
   static const double _fadeTau = 0.28;
 
+  // Seconds for the muted color fade to get ~63% of the way.
+  static const double _muteTau = 0.3;
+
   final PresenceFrame _frame = PresenceFrame();
   late final Ticker _ticker;
   Duration _lastElapsed = Duration.zero;
@@ -90,6 +103,7 @@ class _PresenceViewState extends State<PresenceView>
     _frame.state
       ..fillRange(0, 4, 0)
       ..[widget.signal.mode.index] = 1;
+    _frame.muted = widget.signal.muted ? 1 : 0;
     _ticker = createTicker(_onTick)..start();
     _load();
   }
@@ -141,6 +155,11 @@ class _PresenceViewState extends State<PresenceView>
         w[i] /= sum;
       }
     }
+
+    final mutedTarget = signal.muted ? 1.0 : 0.0;
+    _frame.muted +=
+        (mutedTarget - _frame.muted) * (1 - math.exp(-dt / _muteTau));
+    if ((_frame.muted - mutedTarget).abs() < 1e-3) _frame.muted = mutedTarget;
 
     final react = w[1] + w[3];
     _frame
@@ -218,6 +237,7 @@ class _ShaderPainter extends CustomPainter {
     if (size.isEmpty) return;
     final b = frame.bands;
     final s = frame.state;
+    final accent = frame.tint(this.accent);
     shader
       ..setFloat(0, frame.time)
       ..setFloat(1, size.width)
