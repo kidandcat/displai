@@ -30,6 +30,7 @@ Future<void> main() async {
     systemPrompt: 'You are a voice assistant with a display. Speak one short sentence, then use the show tool.',
     mcpUrl: mcp.url,
     workDir: '${Directory.systemTemp.path}/displai-smoke',
+    sessionId: ClaudeSession.newSessionId(),
   );
   final t0 = DateTime.now();
   var first = true;
@@ -43,7 +44,7 @@ Future<void> main() async {
         stdout.write(e.text);
       case ToolStart():
         print('\n[$ms ms] tool start ${e.name}');
-      case ToolInput():
+      case ToolInput() || Compacting():
         break;
       case TurnDone():
         print('\n[$ms ms] done interrupted=${e.interrupted} error=${e.error}');

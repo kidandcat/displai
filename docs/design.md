@@ -84,6 +84,11 @@ Checked locally with Claude Code **2.1.302**.
 - The brain is meant to be **pluggable** (Codex, Antigravity and others later): the capabilities live in
   DisplAI's MCP server, and the brain adapter only has to speak MCP plus a streaming text protocol.
 - Model: user-selectable; aliases only (`opus`, `sonnet`, `haiku`), never pinned IDs.
+- **One continuous conversation.** The session id lives in DisplAI's store; the first start passes
+  `--session-id <uuid>`, later starts `--resume <uuid>` (when Claude Code still has the transcript), so the
+  conversation survives restarts. `--autocompact 100k` keeps the context small (faster first voice); the
+  full history stays searchable in DisplAI's own store (§3.6). Each user message is prefixed with the
+  local date and time.
 
 ### 3.2 Audio: sherpa-onnx
 
@@ -197,6 +202,23 @@ overwriting a file, or a click whose target or `risky` flag means send / buy / p
 shows a confirm card and the voice asks "¿Lo hago?". The user answers "sí / no" by voice or on the
 card; while a confirmation is pending, speech does not barge in. Anything that is not a yes or no
 declines the action and is sent as the next turn. No answer in 45 s means no.
+
+### 3.6 Memory, history, skills, workers and routines
+
+All of it belongs to DisplAI, not to the brain, so another brain provider gets the same data and tools. Data
+lives in `~/Library/Application Support/com.kidandcat.displai/` (`DISPLAI_DATA_DIR` overrides it):
+`displai.db` (SQLite, WAL, FTS5 with accent-insensitive tokenizing) and `skills/`.
+
+| Feature | Tools | How it works |
+|---|---|---|
+| History | `search_history` | Every user message, display or worker/routine event, and spoken reply is saved. Search by words (any word, best ranked) or read around a message id. Covers what auto-compaction removed from the context. |
+| Memories | `remember`, `search_memories`, `forget_memory` | Short self-contained facts. `essential` ones (budget 4,000 chars) go into the system prompt at each start; the rest are searched. `remember` with `id` corrects one. |
+| Skills | `read_skill`, `save_skill`, `delete_skill` | `skills/<name>/SKILL.md` with name and description front matter. Only the index goes into the system prompt; the brain loads a skill before that kind of task. Deleting is confirmed. |
+| Workers | `start_worker`, `list_workers`, `worker_status`, `message_worker`, `stop_worker` | Each worker is its own headless Claude Code process (opus, effort medium, `--autocompact 200k`) with its own MCP endpoint: commands and files, read-only memories, history and skills, `report_progress`, plus `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`. No display and no mouse or keyboard. Risky actions are still confirmed, the card names the worker. Its final message is the report, handed to the brain as a `[worker …]` message. Its session is saved, so `message_worker` can continue it later, also after a restart. The status bar shows how many are running. |
+| Routines | `create_routine`, `list_routines`, `update_routine`, `delete_routine` | Schedules `once` (local time), `daily` (time, optional weekdays) or `interval` (minutes). Checked every 15 s while the app runs. At the due time the prompt is handed to the brain as a `[routine …]` message. A missed one-time reminder fires late at the next start; recurring runs missed by more than 2 h are skipped. |
+
+Worker reports and routine prompts wait in a queue until the brain is free: not thinking or talking, no
+confirmation pending, and the user not speaking.
 
 ## 4. Latency (measured)
 
@@ -326,13 +348,15 @@ In:
 - Presence animation (fragment shader) reacting to mic and TTS audio, with the shrink-to-orb
   transition when a view is shown.
 - First-run model download with progress.
+- Persistent, auto-compacting conversation; memories, history search, skills, background workers and
+  routines (§3.6).
 
 Out (later):
 - Mobile remote app.
 - Spoken wake word.
 - 3D (`flutter_scene`), charts, webviews/YouTube.
 - Windows/Linux builds.
-- Multiple sessions, memory beyond what Claude Code already has.
+- Routines that run while the app is closed (a launch agent).
 
 ## 9. Decisions
 

@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show GlobalKey, WidgetsBinding;
+import 'package:path_provider/path_provider.dart';
 
 import '../audio/native_audio.dart';
 import '../brain/claude_session.dart';
@@ -15,8 +16,14 @@ import '../display/display.dart';
 import '../mcp/display_mcp_server.dart';
 import '../presence/presence.dart';
 import '../computer/computer_tools.dart';
+import '../routines/routines.dart';
+import '../store/store.dart';
 import '../tools/command_tools.dart';
+import '../tools/history_tools.dart';
+import '../tools/memory_tools.dart';
+import '../tools/skill_tools.dart';
 import '../tools/tool_provider.dart';
+import '../workers/workers.dart';
 import '../voice/listener.dart';
 import '../voice/model_store.dart';
 import '../voice/speaker.dart';
@@ -50,8 +57,24 @@ class Assistant extends ChangeNotifier {
   late final DisplayMcpServer _mcp;
   final _subs = <StreamSubscription<Object?>>[];
 
-  /// DisplAI's own host tools (served from our MCP server, not the brain's built-ins).
-  final List<ToolProvider> providers = [CommandTools(), ComputerTools()];
+  /// DisplAI's own data: history, memories, workers, routines (and skills on disk).
+  late final Store store;
+
+  /// DisplAI's own tools besides the display (served from our MCP server, not the brain's
+  /// built-ins): commands, computer use, memories, history, skills, workers and routines.
+  late final List<ToolProvider> providers;
+  late final Workers workers;
+  late final Routines routines;
+
+  String get _skillsDir => '${store.dir}/skills';
+
+  /// Worker reports and routine prompts waiting for the brain to be free.
+  final _notices = <String>[];
+  Timer? _noticeTimer;
+  bool _userSpeaking = false;
+
+  /// What the brain has said in the current turn (saved to the history when it ends).
+  final _reply = StringBuffer();
 
   /// Wraps what DisplAI shows (display, presence, cards) so the brain can capture it.
   final GlobalKey screenKey = GlobalKey(debugLabel: 'displai-screen');
@@ -102,6 +125,30 @@ class Assistant extends ChangeNotifier {
 
   Future<void> start() async {
     try {
+      final dataDir = Platform.environment['DISPLAI_DATA_DIR'] ??
+          (await getApplicationSupportDirectory()).path;
+      store = await Store.open(dataDir);
+      workers = Workers(
+        store: store,
+        hostTools: [CommandTools(), MemoryTools(store, readOnly: true), HistoryTools(store), SkillTools(_skillsDir, readOnly: true)],
+        confirm: _requestConfirmation,
+        notify: notify,
+      )..addListener(notifyListeners);
+      routines = Routines(store: store, notify: notify);
+      providers = [
+        CommandTools(),
+        ComputerTools(),
+        MemoryTools(store),
+        HistoryTools(store),
+        SkillTools(_skillsDir),
+        workers,
+        routines,
+      ];
+      var sessionId = store.get('brain_session');
+      if (sessionId == null) {
+        sessionId = ClaudeSession.newSessionId();
+        store.set('brain_session', sessionId);
+      }
       _speaker = await Speaker.start(modelDir: models.supertonic, voice: voice);
       _listener = await Listener.start(vadModel: models.vad, parakeetDir: models.parakeet);
       _mcp = DisplayMcpServer(
@@ -117,9 +164,10 @@ class Assistant extends ChangeNotifier {
       _claude = ClaudeSession(
         model: model,
         effort: effort,
-        systemPrompt: systemPrompt,
+        systemPrompt: buildSystemPrompt([MemoryTools.promptSection(store), SkillTools.promptSection(_skillsDir)]),
         mcpUrl: _mcp.url,
-        workDir: '${Directory.systemTemp.path}/displai-work',
+        workDir: '${store.dir}/brain',
+        sessionId: sessionId,
       );
       await _claude.start();
       final format = await audio.start(playRate: _speaker.sampleRate);
@@ -129,13 +177,18 @@ class Assistant extends ChangeNotifier {
       _subs
         ..add(audio.mic.listen(_onMic))
         ..add(audio.output.listen((o) => presence.addAudio(o.$1, o.$2)))
-        ..add(audio.idle.listen((_) => _updatePresence()))
+        ..add(audio.idle.listen((_) {
+          _updatePresence();
+          _drainNotices();
+        }))
         ..add(_listener.events.listen(_onHeard))
         ..add(_speaker.speech.listen(_onSpeech))
         ..add(_claude.events.listen(_onBrain))
         ..add(display.userEvents.listen(_onDisplayEvent));
       ready = true;
       _updatePresence();
+      routines.start();
+      _noticeTimer = Timer.periodic(const Duration(seconds: 2), (_) => _drainNotices());
     } catch (e, st) {
       error = '$e';
       debugPrint('assistant start failed: $e\n$st');
@@ -164,9 +217,11 @@ class Assistant extends ChangeNotifier {
   void _onHeard(HeardEvent e) {
     switch (e) {
       case SpeechStarted():
+        _userSpeaking = true;
         if (confirmation != null) return; // the user is answering, not interrupting
         if (busy && !_barged) _bargeIn();
       case Utterance():
+        _userSpeaking = false;
         final wasBargeIn = _barged;
         _barged = false;
         if (_muted) return;
@@ -215,6 +270,7 @@ class Assistant extends ChangeNotifier {
   }
 
   void _stopTurn() {
+    _logReply(interrupted: true);
     if (confirmation != null) answerConfirmation(false);
     _generation++;
     _pendingTts = 0;
@@ -227,12 +283,14 @@ class Assistant extends ChangeNotifier {
   }
 
   void _ask(String text) {
+    final event = text.startsWith('[display]') || text.startsWith('[worker') || text.startsWith('[routine');
+    store.addMessage(event ? 'event' : 'user', text);
     _generation++;
     _pendingTts = 0;
     _sentence.clear();
     _firstAudioAt = null;
     _setActivity('Pensando…');
-    unawaited(_claude.send(text));
+    unawaited(_claude.send('[${formatStamp(DateTime.now())}] $text'));
     _updatePresence();
     notifyListeners();
   }
@@ -244,10 +302,12 @@ class Assistant extends ChangeNotifier {
   void _onBrain(BrainEvent e) {
     switch (e) {
       case TextDelta():
+        _reply.write(e.text);
         if (activity.isNotEmpty) _setActivity('');
         _sentence.write(e.text);
         _flushSentences(final_: false);
       case ToolStart():
+        if (_reply.isNotEmpty) _reply.write(' ');
         _flushSentences(final_: true);
         _setActivity(switch (e.name) {
           'WebSearch' || 'web_search' => 'Buscando en la web…',
@@ -258,7 +318,11 @@ class Assistant extends ChangeNotifier {
       case ToolInput():
         presence.bumpActivity(0.1);
         if (_isDisplayTool(e.name)) display.streamPartial(e.name, e.partialJson);
+      case Compacting():
+        // Takes a few seconds once the context is full; say why the answer is late.
+        _setActivity(e.active ? 'Resumiendo la conversación…' : 'Pensando…');
       case TurnDone():
+        _logReply(interrupted: e.interrupted);
         if (e.interrupted) {
           display.cancelPartial();
         } else {
@@ -278,7 +342,27 @@ class Assistant extends ChangeNotifier {
           _say('Ha habido un error con el cerebro. Vuelve a intentarlo.');
         }
         _updatePresence();
+        _drainNotices();
     }
+  }
+
+  void _logReply({required bool interrupted}) {
+    final text = _reply.toString().trim();
+    _reply.clear();
+    if (text.isNotEmpty) store.addMessage('assistant', interrupted ? '$text [interrupted]' : text);
+  }
+
+  /// Hands a worker report or a routine prompt to the brain as soon as it is free (not
+  /// talking, not thinking, no confirmation pending, the user not speaking).
+  void notify(String text) {
+    _notices.add(text);
+    _drainNotices();
+  }
+
+  void _drainNotices() {
+    if (!ready || _notices.isEmpty || busy || confirmation != null || _userSpeaking) return;
+    _turnSpeechEnd = null;
+    _ask(_notices.removeAt(0));
   }
 
   bool _isDisplayTool(String name) => DisplayController.toolSpecs.any((t) => t.name == name);
@@ -355,6 +439,12 @@ class Assistant extends ChangeNotifier {
   }
 
   static String _activityFor(String tool) => switch (tool) {
+        'remember' || 'search_memories' || 'forget_memory' => 'Recordando…',
+        'search_history' => 'Buscando en el historial…',
+        'read_skill' || 'save_skill' || 'delete_skill' => 'Repasando cómo se hace…',
+        'start_worker' || 'message_worker' => 'Lanzando trabajo en segundo plano…',
+        'list_workers' || 'worker_status' || 'stop_worker' => 'Mirando los trabajos en curso…',
+        'create_routine' || 'list_routines' || 'update_routine' || 'delete_routine' => 'Programando…',
         'run_command' => 'Ejecutando un comando…',
         'read_file' || 'list_dir' => 'Leyendo ficheros…',
         'write_file' => 'Escribiendo un fichero…',
@@ -393,6 +483,7 @@ class Assistant extends ChangeNotifier {
   void _answerByVoice(String text) {
     if (text.isEmpty) return;
     lastHeard = text;
+    store.addMessage('user', text);
     final answer = parseYesNo(text);
     answerConfirmation(answer == true);
     // Anything that is not a plain yes/no is a new request: run it after this turn.
@@ -470,11 +561,15 @@ class Assistant extends ChangeNotifier {
     for (final s in _subs) {
       s.cancel();
     }
+    _noticeTimer?.cancel();
     if (ready) {
+      routines.dispose();
+      workers.dispose();
       _claude.dispose();
       _listener.dispose();
       _speaker.dispose();
       unawaited(_mcp.stop());
+      store.close();
     }
     presence.dispose();
     display.dispose();

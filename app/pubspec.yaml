@@ -42,6 +42,7 @@ dependencies:
   http: ^1.6.0
   a2ui_core: ^0.1.1
   json_schema_builder: ^0.1.7
+  sqlite3: ^3.9.2
 
 dev_dependencies:
   flutter_test:

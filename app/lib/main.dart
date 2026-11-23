@@ -233,6 +233,21 @@ class _StatusBar extends StatelessWidget {
               ),
             ),
           ),
+          if (a.ready && a.workers.runningCount > 0) ...[
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: _accent),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              a.workers.runningCount == 1
+                  ? '1 trabajo en segundo plano'
+                  : '${a.workers.runningCount} trabajos en segundo plano',
+              style: t.bodySmall?.copyWith(color: _accent),
+            ),
+            const SizedBox(width: 16),
+          ],
           if (a.muted)
             Text('Micrófono silenciado · espacio para activar',
                 style: t.bodySmall?.copyWith(color: Colors.redAccent.withValues(alpha: 0.8))),

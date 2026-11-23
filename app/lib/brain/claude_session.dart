@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 /// Events from a Claude Code turn, as the app needs them.
 sealed class BrainEvent {}
@@ -25,20 +26,35 @@ class ToolInput extends BrainEvent {
   final String partialJson;
 }
 
+/// Claude Code is compacting the conversation (true) or finished doing so (false).
+class Compacting extends BrainEvent {
+  Compacting(this.active);
+  final bool active;
+}
+
 class TurnDone extends BrainEvent {
-  TurnDone({required this.interrupted, this.error});
+  TurnDone({required this.interrupted, this.error, this.result = ''});
   final bool interrupted;
   final String? error;
+
+  /// The turn's final text (what a worker reports back).
+  final String result;
 }
 
 /// A long-lived headless Claude Code process (stream-json in/out), kept warm between turns.
+///
+/// The conversation is saved by Claude Code under [sessionId] and resumed on the next start, so
+/// it survives restarts; Claude Code compacts it on its own when it reaches [autocompact] tokens.
 class ClaudeSession {
   ClaudeSession({
     required this.model,
     required this.systemPrompt,
     required this.mcpUrl,
     required this.workDir,
+    required this.sessionId,
     this.effort = 'low',
+    this.builtinTools = const ['WebSearch', 'WebFetch'],
+    this.autocompact = '100k',
   });
 
   final String model;
@@ -46,6 +62,16 @@ class ClaudeSession {
   final String mcpUrl;
   final String workDir;
   final String effort;
+
+  /// Claude Code session id (a UUID). Resumed when Claude Code already has it on disk.
+  final String sessionId;
+
+  /// Claude Code built-in tools to allow, besides DisplAI's MCP tools.
+  final List<String> builtinTools;
+
+  /// Context size that triggers Claude Code's auto-compaction (kept low: a smaller context
+  /// answers faster, and voice latency matters more than recall; search_history covers the rest).
+  final String autocompact;
 
   static const displayServer = 'displai';
   static const _prefix = 'mcp__${displayServer}__';
@@ -56,6 +82,10 @@ class ClaudeSession {
   Process? _proc;
   bool busy = false;
   bool _discard = false;
+
+  /// The message of the turn in progress, and whether it was already re-sent after a crash.
+  String? _inFlight;
+  bool _retried = false;
   final _toolNames = <int, String>{};
   final _toolJson = <int, StringBuffer>{};
   final _log = StringBuffer();
@@ -72,6 +102,7 @@ class ClaudeSession {
         displayServer: {'type': 'http', 'url': mcpUrl},
       },
     });
+    final resume = sessionExists(sessionId);
     final args = [
       '-p',
       '--input-format', 'stream-json',
@@ -81,11 +112,12 @@ class ClaudeSession {
       '--append-system-prompt', systemPrompt,
       '--mcp-config', mcpConfig,
       '--strict-mcp-config',
-      // Built-in tools: only web access. Display tools come from our MCP server.
-      '--tools', 'WebSearch,WebFetch',
-      '--allowedTools', 'mcp__$displayServer,WebSearch,WebFetch',
+      // Built-in tools: only the ones given. DisplAI's tools come from our MCP server.
+      '--tools', builtinTools.join(','),
+      '--allowedTools', ['mcp__$displayServer', ...builtinTools].join(','),
       '--setting-sources', '',
-      '--no-session-persistence',
+      if (resume) ...['--resume', sessionId] else ...['--session-id', sessionId],
+      '--autocompact', autocompact,
       '--effort', effort,
       '--model', model,
     ];
@@ -105,10 +137,23 @@ class ClaudeSession {
     unawaited(p.exitCode.then((code) {
       if (_proc != p) return;
       _proc = null;
-      if (busy) {
+      if (!busy) return;
+      final pending = _inFlight;
+      if (pending != null && !_retried && !_discard) {
+        // The process died mid-turn (killed, crashed): restart it, resuming the same
+        // conversation, and send the turn again once before reporting an error.
+        _retried = true;
         busy = false;
-        _events.add(TurnDone(interrupted: false, error: 'claude exited ($code): ${stderrTail.trim()}'));
+        unawaited(send(pending).catchError((Object e) {
+          busy = false;
+          _events.add(TurnDone(interrupted: false, error: 'claude restart failed: $e'));
+        }));
+        return;
       }
+      busy = false;
+      _inFlight = null;
+      _retried = false;
+      _events.add(TurnDone(interrupted: _discard, error: _discard ? null : 'claude exited ($code): ${stderrTail.trim()}'));
     }));
   }
 
@@ -122,6 +167,7 @@ class ClaudeSession {
     }
     busy = true;
     _discard = false;
+    _inFlight = text;
     _write({
       'type': 'user',
       'message': {
@@ -158,6 +204,8 @@ class ClaudeSession {
       return;
     }
     switch (ev['type']) {
+      case 'system' when ev['subtype'] == 'status':
+        _events.add(Compacting(ev['status'] == 'compacting'));
       case 'stream_event':
         if (_discard) return;
         final e = ev['event'] as Map<String, dynamic>;
@@ -182,13 +230,39 @@ class ClaudeSession {
         }
       case 'result':
         busy = false;
+        _inFlight = null;
+        _retried = false;
         _toolNames.clear();
         _toolJson.clear();
         final interrupted = _discard || ev['subtype'] == 'error_during_execution';
         _discard = false;
         final isError = ev['is_error'] == true && !interrupted;
-        _events.add(TurnDone(interrupted: interrupted, error: isError ? '${ev['result'] ?? ev['subtype']}' : null));
+        _events.add(TurnDone(
+          interrupted: interrupted,
+          error: isError ? '${ev['result'] ?? ev['subtype']}' : null,
+          result: ev['result'] is String ? ev['result'] as String : '',
+        ));
     }
+  }
+
+  /// Whether Claude Code has a saved transcript for [id] (any project directory).
+  static bool sessionExists(String id) {
+    final root = Directory('${Platform.environment['HOME']}/.claude/projects');
+    if (!root.existsSync()) return false;
+    for (final d in root.listSync().whereType<Directory>()) {
+      if (File('${d.path}/$id.jsonl').existsSync()) return true;
+    }
+    return false;
+  }
+
+  /// A random UUID v4 for a new session.
+  static String newSessionId() {
+    final r = Random.secure();
+    final b = List<int>.generate(16, (_) => r.nextInt(256));
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    final h = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+    return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
   }
 
   static String _shortName(String name) => name.startsWith(_prefix) ? name.substring(_prefix.length) : name;

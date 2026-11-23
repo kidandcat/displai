@@ -28,6 +28,7 @@ Future<void> main() async {
         'tools. Act, then answer in one short Spanish sentence.',
     mcpUrl: mcp.url,
     workDir: '${Directory.systemTemp.path}/displai-smoke',
+    sessionId: ClaudeSession.newSessionId(),
   );
   for (final q in [
     '¿Cuánto espacio libre queda en el disco?',
