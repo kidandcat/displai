@@ -182,6 +182,9 @@ Other numbers:
 - Cold start (spawn → first answer): ~2 s. The app spawns the session at launch and keeps it warm.
 - Text-only turn (no tools at all): first sentence 0.8–1.4 s with warm Opus/Sonnet.
 - TTS adds ~0.1 s (Piper) or ~0.5–0.6 s (Supertonic) for the first sentence.
+- **Live test** (`spike/live.py`: Jairo's real voice, MacBook mic and speakers, Opus, Supertonic, no
+  tools, 0.4 s end-of-turn silence): first voice **1.8–2.7 s** after the end of speech in 11 of 12
+  turns, worst 3.7 s; STT 0.46–0.74 s.
 
 ### Mitigations built into v0
 
@@ -197,14 +200,34 @@ Other numbers:
 
 ## 5. Turn-taking
 
-- v0 is **half-duplex**: mic is muted while TTS plays (no echo cancellation yet).
-- Activation: **push-to-talk hotkey** (global, e.g. hold ⌥Space) and a **listening mode** toggle.
-  A spoken wake word is not in v0: sherpa-onnx ships only English/Chinese KWS models. Options later:
-  English-token wake word ("Hey Display") with the gigaspeech KWS model, or a custom-trained one.
-- **Barge-in**: pressing the hotkey (or saying anything once AEC exists) stops TTS and sends the
-  interrupt control request. Partial answers stay on the timeline.
-- Later: macOS voice processing (`AVAudioEngine` input node with voice processing enabled) for AEC,
-  which enables full-duplex and voice barge-in.
+Tested live on the Mac with `spike/live.py` (real mic, speakers, Opus): works full-duplex with voice
+barge-in.
+
+- **Full-duplex with echo cancellation.** Audio runs through macOS voice processing: an
+  `AVAudioEngine` whose input node has `setVoiceProcessingEnabled(true)`. Capture **and** playback
+  must go through the same engine, because the canceller needs the speaker signal as its reference;
+  so TTS is played by this engine, not by a separate audio player. Measured: while a 9 s sentence
+  played on the MacBook speakers, Silero VAD flagged 0 of 289 windows as speech.
+  Spike helper: `spike/audioio/` (Swift CLI; the v0 app turns it into a small macOS plugin).
+  - Gotcha: touch `engine.outputNode` / `mainMixerNode` **before** enabling voice processing, or the
+    output unit fails to initialize (`-10875`).
+  - The voice-processed input reports 9 channels at 48 kHz on an M1 Pro; channel 0 is the processed
+    mic. Resample to 16 kHz for VAD/STT.
+- **Voice barge-in.** The mic is always listening. If the VAD sees 0.3 s of continuous speech while
+  the assistant is thinking or speaking: stop playback, drop queued sentences, send the stream-json
+  `interrupt`. The new utterance becomes the next turn. Partial answers stay on the timeline.
+- **Mid-sentence pauses (continuation merge).** End of turn is 0.4 s of silence, which sometimes
+  splits a sentence at a natural pause. If the user resumes talking before the answer is audible,
+  or within 2 s after it started, the barge-in is treated as a continuation: the previous transcript
+  and the new one are merged and sent as one turn. Latency stays low and split sentences are fixed;
+  tested live.
+- **Activation**: always listening while the window is active, plus a **push-to-talk hotkey**
+  (global, e.g. hold ⌥Space) and a mute toggle. A spoken wake word is not in v0: sherpa-onnx ships
+  only English/Chinese KWS models. Options later: English-token wake word ("Hey Display") with the
+  gigaspeech KWS model, or a custom-trained one.
+- Known STT issue: Parakeet v3 detects the language itself, and very short fragments ("for",
+  "Yeah") are sometimes decoded as English. To try: re-run short segments with the Spanish-only
+  FastConformer model, or bias with a language hint if sherpa-onnx exposes one.
 
 ## 6. Presence animation
 
@@ -222,9 +245,10 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
   passed as two `vec4`), `uState` (idle / listening / thinking / speaking, cross-faded),
   `uAccent` (color).
 - **Audio sources**:
-  - *Speaking*: `flutter_soloud`'s mixer visualization (`setVisualizationEnabled` →
-    `AudioVisualizationData` with wave and FFT, 0–1) on the TTS output, so the animation follows the
-    voice that is actually playing.
+  - *Speaking*: level and FFT of the TTS samples, computed in Dart from the PCM we hand to the native
+    audio engine and aligned with the engine's playback position, so the animation follows the voice
+    that is actually playing. (Playback cannot use `flutter_soloud`: it must go through the
+    voice-processing engine for echo cancellation, see §5.)
   - *Listening*: RMS and a small FFT (512 samples) computed in Dart from the mic PCM stream we
     already read for VAD.
   - *Thinking*: no audio; a procedural pulse plus a sweep whose speed follows stream activity
@@ -251,7 +275,8 @@ In:
 - macOS desktop app (Flutter), single window.
 - Claude Code session manager (spawn, warm, stream-json, interrupt, restart on crash).
 - Local VAD + Parakeet v3 STT + Supertonic 3 TTS, sentence streaming.
-- Push-to-talk hotkey, half-duplex, barge-in by hotkey, earcon, thinking strip.
+- Native macOS audio plugin (voice processing: echo-cancelled capture + playback).
+- Full-duplex with voice barge-in and continuation merge; push-to-talk hotkey; earcon; thinking strip.
 - Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `get_state`.
 - A2UI rendering via genui with high-level catalog items; progressive rendering of `show`.
 - Timeline of shown views; ordinals for voice selection.
@@ -261,7 +286,7 @@ In:
 
 Out (later):
 - Mobile remote app.
-- Spoken wake word, AEC / full-duplex, voice barge-in.
+- Spoken wake word.
 - 3D (`flutter_scene`), charts, webviews/YouTube.
 - Windows/Linux builds.
 - Multiple sessions, memory beyond what Claude Code already has.
@@ -276,5 +301,7 @@ Out (later):
 ## Appendix: spike
 
 `spike/` holds the throwaway scripts (Python + sherpa-onnx 2.0.3 wheel, same native library as the
-Dart package): `claude_latency.py`, `bench_audio.py`, `bench_tts2.py`, `e2e.py`, `fake_display_mcp.py`.
+Dart package): `claude_latency.py`, `bench_audio.py`, `bench_tts2.py`, `e2e.py`, `fake_display_mcp.py`,
+and `live.py` (live mic → Claude → speakers loop with barge-in) with its Swift audio helper `audioio/`
+(build: `swiftc -O spike/audioio/main.swift -o spike/audioio/audioio`).
 Models go to `spike/models/` (git-ignored).
