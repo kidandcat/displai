@@ -1,0 +1,224 @@
+/// MCP tool definitions for the display (names, descriptions, JSON Schemas).
+///
+/// The schemas are deliberately small: every token here is sent with each
+/// request and every token the model writes into a tool call costs latency.
+library;
+
+/// One MCP tool exposed by the display.
+class DisplayToolSpec {
+  const DisplayToolSpec({
+    required this.name,
+    required this.description,
+    required this.inputSchema,
+  });
+
+  final String name;
+  final String description;
+  final Map<String, dynamic> inputSchema;
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'description': description,
+    'inputSchema': inputSchema,
+  };
+}
+
+const String _nodeTypesDoc =
+    'Node types: heading{text} | text{text; **bold** *italic*} | '
+    'cards{items:[{title,subtitle?,body?,image?,value?}], layout?:list|grid} | '
+    'table{columns:[..], rows:[[..]]} | stats{items:[{label,value,delta?}]} | '
+    'kv{items:[[key,value]]} | chips{items:[str]} | buttons{items:[label]} | '
+    'progress{value 0-1, label?} | image{url, caption?} | video{url, loop?} | '
+    'divider | row|column|grid{children:[nodes], cols?}.';
+
+final Map<String, dynamic> _nodeSchema = {
+  'type': 'object',
+  'properties': {
+    'type': {
+      'type': 'string',
+      'enum': [
+        'heading',
+        'text',
+        'cards',
+        'table',
+        'stats',
+        'kv',
+        'chips',
+        'buttons',
+        'progress',
+        'image',
+        'video',
+        'divider',
+        'row',
+        'column',
+        'grid',
+      ],
+    },
+    'id': {
+      'type': 'string',
+      'description': 'Optional, to target it in update.',
+    },
+    'text': {'type': 'string'},
+    'items': {'type': 'array', 'description': 'Per type, see above.'},
+    'columns': {
+      'type': 'array',
+      'items': {'type': 'string'},
+    },
+    'rows': {
+      'type': 'array',
+      'items': {'type': 'array'},
+    },
+    'url': {'type': 'string'},
+    'caption': {'type': 'string'},
+    'label': {'type': 'string'},
+    'value': {'type': 'number'},
+    'layout': {
+      'type': 'string',
+      'enum': ['list', 'grid'],
+    },
+    'cols': {'type': 'integer'},
+    'loop': {'type': 'boolean'},
+    'children': {
+      'type': 'array',
+      'description': 'Nested nodes (row/column/grid).',
+      'items': {'type': 'object'},
+    },
+  },
+  'required': ['type'],
+};
+
+final List<DisplayToolSpec> displayToolSpecs = [
+  DisplayToolSpec(
+    name: 'show',
+    description:
+        'Replace the display with a new view (the old one goes to the '
+        'timeline). body = list of nodes {type, id?, ...}. $_nodeTypesDoc '
+        'Cards, table rows, chips and buttons get visible ordinals 1..N in '
+        'order, so the user can say "la segunda"; taps and button presses '
+        'reach you as "[display] ..." user messages. Image/video urls: https '
+        'or file://. Returns the component ids.',
+    inputSchema: {
+      'type': 'object',
+      'properties': {
+        'title': {'type': 'string', 'description': 'Short view title.'},
+        'subtitle': {'type': 'string'},
+        'body': {'type': 'array', 'items': _nodeSchema},
+      },
+      'required': ['title', 'body'],
+    },
+  ),
+  const DisplayToolSpec(
+    name: 'update',
+    description:
+        'Patch the current view in place. id = component id (from show or '
+        'get_state). set: props to replace, e.g. {"value":0.8}, '
+        '{"text":"..."}, {"rows":[...]}. append: items, rows or child nodes '
+        'to add at the end. values: form field values {name: value} '
+        '(id = form id). remove: true deletes the component.',
+    inputSchema: {
+      'type': 'object',
+      'properties': {
+        'id': {'type': 'string'},
+        'set': {'type': 'object'},
+        'append': {'type': 'array'},
+        'values': {'type': 'object'},
+        'remove': {'type': 'boolean'},
+      },
+      'required': ['id'],
+    },
+  ),
+  const DisplayToolSpec(
+    name: 'form',
+    description:
+        'Show a form as a new view. Returns at once; when the user submits '
+        'it you get a "[display] form ... submitted: {values}" message. '
+        'Field types: text, number, date (YYYY-MM-DD), select (options), '
+        'checkbox, slider (min, max, step). Select options get ordinals.',
+    inputSchema: {
+      'type': 'object',
+      'properties': {
+        'title': {'type': 'string'},
+        'id': {'type': 'string'},
+        'intro': {'type': 'string', 'description': 'Optional text above.'},
+        'submit': {'type': 'string', 'description': 'Submit button label.'},
+        'fields': {
+          'type': 'array',
+          'items': {
+            'type': 'object',
+            'properties': {
+              'name': {'type': 'string'},
+              'label': {'type': 'string'},
+              'type': {
+                'type': 'string',
+                'enum': [
+                  'text',
+                  'number',
+                  'date',
+                  'select',
+                  'checkbox',
+                  'slider',
+                ],
+              },
+              'options': {
+                'type': 'array',
+                'items': {'type': 'string'},
+              },
+              'default': {},
+              'required': {'type': 'boolean'},
+              'min': {'type': 'number'},
+              'max': {'type': 'number'},
+              'step': {'type': 'number'},
+              'placeholder': {'type': 'string'},
+            },
+            'required': ['name', 'type'],
+          },
+        },
+      },
+      'required': ['title', 'fields'],
+    },
+  ),
+  const DisplayToolSpec(
+    name: 'video',
+    description:
+        'Play a direct video file (mp4, mov, m3u8; https or file://) '
+        'full-window. YouTube or other web pages do not work. Without url, '
+        'control the current video: control play|pause, seek (seconds).',
+    inputSchema: {
+      'type': 'object',
+      'properties': {
+        'url': {'type': 'string'},
+        'title': {'type': 'string'},
+        'loop': {'type': 'boolean'},
+        'control': {
+          'type': 'string',
+          'enum': ['play', 'pause'],
+        },
+        'seek': {'type': 'number'},
+      },
+    },
+  ),
+  const DisplayToolSpec(
+    name: 'clear',
+    description: 'Clear the display (back to the idle animation).',
+    inputSchema: {'type': 'object', 'properties': {}},
+  ),
+  const DisplayToolSpec(
+    name: 'back',
+    description:
+        'Go back to an earlier view of the timeline (steps: 1 = previous).',
+    inputSchema: {
+      'type': 'object',
+      'properties': {
+        'steps': {'type': 'integer'},
+      },
+    },
+  ),
+  const DisplayToolSpec(
+    name: 'get_state',
+    description:
+        'What is on screen now: compact tree with component ids, ordinals '
+        '[n] of selectable items, form values, the timeline and recent user '
+        'actions.',
+    inputSchema: {'type': 'object', 'properties': {}},
+  ),
+];

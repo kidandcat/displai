@@ -78,8 +78,11 @@ Checked locally with Claude Code **2.1.302**.
 - **Settings isolation matters for latency**: loading the user's full settings (hooks, plugins,
   CLAUDE.md, MCP servers) pushed median time-to-first-text from ~1.6 s to ~6 s in our run. Default:
   `--setting-sources ""` plus our own MCP only; opt-in toggle to load the user's settings.
-- Permissions: there is no terminal to answer prompts. Use `--permission-prompt-tool` pointing at a
-  DisplAI MCP tool that shows a confirm card and accepts "sí / no" by voice.
+- Permissions: Claude Code's own built-in tools are off except `WebSearch`/`WebFetch`
+  (`--tools WebSearch,WebFetch`). Everything that touches the Mac is a DisplAI tool (see 3.5), which
+  asks the user itself when an action is risky, so no `--permission-prompt-tool` is needed.
+- The brain is meant to be **pluggable** (Codex, Antigravity and others later): the capabilities live in
+  DisplAI's MCP server, and the brain adapter only has to speak MCP plus a streaming text protocol.
 - Model: user-selectable; aliases only (`opus`, `sonnet`, `haiku`), never pinned IDs.
 
 ### 3.2 Audio: sherpa-onnx
@@ -109,8 +112,9 @@ Notes:
 - Intelligibility of every TTS candidate was checked by transcribing its output with Parakeet
   (30–33 of 33 words). Naturalness needs a human ear: samples in `spike/voice-samples/`.
 - CoreML execution provider was slower than CPU for Kokoro and Supertonic on this Mac.
-- Audio I/O: [`record`](https://pub.dev/packages/record) 7.2.0 (`startStream`, PCM16, macOS) for the mic,
-  [`flutter_soloud`](https://pub.dev/packages/flutter_soloud) 5.3.2 (buffer streams, low latency) for playback.
+- Audio I/O: a small native plugin (`AVAudioEngine` with voice processing) does both capture and
+  playback, so echo cancellation sees the speaker signal (see 5). Supertonic voice: speaker id 1
+  (female; ids 0–4 are female, 5–9 male, measured by pitch).
 
 ### 3.3 Display: A2UI via Flutter GenUI
 
@@ -150,7 +154,14 @@ at it. Tools (v0):
 | `form` | Show a form and **wait** for submit (by click or voice), return the values. |
 | `video` | Play a video URL, with controls the agent can also drive (pause, seek). |
 | `clear` | Clear the surface. |
+| `back` | Return to the previous view. |
 | `get_state` | Compact widget tree of what is on screen, ordinals, form values, last user actions. |
+| `snapshot` | PNG capture of DisplAI's own window (display, orb, cards), longest side ≤ 1280 px, so the brain can check how a view looks. |
+
+**The display never scrolls.** A view that does not fit is cut at the bottom (with a fade). The view
+measures how much is hidden after layout; `show` / `update` / `form` / `back` then return a warning
+with the hidden pixels, and `get_state` adds an `OVERFLOW` line, so the brain shows less or splits
+the content into several views.
 
 `get_state` output is a compact indented tree, not raw JSON, e.g.:
 
@@ -161,6 +172,31 @@ view "Cenas rápidas" (shown 12s ago)
     [2] card "Pasta al pesto" — 15 min  ← user said "la segunda"
     [3] card "Quesadillas" — 12 min
 ```
+
+### 3.5 Host tools: commands, files and computer use
+
+DisplAI controls the Mac with **its own tools**, served from the same embedded MCP server (not the
+brain's built-ins), so any MCP-capable brain gets the same capabilities.
+
+| Tool | Purpose |
+|---|---|
+| `run_command` | zsh login shell, cwd = home, timeout, output truncated to ~12k chars. |
+| `read_file`, `write_file`, `list_dir` | Text files and directories. |
+| `screen` | Screenshot of the main display or one window (ScreenCaptureKit), downscaled. |
+| `ui_tree` | Compact accessibility tree of the focused window, with `[n]` targets. |
+| `click`, `type_text`, `press_key`, `scroll` | CGEvent / AX actions, by `[n]` target or coordinates. |
+| `open`, `activate`, `apps`, `windows` | Apps, URLs and files. |
+
+The native side is `macos/Runner/ComputerControl.swift` (method channel `displai/computer`); it needs
+the Accessibility and Screen Recording permissions.
+
+**Confirmation policy (Jairo's choice): only risky actions are confirmed.** Reading, looking at the
+screen, opening apps and ordinary clicks or typing run directly. A command that is not on a read-only
+allowlist (any redirection, `rm`, `mv`, `git push`, `brew install`, `curl -X POST`, scripts…),
+overwriting a file, or a click whose target or `risky` flag means send / buy / pay / delete / publish
+shows a confirm card and the voice asks "¿Lo hago?". The user answers "sí / no" by voice or on the
+card; while a confirmation is pending, speech does not barge in. Anything that is not a yes or no
+declines the action and is sent as the next turn. No answer in 45 s means no.
 
 ## 4. Latency (measured)
 
@@ -224,8 +260,9 @@ barge-in.
   or within 2 s after it started, the barge-in is treated as a continuation: the previous transcript
   and the new one are merged and sent as one turn. Latency stays low and split sentences are fixed;
   tested live.
-- **Activation**: always listening while the window is active, plus a **push-to-talk hotkey**
-  (global, e.g. hold ⌥Space) and a mute toggle. A spoken wake word is not in v0: sherpa-onnx ships
+- **Activation**: always listening while the app runs. **Space** toggles mute while the window has
+  focus (not while a form text field has focus); the status-bar mic button does the same. A global
+  push-to-talk hotkey (e.g. hold ⌥Space) is planned after v0. A spoken wake word is not in v0: sherpa-onnx ships
   only English/Chinese KWS models. Options later: English-token wake word ("Hey Display") with the
   gigaspeech KWS model, or a custom-trained one.
 - Known STT issue: Parakeet v3 detects the language itself, and very short fragments ("for",
@@ -267,7 +304,9 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
 
 - Full-window display, no chat. Bottom: mic state, thinking strip, last transcript (fades).
 - **Timeline**: every `show` pushes the previous view to a horizontal history strip; "vuelve a la
-  anterior" works by voice.
+  anterior" works by voice, and the **left / right arrow keys** move between views (not while typing
+  in a field).
+- **No scrolling**: one view = one screen; long content is split into several views.
 - **Ordinals**: every selectable item gets a visible number; `get_state` reports them so the agent can
   resolve "la segunda", "el último", "ese".
 - Settings: model alias, voice, input device, hotkey, "use my Claude Code settings" toggle.
@@ -279,8 +318,9 @@ In:
 - Claude Code session manager (spawn, warm, stream-json, interrupt, restart on crash).
 - Local VAD + Parakeet v3 STT + Supertonic 3 TTS, sentence streaming.
 - Native macOS audio plugin (voice processing: echo-cancelled capture + playback).
-- Full-duplex with voice barge-in and continuation merge; push-to-talk hotkey; earcon; thinking strip.
-- Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `get_state`.
+- Full-duplex with voice barge-in and continuation merge; Space mute toggle; arrow-key navigation; earcon; thinking strip.
+- Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `back`, `get_state`, `snapshot`, plus the host
+  tools (§3.5) with confirmation of risky actions.
 - A2UI rendering via genui with high-level catalog items; progressive rendering of `show`.
 - Timeline of shown views; ordinals for voice selection.
 - Presence animation (fragment shader) reacting to mic and TTS audio, with the shrink-to-orb
