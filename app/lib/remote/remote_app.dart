@@ -127,6 +127,7 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
                       return MainView(
                         assistant: a,
                         compactOrb: 96,
+                        tapOrbToMute: true,
                         actions: [
                           PopupMenuButton<String>(
                             icon: const Icon(Icons.more_vert, color: Colors.white54),

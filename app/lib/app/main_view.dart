@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../display/display.dart';
 import '../presence/presence.dart';
@@ -16,7 +17,13 @@ ThemeData displaiTheme() => ThemeData(
 /// The main screen, the same on the desktop and on the phone: the presence orb, the display
 /// on top of it, and a status bar.
 class MainView extends StatelessWidget {
-  const MainView({super.key, required this.assistant, this.actions = const [], this.compactOrb = 180});
+  const MainView({
+    super.key,
+    required this.assistant,
+    this.actions = const [],
+    this.compactOrb = 180,
+    this.tapOrbToMute = false,
+  });
 
   final AssistantUi assistant;
 
@@ -25,6 +32,15 @@ class MainView extends StatelessWidget {
 
   /// Size of the corner orb while something is on screen.
   final double compactOrb;
+
+  /// Tapping the orb (in the center or in the corner) mutes or unmutes the mic (the phone).
+  final bool tapOrbToMute;
+
+  void _tapOrb() {
+    if (!assistant.ready) return;
+    HapticFeedback.selectionClick();
+    assistant.toggleMute();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,14 +72,33 @@ class MainView extends StatelessWidget {
                     child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence),
                   ),
                   DisplayView(controller: a.display),
+                  // The full orb: the sphere and its inner rings, ~0.3 of the short side around the center.
+                  if (!showing && tapOrbToMute)
+                    LayoutBuilder(
+                      builder: (context, box) => Center(
+                        child: ClipOval(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _tapOrb,
+                            child: SizedBox.square(dimension: 0.6 * box.biggest.shortestSide),
+                          ),
+                        ),
+                      ),
+                    ),
                   // While something is on screen the presence shrinks to a large orb in the corner.
                   if (showing)
                     Positioned(
                       top: 12,
                       right: 12,
-                      child: IgnorePointer(
-                        child: PresenceView(signal: a.presence, compact: true, compactSize: compactOrb),
-                      ),
+                      child: tapOrbToMute
+                          ? GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _tapOrb,
+                              child: PresenceView(signal: a.presence, compact: true, compactSize: compactOrb),
+                            )
+                          : IgnorePointer(
+                              child: PresenceView(signal: a.presence, compact: true, compactSize: compactOrb),
+                            ),
                     ),
                 ],
               ),
