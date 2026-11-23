@@ -3,14 +3,15 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 /// The wire protocol between Minerva on the desktop (the host, which does all the processing)
-/// and its phone remote, through the relay (relay/main.go).
+/// and its phone remote, through the relay (relay/main.go). Everything below travels end-to-end
+/// encrypted (see secure_channel.dart); the relay only sees the handshake and its own notices.
 ///
 /// Binary frames: one type byte, then 16-bit little-endian mono PCM.
 ///   [kindMic]  remote → host: echo-cancelled mic audio, 16 kHz.
 ///   [kindVoice] host → remote: the assistant's voice, at the rate given in the host's hello.
 ///
-/// Text frames are JSON objects with a "t" field:
-///   relay → both:     peer {up}                       the other side joined or left
+/// JSON messages have a "t" field:
+///   link → both:      peer {up}                       the encrypted session came up or went down
 ///   host → remote:    hello {rate}                    sent when the remote joins
 ///                     state {mode, activity, heard, jobs, muted}
 ///                     stop                            drop the queued voice (barge-in)

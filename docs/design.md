@@ -228,13 +228,29 @@ The same Flutter app runs on Android as a remote: the phone is the mic, the spea
 speech recognition, the brain, the voice and all tools stay on the desktop. Same conversation, same memory.
 
 - **Relay** (`relay/`, Go, `wss://minerva.kidandcat.com/ws?role=host|remote`): both sides dial out, so neither
-  needs a public address. `Authorization: Bearer <key>` (≥ 32 chars); the room is `sha256(key)`. It forwards
-  frames between the two roles and sends only `{"t":"peer","up":…}`. A newer connection with the same role
-  replaces the old one (close code 4000). `MINERVA_RELAY` overrides the relay URL.
+  needs a public address. `Authorization: Bearer <room token>` (≥ 32 chars); the room is `sha256(token)`. It
+  forwards frames between the two roles and sends only `{"t":"peer","up":…}`, the newcomer first. A newer
+  connection with the same role replaces the old one (close code 4000). `MINERVA_RELAY` overrides the relay URL.
 - **Pairing**: the desktop's phone button shows a QR with `minerva://pair?r=<relay>&k=<key>` (key in the
   `kv` table, "Nuevo código" rotates it). The phone scans it or opens the link, and keeps it in `remote.json`.
-- **Protocol** (`app/lib/remote/protocol.dart`): binary frames are audio, byte 0 = kind (1 mic, phone→desktop;
-  2 voice, desktop→phone) then PCM16LE. JSON frames:
+  The QR is the only place the pairing key is ever shared.
+- **End-to-end encryption** (`app/lib/remote/secure_channel.dart`): the relay is untrusted.
+  - From the pairing key, HKDF-SHA256 derives the room token (all the relay gets) and a psk that never
+    leaves the devices.
+  - Each time both sides are up they exchange ephemeral X25519 public keys (`{"t":"hs"}`, the only readable
+    frames) and derive per-direction session keys from the X25519 secret with the psk as salt (Noise NNpsk0
+    style): a relay that swaps the public keys cannot compute them, and past sessions stay safe if a
+    pairing key leaks later (forward secrecy).
+  - Every message and audio frame is then a binary frame: 8-byte counter, ChaCha20-Poly1305 ciphertext and
+    tag. Receivers drop frames that fail authentication, repeat or go back in the count, and any unencrypted
+    message other than the relay's `peer` notices. The link reports the peer as up only after it decrypts
+    the other side's sealed `ready`.
+  - The relay still sees who is connected and when, and the size and timing of frames.
+  - To check it yourself, run the relay with `-tap`: it logs every forwarded frame as the relay sees it.
+    `app/test/remote/secure_channel_test.dart` plays a hostile relay (reading, key swap, bit flips, replays,
+    injected messages).
+- **Protocol** (`app/lib/remote/protocol.dart`), inside the encrypted channel: audio frames are byte 0 =
+  kind (1 mic, phone→desktop; 2 voice, desktop→phone) then PCM16LE. JSON messages:
   - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,muted}`, `stop`, `reset`,
     `tool{id?,name,args}` (no id = replay), `partial{name,json}`, `cancel_partial`;
   - phone→desktop: `hello{w,h,platform}`, `result{id,text,error,png?}`, `idle{n}`, `event{text}`,

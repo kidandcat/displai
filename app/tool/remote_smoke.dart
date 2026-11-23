@@ -2,6 +2,7 @@
 // Smoke test of the phone remote, without a phone: acts as the remote through the relay, speaks
 // a recorded question into the desktop's speech recognition, answers its display calls with a
 // stub and counts the voice it gets back. The desktop must be running and paired with [key].
+// It speaks the same end-to-end encrypted protocol as the phone (lib/remote/secure_channel.dart).
 //
 // Run: dart run tool/remote_smoke.dart <relay> <key> <speech.wav: mono float32 16 kHz>
 import 'dart:async';
@@ -9,7 +10,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-const kindMic = 1, kindVoice = 2;
+import 'package:minerva/remote/protocol.dart';
+import 'package:minerva/remote/secure_channel.dart';
+
+const kindMic = RemoteProtocol.kindMic, kindVoice = RemoteProtocol.kindVoice;
 
 Future<void> main(List<String> args) async {
   final relay = args[0], key = args[1];
@@ -17,7 +21,9 @@ Future<void> main(List<String> args) async {
   final t0 = DateTime.now();
   String at() => '${(DateTime.now().difference(t0).inMilliseconds / 1000).toStringAsFixed(1)}s';
 
-  final ws = await WebSocket.connect('$relay/ws?role=remote', headers: {'Authorization': 'Bearer $key'});
+  final secrets = await PairingSecrets.derive(key);
+  final ws = await WebSocket.connect('$relay/ws?role=remote', headers: {'Authorization': 'Bearer ${secrets.roomToken}'});
+  late final SecureChannel channel;
   final tools = <String>[];
   var voiceFrames = 0, voiceSamples = 0, rate = 0, replayed = 0;
   String heard = '', lastMode = '';
@@ -25,7 +31,7 @@ Future<void> main(List<String> args) async {
   final hostHello = Completer<void>();
   final done = Completer<void>();
 
-  ws.listen((frame) {
+  void onFrame(Object frame) {
     if (frame is List<int>) {
       if (frame[0] == kindVoice) {
         voiceFrames++;
@@ -35,11 +41,11 @@ Future<void> main(List<String> args) async {
       }
       return;
     }
-    final m = jsonDecode(frame as String) as Map<String, dynamic>;
+    final m = frame as Map<String, dynamic>;
     switch (m['t']) {
       case 'peer':
-        print('${at()} peer up=${m['up']}');
-        if (m['up'] == true) ws.add(jsonEncode({'t': 'hello', 'w': 360, 'h': 588, 'platform': 'smoke'}));
+        print('${at()} peer up=${m['up']} session=${channel.fingerprint}');
+        if (m['up'] == true) channel.send({'t': 'hello', 'w': 360, 'h': 588, 'platform': 'smoke'});
       case 'hello':
         rate = m['rate'] as int;
         print('${at()} host hello, voice at $rate Hz');
@@ -60,18 +66,30 @@ Future<void> main(List<String> args) async {
         }
         tools.add('${m['name']}');
         print('${at()} tool ${m['name']} ${jsonEncode(m['args']).substring(0, 80.clamp(0, jsonEncode(m['args']).length))}…');
-        ws.add(jsonEncode({'t': 'result', 'id': id, 'text': 'ok: shown on the phone (stub)', 'error': false}));
+        channel.send({'t': 'result', 'id': id, 'text': 'ok: shown on the phone (stub)', 'error': false});
       case 'partial':
         break;
       case 'stop':
         print('${at()} stop');
     }
-  }, onDone: () {
+  }
+
+  channel = SecureChannel(
+    role: 'remote',
+    psk: secrets.psk,
+    transmit: (f) => ws.add(f),
+    onUp: () => onFrame({'t': 'peer', 'up': true}),
+    onDown: () => onFrame({'t': 'peer', 'up': false}),
+    onMessage: onFrame,
+    onBinary: onFrame,
+    log: print,
+  );
+  ws.listen((frame) => channel.receive(frame as Object), onDone: () {
     print('${at()} socket closed ${ws.closeCode} ${ws.closeReason}');
     if (!done.isCompleted) done.complete();
   });
 
-  await hostHello.future.timeout(const Duration(seconds: 15));
+  await hostHello.future.timeout(const Duration(seconds: 90));
   await Future<void>.delayed(const Duration(milliseconds: 500));
 
   // Mic: silence, the question, then silence for the rest of the test, in real time.
@@ -86,7 +104,7 @@ Future<void> main(List<String> args) async {
       pos = end;
     }
     sent++;
-    ws.add(encode(kindMic, samples));
+    channel.sendBinary(RemoteProtocol.encodeAudio(kindMic, samples));
   });
 
   // Like the phone: report "idle" once the voice stops arriving (it would have played it).
@@ -94,7 +112,7 @@ Future<void> main(List<String> args) async {
     final lv = lastVoice;
     if (lv != null && DateTime.now().difference(lv) > const Duration(milliseconds: 1500)) {
       lastVoice = null;
-      ws.add(jsonEncode({'t': 'idle', 'n': voiceFrames}));
+      channel.send({'t': 'idle', 'n': voiceFrames});
       print('${at()} idle n=$voiceFrames');
     }
     if (voiceFrames > 0 && lastVoice == null && lastMode == 'listening' && !done.isCompleted) done.complete();
@@ -110,16 +128,6 @@ Future<void> main(List<String> args) async {
   final ok = heard.isNotEmpty && voiceFrames > 0;
   print(ok ? 'PASS' : 'FAIL');
   exit(ok ? 0 : 1);
-}
-
-Uint8List encode(int kind, Float32List s) {
-  final out = Uint8List(1 + s.length * 2);
-  out[0] = kind;
-  final pcm = ByteData.sublistView(out, 1);
-  for (var i = 0; i < s.length; i++) {
-    pcm.setInt16(i * 2, (s[i].clamp(-1.0, 1.0) * 32767).round(), Endian.little);
-  }
-  return out;
 }
 
 /// The samples of a WAV file in 32-bit float (afconvert -f WAVE -d LEF32@16000 -c 1).

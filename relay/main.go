@@ -1,10 +1,15 @@
 // Command minerva-relay pairs a Minerva desktop (the host, where all the processing runs) with
 // its phone remote. Both sides dial out to the relay, so the desktop can stay behind NAT.
 //
-// Each side connects to /ws?role=host or /ws?role=remote with the same pairing key in
-// "Authorization: Bearer <key>". The room is the SHA-256 of the key: the relay never stores keys.
-// Frames are forwarded verbatim to the other side; the relay itself only sends
-// {"t":"peer","up":true|false} when the other side joins or leaves.
+// Each side connects to /ws?role=host or /ws?role=remote with the same room token in
+// "Authorization: Bearer <token>". The room is the SHA-256 of the token. Frames are forwarded
+// verbatim to the other side; the relay itself only sends {"t":"peer","up":true|false} when the
+// other side joins or leaves.
+//
+// The relay is untrusted by design: the clients derive the room token from the pairing key they
+// share through a QR code, and encrypt everything end to end with keys the relay cannot derive
+// (app/lib/remote/secure_channel.dart). Run with -tap to log what each forwarded frame looks like
+// from here.
 package main
 
 import (
@@ -42,6 +47,7 @@ type room struct {
 type relay struct {
 	mu    sync.Mutex
 	rooms map[string]*room
+	tap   bool // log what every forwarded frame looks like to the relay
 }
 
 func newRelay() *relay { return &relay{rooms: map[string]*room{}} }
@@ -87,8 +93,10 @@ func (r *relay) serveWS(w http.ResponseWriter, req *http.Request) {
 	}
 	log.Printf("room %s: %s joined", id[:8], role)
 	if other != nil {
-		notifyPeer(other, true)
+		// The newcomer hears first, so the handshake the other side starts on its notice always
+		// arrives after the newcomer's own notice.
 		notifyPeer(p, true)
+		notifyPeer(other, true)
 	} else {
 		notifyPeer(p, false)
 	}
@@ -100,6 +108,9 @@ func (r *relay) serveWS(w http.ResponseWriter, req *http.Request) {
 		typ, data, err := conn.Read(ctx)
 		if err != nil {
 			break
+		}
+		if r.tap {
+			tapFrame(id, role, typ, data)
 		}
 		if dst := r.other(id, role, p); dst != nil {
 			wctx, wcancel := context.WithTimeout(ctx, writeTimeout)
@@ -176,6 +187,22 @@ func (r *relay) leave(id, role string, p *peer) *peer {
 	return other
 }
 
+// tapFrame logs a forwarded frame as the relay sees it: the clients encrypt everything but the
+// handshake end to end, so binary frames should look like noise and text frames carry only
+// ephemeral public keys.
+func tapFrame(id, role string, typ websocket.MessageType, data []byte) {
+	if typ == websocket.MessageText {
+		s := string(data)
+		if len(s) > 160 {
+			s = s[:160] + "…"
+		}
+		log.Printf("tap %s %s text %6d B  %s", id[:8], role, len(data), s)
+		return
+	}
+	n := min(len(data), 32)
+	log.Printf("tap %s %s bin  %6d B  %x…", id[:8], role, len(data), data[:n])
+}
+
 func notifyPeer(p *peer, up bool) {
 	msg := `{"t":"peer","up":false}`
 	if up {
@@ -207,8 +234,11 @@ func keepAlive(ctx context.Context, c *websocket.Conn) {
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8094", "listen address")
+	tap := flag.Bool("tap", false, "log every forwarded frame as the relay sees it (to check the encryption)")
 	flag.Parse()
-	srv := &http.Server{Addr: *addr, Handler: newRelay().routes(), ReadHeaderTimeout: 10 * time.Second}
+	r := newRelay()
+	r.tap = *tap
+	srv := &http.Server{Addr: *addr, Handler: r.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("minerva-relay listening on %s", *addr)
 	log.Fatal(srv.ListenAndServe())
 }
