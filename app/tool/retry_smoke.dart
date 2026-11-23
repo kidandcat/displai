@@ -4,8 +4,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:displai/brain/claude_session.dart';
-import 'package:displai/mcp/display_mcp_server.dart';
+import 'package:minerva/brain/claude_session.dart';
+import 'package:minerva/mcp/display_mcp_server.dart';
 
 Future<void> main() async {
   final mcp = DisplayMcpServer(tools: const [], handler: (_, _) => const ToolResult('ok'));
@@ -15,7 +15,7 @@ Future<void> main() async {
     model: 'opus',
     systemPrompt: 'You are a voice assistant. Answer in one short sentence.',
     mcpUrl: mcp.url,
-    workDir: '${Directory.systemTemp.path}/displai-smoke',
+    workDir: '${Directory.systemTemp.path}/minerva-smoke',
     sessionId: id,
   );
   final done = <TurnDone>[];

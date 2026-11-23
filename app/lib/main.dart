@@ -11,18 +11,18 @@ import 'voice/model_store.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // On a phone DisplAI is the remote of a desktop that does all the processing.
-  runApp(Platform.isAndroid || Platform.isIOS ? const RemoteApp() : const DisplaiApp());
+  // On a phone Minerva is the remote of a desktop that does all the processing.
+  runApp(Platform.isAndroid || Platform.isIOS ? const RemoteApp() : const MinervaApp());
 }
 
-class DisplaiApp extends StatelessWidget {
-  const DisplaiApp({super.key});
+class MinervaApp extends StatelessWidget {
+  const MinervaApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'DisplAI',
+        title: 'Minerva',
         debugShowCheckedModeBanner: false,
-        theme: displaiTheme(),
+        theme: minervaTheme(),
         home: const HomePage(),
       );
 }
@@ -118,7 +118,7 @@ class _ModelsScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('DisplAI', style: t.headlineMedium?.copyWith(color: kAccent, letterSpacing: 4)),
+            Text('Minerva', style: t.headlineMedium?.copyWith(color: kAccent, letterSpacing: 4)),
             const SizedBox(height: 24),
             if (models.error != null) ...[
               Text('No se pudieron descargar los modelos de voz.', style: t.bodyLarge),
@@ -157,7 +157,7 @@ class _PhoneButton extends StatelessWidget {
   }
 }
 
-/// The QR code the DisplAI app on the phone scans to pair with this Mac.
+/// The QR code the Minerva app on the phone scans to pair with this Mac.
 class _PairingDialog extends StatefulWidget {
   const _PairingDialog({required this.assistant});
 
@@ -195,7 +195,7 @@ class _PairingDialogState extends State<_PairingDialog> {
                   child: QrImageView(data: _link, size: 260, backgroundColor: Colors.white),
                 ),
                 const SizedBox(height: 16),
-                Text('Escanéalo con la app DisplAI del móvil. El móvil será el micrófono, el altavoz y '
+                Text('Escanéalo con la app Minerva del móvil. El móvil será el micrófono, el altavoz y '
                     'la pantalla; todo se sigue procesando en este Mac.',
                     style: t.bodyMedium, textAlign: TextAlign.center),
                 const SizedBox(height: 12),

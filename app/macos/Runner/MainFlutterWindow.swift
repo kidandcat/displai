@@ -25,11 +25,11 @@ class MainFlutterWindow: NSWindow {
 /// Capture and playback go through the same AVAudioEngine so the canceller has the
 /// speaker signal as its reference; that is what lets the user interrupt by voice.
 ///
-/// Method channel `displai/audio`:
+/// Method channel `minerva/audio`:
 ///   start({playRate})   -> String (formats)  starts the engine
 ///   play(Float32List)   schedules mono samples at playRate
 ///   stop()              drops everything queued/playing
-/// Event channel `displai/audio_events` (maps):
+/// Event channel `minerva/audio_events` (maps):
 ///   {t: "mic", d: Float32List}           echo-cancelled mic audio, 16 kHz mono
 ///   {t: "out", d: Float32List, sr: Int}  audio actually being played (for the presence animation)
 ///   {t: "idle"}                          playback queue drained
@@ -46,8 +46,8 @@ final class VoiceAudio: NSObject, FlutterStreamHandler {
   private var generation = 0
 
   init(messenger: FlutterBinaryMessenger) {
-    methods = FlutterMethodChannel(name: "displai/audio", binaryMessenger: messenger)
-    events = FlutterEventChannel(name: "displai/audio_events", binaryMessenger: messenger)
+    methods = FlutterMethodChannel(name: "minerva/audio", binaryMessenger: messenger)
+    events = FlutterEventChannel(name: "minerva/audio_events", binaryMessenger: messenger)
     super.init()
     events.setStreamHandler(self)
     methods.setMethodCallHandler { [weak self] call, result in
@@ -121,7 +121,7 @@ final class VoiceAudio: NSObject, FlutterStreamHandler {
     let micFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1,
                                   interleaved: false)!
     guard let converter = AVAudioConverter(from: monoIn, to: micFormat) else {
-      throw NSError(domain: "displai", code: 1, userInfo: [NSLocalizedDescriptionKey: "no converter for \(inFormat)"])
+      throw NSError(domain: "minerva", code: 1, userInfo: [NSLocalizedDescriptionKey: "no converter for \(inFormat)"])
     }
     input.installTap(onBus: 0, bufferSize: 1024, format: inFormat) { [weak self] buf, _ in
       let n = buf.frameLength

@@ -10,7 +10,7 @@ import ScreenCaptureKit
 /// All coordinates are global screen points with the origin at the top-left of the main display
 /// (the space used by CGEvent, CGWindowList and the AX API).
 ///
-/// Method channel `displai/computer`:
+/// Method channel `minerva/computer`:
 ///   permissions / requestPermissions        -> {accessibility, screen}
 ///   apps                                    -> [{name, pid, bundleId, active}]
 ///   windows                                 -> [{id, pid, app, title, x, y, w, h}]
@@ -26,12 +26,12 @@ import ScreenCaptureKit
 final class ComputerControl: NSObject {
   private let channel: FlutterMethodChannel?
   /// AX and event work runs here, off the main thread; it also guards [cache].
-  private let queue = DispatchQueue(label: "displai.computer")
+  private let queue = DispatchQueue(label: "minerva.computer")
   /// Elements of the last `tree`, by the index printed next to them.
   private var cache: [Int: AXUIElement] = [:]
 
   init(messenger: FlutterBinaryMessenger) {
-    channel = FlutterMethodChannel(name: "displai/computer", binaryMessenger: messenger)
+    channel = FlutterMethodChannel(name: "minerva/computer", binaryMessenger: messenger)
     super.init()
     channel?.setMethodCallHandler { [weak self] call, result in
       self?.handle(call, result)
@@ -174,7 +174,7 @@ final class ComputerControl: NSObject {
     return out
   }
 
-  /// The app the user is working in: the frontmost one, or, when DisplAI itself is in front, the
+  /// The app the user is working in: the frontmost one, or, when Minerva itself is in front, the
   /// owner of the topmost window of another regular app.
   private func targetPid() -> pid_t? {
     if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != Self.ownPid {
@@ -757,7 +757,7 @@ final class ComputerControl: NSObject {
     return "activated \(appName(pid))"
   }
 
-  /// Makes [pid] the frontmost app (no-op when it already is, or when it is DisplAI itself).
+  /// Makes [pid] the frontmost app (no-op when it already is, or when it is Minerva itself).
   private func bringToFront(_ pid: pid_t) {
     guard pid > 0, pid != Self.ownPid, NSWorkspace.shared.frontmostApplication?.processIdentifier != pid,
       let app = NSRunningApplication(processIdentifier: pid)
@@ -775,11 +775,11 @@ struct ComputerError: Error {
 
   static let noAccessibility = ComputerError(
     code: "no_accessibility",
-    message: "Accessibility permission missing: enable DisplAI in System Settings > Privacy & Security > Accessibility")
+    message: "Accessibility permission missing: enable Minerva in System Settings > Privacy & Security > Accessibility")
   static let noScreen = ComputerError(
     code: "no_screen",
-    message: "Screen Recording permission missing: enable DisplAI in System Settings > Privacy & Security > "
-      + "Screen & System Audio Recording, then restart DisplAI")
+    message: "Screen Recording permission missing: enable Minerva in System Settings > Privacy & Security > "
+      + "Screen & System Audio Recording, then restart Minerva")
 
   static func badArgs(_ message: String) -> ComputerError { ComputerError(code: "bad_args", message: message) }
 }

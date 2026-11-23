@@ -10,7 +10,7 @@ import '../tools/tool_provider.dart';
 /// Background workers: each one is its own headless Claude Code session doing a long task
 /// (research, coding, many steps) while the voice assistant keeps talking with the user.
 ///
-/// A worker gets DisplAI's host tools (commands and files, read-only memories, history and
+/// A worker gets Minerva's host tools (commands and files, read-only memories, history and
 /// skills) from its own MCP endpoint, but no display and no mouse or keyboard: it must not fight
 /// the user for the screen. Nothing asks the user for confirmation: the worker prompt keeps
 /// destructive actions to tasks that clearly ask for them. When it finishes, its report is
@@ -56,9 +56,9 @@ class Workers extends ToolProvider with ChangeNotifier {
   );
 
   static const _systemPrompt = '''
-You are a background worker of DisplAI, a voice assistant on the user's Mac. The assistant gave you a task; do it fully on your own. Nobody reads your messages while you work. Your final message is your report: the assistant reads it and tells the user by voice.
+You are a background worker of Minerva, a voice assistant on the user's Mac. The assistant gave you a task; do it fully on your own. Nobody reads your messages while you work. Your final message is your report: the assistant reads it and tells the user by voice.
 
-- Use DisplAI's tools for commands and files (run_command, read_file, write_file, list_dir), plus Read, Glob, Grep and the web. You have no screen and no mouse or keyboard.
+- Use Minerva's tools for commands and files (run_command, read_file, write_file, list_dir), plus Read, Glob, Grep and the web. You have no screen and no mouse or keyboard.
 - Nobody confirms anything: your tools run at once. Do destructive actions (deleting files or data, sending messages or emails, buying or paying, publishing, overwriting, irreversible commands) only when the task clearly asks for them. Otherwise do not do them: say in your report what you would do, and let the assistant ask the user.
 - Call report_progress at each milestone with a one-line note.
 - Final report: first line is the outcome (done, partly done, or failed, and why). Then the key results, short and concrete (paths, numbers, links). Write it in the user's language (usually Spanish). Never invent results.

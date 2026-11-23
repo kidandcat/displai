@@ -13,7 +13,7 @@ import '../presence/presence.dart';
 import 'protocol.dart';
 import 'remote_link.dart';
 
-/// The phone side of DisplAI: the mic, the speaker and the display of a desktop that does all
+/// The phone side of Minerva: the mic, the speaker and the display of a desktop that does all
 /// the processing (speech recognition, the brain, the voice). See [RemoteProtocol].
 class RemoteAssistant extends ChangeNotifier implements AssistantUi {
   RemoteAssistant({required this.relay, required this.key});
@@ -27,7 +27,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
   @override
   final presence = PresenceSignal();
   @override
-  final GlobalKey screenKey = GlobalKey(debugLabel: 'displai-remote-screen');
+  final GlobalKey screenKey = GlobalKey(debugLabel: 'minerva-remote-screen');
 
   late final RemoteLink link = RemoteLink(relay: relay, key: key, role: 'remote');
   final _subs = <StreamSubscription<Object?>>[];
@@ -60,7 +60,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
     if (_hostReady) return '';
     if (link.lastError == 'replaced') return 'Otro móvil está conectado a este ordenador';
     if (!link.online) return 'Conectando…';
-    return 'Esperando al ordenador… (abre DisplAI en él)';
+    return 'Esperando al ordenador… (abre Minerva en él)';
   }
 
   void start() {
@@ -164,7 +164,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
       link.send({
         't': 'result',
         'id': id,
-        'text': 'DisplAI display on the phone, ${size.width.round()}×${size.height.round()} logical px',
+        'text': 'Minerva display on the phone, ${size.width.round()}×${size.height.round()} logical px',
         'png': base64Encode(png),
       });
       return;

@@ -6,7 +6,7 @@ import '../store/store.dart';
 import '../tools/history_tools.dart' show formatStamp;
 import '../tools/tool_provider.dart';
 
-/// Routines and reminders: a prompt that DisplAI hands to the brain at a set time ("recuérdame
+/// Routines and reminders: a prompt that Minerva hands to the brain at a set time ("recuérdame
 /// a las cinco…", "cada mañana a las ocho…"). They run while the app is open; a one-time
 /// reminder missed while it was closed fires late at the next start.
 class Routines extends ToolProvider {
@@ -191,7 +191,7 @@ class Routines extends ToolProvider {
           [next?.millisecondsSinceEpoch, once ? 0 : 1, now.millisecondsSinceEpoch, id]);
       if (!once && late > lateLimit) continue; // missed while the app was closed
       notify('[routine $id «${r['name']}», due ${formatStamp(dueAt)}'
-          '${late > const Duration(minutes: 2) ? ', running late because DisplAI was closed' : ''}]\n'
+          '${late > const Duration(minutes: 2) ? ', running late because Minerva was closed' : ''}]\n'
           '${r['prompt']}');
     }
   }

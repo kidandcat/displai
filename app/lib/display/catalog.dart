@@ -1,4 +1,4 @@
-/// genui catalog of DisplAI's high-level components (A2UI custom catalog).
+/// genui catalog of Minerva's high-level components (A2UI custom catalog).
 ///
 /// Each [CatalogItem] renders one node type of our compact tool schema with
 /// the display's dark theme. Selectable items show ordinal badges and report
@@ -16,7 +16,7 @@ import 'theme.dart';
 import 'video_widgets.dart';
 import 'view_model.dart';
 
-const String displayCatalogId = 'https://displai.dev/catalogs/display_v0.json';
+const String displayCatalogId = 'https://minerva.dev/catalogs/display_v0.json';
 
 typedef _Json = Map<String, Object?>;
 

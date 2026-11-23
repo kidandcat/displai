@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = displai
+PRODUCT_NAME = Minerva
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.kidandcat.displai
+PRODUCT_BUNDLE_IDENTIFIER = com.kidandcat.minerva
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.kidandcat. All rights reserved.

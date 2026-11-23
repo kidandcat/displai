@@ -1,4 +1,4 @@
-# DisplAI
+# Minerva
 
 A voice-first desktop assistant for macOS built with Flutter. You talk; it answers briefly and shows
 the rest on screen. Claude Code (your own install and login) runs underneath as the brain, and the

@@ -1,4 +1,4 @@
-module github.com/kidandcat/displai/relay
+module github.com/kidandcat/minerva/relay
 
 go 1.25.5
 

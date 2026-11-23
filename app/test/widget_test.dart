@@ -1,4 +1,4 @@
-import 'package:displai/voice/speaker.dart';
+import 'package:minerva/voice/speaker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,13 +1,13 @@
 [Unit]
-Description=DisplAI relay (pairs the desktop with its phone remote)
+Description=Minerva relay (pairs the desktop with its phone remote)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=displai-relay
-Group=displai-relay
-ExecStart=/opt/displai-relay/displai-relay -addr 127.0.0.1:8094
+User=minerva-relay
+Group=minerva-relay
+ExecStart=/opt/minerva-relay/minerva-relay -addr 127.0.0.1:8094
 Restart=always
 RestartSec=3
 MemoryMax=128M

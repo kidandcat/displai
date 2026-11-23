@@ -1,8 +1,8 @@
 import '../mcp/display_mcp_server.dart';
 
-/// A group of host tools served from DisplAI's own MCP server (commands, computer use, files).
+/// A group of host tools served from Minerva's own MCP server (commands, computer use, files).
 ///
-/// Tools are DisplAI's, not the brain's, so any MCP-capable brain can use them.
+/// Tools are Minerva's, not the brain's, so any MCP-capable brain can use them.
 abstract class ToolProvider {
   List<McpTool> get tools;
 

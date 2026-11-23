@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.kidandcat.displai"
+    namespace = "com.kidandcat.minerva"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.kidandcat.displai"
+        applicationId = "com.kidandcat.minerva"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -33,7 +33,7 @@ android {
 
     packaging {
         jniLibs {
-            // On the phone DisplAI is only a remote: speech recognition and the voice run on the
+            // On the phone Minerva is only a remote: speech recognition and the voice run on the
             // desktop, so the local voice engine (sherpa-onnx) stays out of the APK.
             excludes += listOf("**/libonnxruntime.so", "**/libsherpa-onnx-*.so")
         }

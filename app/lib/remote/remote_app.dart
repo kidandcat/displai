@@ -11,15 +11,15 @@ import '../app/main_view.dart';
 import 'protocol.dart';
 import 'remote_assistant.dart';
 
-/// DisplAI on a phone: the remote of a desktop that does all the processing.
+/// Minerva on a phone: the remote of a desktop that does all the processing.
 class RemoteApp extends StatelessWidget {
   const RemoteApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'DisplAI',
+        title: 'Minerva',
         debugShowCheckedModeBanner: false,
-        theme: displaiTheme(),
+        theme: minervaTheme(),
         home: const RemoteHome(),
       );
 }
@@ -32,8 +32,8 @@ class RemoteHome extends StatefulWidget {
 }
 
 class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
-  /// Pairing links opened from outside the app (displai://pair?...), see MainActivity.
-  static const _links = MethodChannel('displai/link');
+  /// Pairing links opened from outside the app (minerva://pair?...), see MainActivity.
+  static const _links = MethodChannel('minerva/link');
 
   RemoteAssistant? _assistant;
   bool _loaded = false;
@@ -146,7 +146,7 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
   }
 }
 
-/// Not paired yet: scan the QR code that DisplAI shows on the desktop.
+/// Not paired yet: scan the QR code that Minerva shows on the desktop.
 class _PairScreen extends StatefulWidget {
   const _PairScreen({required this.onCode});
 
@@ -169,7 +169,7 @@ class _PairScreenState extends State<_PairScreen> {
       _busy = true;
       final ok = await widget.onCode(v);
       _busy = false;
-      if (!ok && mounted) setState(() => _note = 'Ese código no es de DisplAI.');
+      if (!ok && mounted) setState(() => _note = 'Ese código no es de Minerva.');
       return;
     }
   }
@@ -183,7 +183,7 @@ class _PairScreenState extends State<_PairScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 24),
-          Text('DisplAI', textAlign: TextAlign.center,
+          Text('Minerva', textAlign: TextAlign.center,
               style: t.headlineMedium?.copyWith(color: kAccent, letterSpacing: 4)),
           const SizedBox(height: 16),
           Text('En el ordenador, pulsa el botón del móvil en la barra de abajo y escanea el código.',

@@ -1,4 +1,4 @@
-package com.kidandcat.displai
+package com.kidandcat.minerva
 
 import android.Manifest
 import android.content.Intent
@@ -11,10 +11,10 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * DisplAI on a phone is the remote of a desktop that does all the processing. This activity
+ * Minerva on a phone is the remote of a desktop that does all the processing. This activity
  * gives Flutter the phone's echo-cancelled mic and its speaker ([VoiceAudio], channel
- * displai/audio, the same contract as the macOS engine) and the pairing links it is opened
- * with (channel displai/link).
+ * minerva/audio, the same contract as the macOS engine) and the pairing links it is opened
+ * with (channel minerva/link).
  */
 class MainActivity : FlutterActivity() {
     private var audio: VoiceAudio? = null
@@ -25,7 +25,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         initialLink = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString
         super.onCreate(savedInstanceState)
-        // A remote on the table: keep the screen on while DisplAI is open.
+        // A remote on the table: keep the screen on while Minerva is open.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -34,8 +34,8 @@ class MainActivity : FlutterActivity() {
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         val voice = VoiceAudio(this)
         audio = voice
-        EventChannel(messenger, "displai/audio_events").setStreamHandler(voice)
-        MethodChannel(messenger, "displai/audio").setMethodCallHandler { call, result ->
+        EventChannel(messenger, "minerva/audio_events").setStreamHandler(voice)
+        MethodChannel(messenger, "minerva/audio").setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {
                     val rate = call.argument<Int>("playRate") ?: 44100
@@ -59,7 +59,7 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-        links = MethodChannel(messenger, "displai/link").also { ch ->
+        links = MethodChannel(messenger, "minerva/link").also { ch ->
             ch.setMethodCallHandler { call, result ->
                 if (call.method == "initial") {
                     result.success(initialLink)

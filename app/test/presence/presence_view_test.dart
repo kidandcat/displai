@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:displai/presence/presence.dart';
-import 'package:displai/presence/presence_fallback_painter.dart';
+import 'package:minerva/presence/presence.dart';
+import 'package:minerva/presence/presence_fallback_painter.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 

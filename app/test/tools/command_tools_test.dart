@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:displai/tools/command_tools.dart';
+import 'package:minerva/tools/command_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -8,7 +8,7 @@ void main() {
   late CommandTools tools;
 
   setUp(() {
-    tmp = Directory.systemTemp.createTempSync('displai-commands-test');
+    tmp = Directory.systemTemp.createTempSync('minerva-commands-test');
     tools = CommandTools(home: tmp.path);
   });
 

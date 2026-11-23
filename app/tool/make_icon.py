@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Renders the DisplAI app icon: the presence orb (a numpy port of shaders/presence.frag)
+"""Renders the Minerva app icon: the presence orb (a numpy port of shaders/presence.frag)
 inside a macOS-style rounded square, and writes every size of the macOS AppIcon set (or the
 Android launcher icons).
 

@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:displai/routines/routines.dart';
-import 'package:displai/store/store.dart';
-import 'package:displai/tools/history_tools.dart';
-import 'package:displai/tools/memory_tools.dart';
-import 'package:displai/tools/skill_tools.dart';
+import 'package:minerva/routines/routines.dart';
+import 'package:minerva/store/store.dart';
+import 'package:minerva/tools/history_tools.dart';
+import 'package:minerva/tools/memory_tools.dart';
+import 'package:minerva/tools/skill_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -12,7 +12,7 @@ void main() {
   late Store store;
 
   setUp(() {
-    tmp = Directory.systemTemp.createTempSync('displai-store-test');
+    tmp = Directory.systemTemp.createTempSync('minerva-store-test');
     store = Store.memory(tmp.path);
   });
 

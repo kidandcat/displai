@@ -1,11 +1,11 @@
 // ignore_for_file: avoid_print
-// Smoke test: Claude Code uses DisplAI's own command tools over the embedded MCP server.
+// Smoke test: Claude Code uses Minerva's own command tools over the embedded MCP server.
 // Run: dart run tool/commands_smoke.dart
 import 'dart:io';
 
-import 'package:displai/brain/claude_session.dart';
-import 'package:displai/mcp/display_mcp_server.dart';
-import 'package:displai/tools/command_tools.dart';
+import 'package:minerva/brain/claude_session.dart';
+import 'package:minerva/mcp/display_mcp_server.dart';
+import 'package:minerva/tools/command_tools.dart';
 
 Future<void> main() async {
   final tools = CommandTools();
@@ -23,12 +23,12 @@ Future<void> main() async {
     systemPrompt: 'You control the user\'s Mac with the run_command, read_file, write_file and list_dir '
         'tools. Act, then answer in one short Spanish sentence.',
     mcpUrl: mcp.url,
-    workDir: '${Directory.systemTemp.path}/displai-smoke',
+    workDir: '${Directory.systemTemp.path}/minerva-smoke',
     sessionId: ClaudeSession.newSessionId(),
   );
   for (final q in [
     '¿Cuánto espacio libre queda en el disco?',
-    'Borra la carpeta displai-smoke-nonexistent de mi home.',
+    'Borra la carpeta minerva-smoke-nonexistent de mi home.',
   ]) {
     final done = claude.events.firstWhere((e) => e is TurnDone);
     final sub = claude.events.listen((e) {

@@ -1,5 +1,5 @@
-import 'package:displai/computer/computer.dart';
-import 'package:displai/computer/computer_tools.dart';
+import 'package:minerva/computer/computer.dart';
+import 'package:minerva/computer/computer_tools.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

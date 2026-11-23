@@ -10,7 +10,7 @@ abstract interface class AssistantUi implements Listenable {
   DisplayController get display;
   PresenceSignal get presence;
 
-  /// Wraps what DisplAI shows, for snapshots.
+  /// Wraps what Minerva shows, for snapshots.
   GlobalKey get screenKey;
 
   bool get ready;

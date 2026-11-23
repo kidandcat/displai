@@ -1,4 +1,4 @@
-/// DisplAI display layer: the model-driven screen.
+/// Minerva display layer: the model-driven screen.
 ///
 /// The integrator only needs this import:
 /// - [DisplayController.toolSpecs] to register the display tools with the

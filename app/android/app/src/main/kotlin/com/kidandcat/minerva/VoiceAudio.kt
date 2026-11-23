@@ -1,4 +1,4 @@
-package com.kidandcat.displai
+package com.kidandcat.minerva
 
 import android.content.Context
 import android.media.AudioAttributes
@@ -98,8 +98,8 @@ class VoiceAudio(context: Context) : EventChannel.StreamHandler {
 
         running = true
         rec.startRecording()
-        micThread = Thread(::micLoop, "displai-mic").also { it.start() }
-        playThread = Thread(::playLoop, "displai-play").also { it.start() }
+        micThread = Thread(::micLoop, "minerva-mic").also { it.start() }
+        playThread = Thread(::playLoop, "minerva-play").also { it.start() }
         return describe()
     }
 

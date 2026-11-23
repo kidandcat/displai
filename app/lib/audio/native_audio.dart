@@ -7,8 +7,8 @@ import 'package:flutter/services.dart';
 ///
 /// One engine does echo-cancelled capture and playback, so the user can talk over the assistant.
 class NativeAudio {
-  static const _methods = MethodChannel('displai/audio');
-  static const _events = EventChannel('displai/audio_events');
+  static const _methods = MethodChannel('minerva/audio');
+  static const _events = EventChannel('minerva/audio_events');
 
   final _mic = StreamController<Float32List>.broadcast();
   final _out = StreamController<(Float32List, int)>.broadcast();

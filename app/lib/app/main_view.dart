@@ -8,7 +8,7 @@ import 'assistant_ui.dart';
 const kBackground = Color(0xFF07050A);
 const kAccent = Color(0xFFA87CFF);
 
-ThemeData displaiTheme() => ThemeData(
+ThemeData minervaTheme() => ThemeData(
       brightness: Brightness.dark,
       colorScheme: ColorScheme.fromSeed(seedColor: kAccent, brightness: Brightness.dark),
       scaffoldBackgroundColor: kBackground,

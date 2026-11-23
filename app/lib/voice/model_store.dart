@@ -37,7 +37,7 @@ const models = [
 
 /// Finds or downloads the local voice models (first run).
 ///
-/// Location: `~/Library/Application Support/<bundle id>/models`, or `DISPLAI_MODELS_DIR` if set.
+/// Location: `~/Library/Application Support/<bundle id>/models`, or `MINERVA_MODELS_DIR` if set.
 class ModelStore extends ChangeNotifier {
   late String dir;
   bool ready = false;
@@ -50,7 +50,7 @@ class ModelStore extends ChangeNotifier {
   String get supertonic => '$dir/$supertonicDir';
 
   Future<void> ensure() async {
-    final override = Platform.environment['DISPLAI_MODELS_DIR'];
+    final override = Platform.environment['MINERVA_MODELS_DIR'];
     dir = override ?? '${(await getApplicationSupportDirectory()).path}/models';
     await Directory(dir).create(recursive: true);
     try {

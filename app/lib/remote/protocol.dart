@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-/// The wire protocol between DisplAI on the desktop (the host, which does all the processing)
+/// The wire protocol between Minerva on the desktop (the host, which does all the processing)
 /// and its phone remote, through the relay (relay/main.go).
 ///
 /// Binary frames: one type byte, then 16-bit little-endian mono PCM.
@@ -27,17 +27,17 @@ class RemoteProtocol {
   static const kindMic = 1;
   static const kindVoice = 2;
 
-  /// The relay DisplAI uses unless DISPLAI_RELAY says otherwise. Run your own with relay/.
-  static const defaultRelay = 'wss://displai.jairo.cloud';
+  /// The relay Minerva uses unless MINERVA_RELAY says otherwise. Run your own with relay/.
+  static const defaultRelay = 'wss://minerva.kidandcat.com';
 
   /// Pairing link encoded in the QR code the desktop shows.
   static String pairingLink(String relay, String key) =>
-      'displai://pair?r=${Uri.encodeQueryComponent(relay)}&k=${Uri.encodeQueryComponent(key)}';
+      'minerva://pair?r=${Uri.encodeQueryComponent(relay)}&k=${Uri.encodeQueryComponent(key)}';
 
   /// (relay, key) from a pairing link, or null.
   static (String, String)? parsePairingLink(String link) {
     final uri = Uri.tryParse(link.trim());
-    if (uri == null || uri.scheme != 'displai' || uri.host != 'pair') return null;
+    if (uri == null || uri.scheme != 'minerva' || uri.host != 'pair') return null;
     final relay = uri.queryParameters['r'];
     final key = uri.queryParameters['k'];
     if (relay == null || key == null || key.length < 32) return null;

@@ -3,8 +3,8 @@
 // Run: dart run tool/brain_smoke.dart
 import 'dart:io';
 
-import 'package:displai/brain/claude_session.dart';
-import 'package:displai/mcp/display_mcp_server.dart';
+import 'package:minerva/brain/claude_session.dart';
+import 'package:minerva/mcp/display_mcp_server.dart';
 
 Future<void> main() async {
   final calls = <String>[];
@@ -29,7 +29,7 @@ Future<void> main() async {
     model: 'opus',
     systemPrompt: 'You are a voice assistant with a display. Speak one short sentence, then use the show tool.',
     mcpUrl: mcp.url,
-    workDir: '${Directory.systemTemp.path}/displai-smoke',
+    workDir: '${Directory.systemTemp.path}/minerva-smoke',
     sessionId: ClaudeSession.newSessionId(),
   );
   final t0 = DateTime.now();

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:displai/display/partial_json.dart';
+import 'package:minerva/display/partial_json.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

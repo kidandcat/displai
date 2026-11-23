@@ -11,7 +11,7 @@ class TextDelta extends BrainEvent {
   final String text;
 }
 
-/// A tool call started streaming (name without the `mcp__displai__` prefix for display tools).
+/// A tool call started streaming (name without the `mcp__minerva__` prefix for display tools).
 class ToolStart extends BrainEvent {
   ToolStart(this.index, this.name);
   final int index;
@@ -66,14 +66,14 @@ class ClaudeSession {
   /// Claude Code session id (a UUID). Resumed when Claude Code already has it on disk.
   final String sessionId;
 
-  /// Claude Code built-in tools to allow, besides DisplAI's MCP tools.
+  /// Claude Code built-in tools to allow, besides Minerva's MCP tools.
   final List<String> builtinTools;
 
   /// Context size that triggers Claude Code's auto-compaction (kept low: a smaller context
   /// answers faster, and voice latency matters more than recall; search_history covers the rest).
   final String autocompact;
 
-  static const displayServer = 'displai';
+  static const displayServer = 'minerva';
   static const _prefix = 'mcp__${displayServer}__';
 
   final _events = StreamController<BrainEvent>.broadcast();
@@ -112,7 +112,7 @@ class ClaudeSession {
       '--append-system-prompt', systemPrompt,
       '--mcp-config', mcpConfig,
       '--strict-mcp-config',
-      // Built-in tools: only the ones given. DisplAI's tools come from our MCP server.
+      // Built-in tools: only the ones given. Minerva's tools come from our MCP server.
       '--tools', builtinTools.join(','),
       '--allowedTools', ['mcp__$displayServer', ...builtinTools].join(','),
       '--setting-sources', '',

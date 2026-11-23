@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:displai/presence/presence.dart';
+import 'package:minerva/presence/presence.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const int _rate = 16000;

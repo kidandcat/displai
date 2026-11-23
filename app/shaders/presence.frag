@@ -1,4 +1,4 @@
-// DisplAI presence: a 3D orb that reacts to voice.
+// Minerva presence: a 3D orb that reacts to voice.
 //
 // A glass sphere with a volumetric energy core, a holographic lat/long grid on
 // its shell and six tilted rings orbiting it, all ray-traced (orthographic, so every ring shares the center).

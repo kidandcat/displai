@@ -24,11 +24,11 @@ import soundfile as sf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 M = os.path.join(HERE, "models")
-LOG = "/tmp/displai_spike_mcp.log"
+LOG = "/tmp/minerva_spike_mcp.log"
 THREADS = 4
 
-SYSTEM = """You are DisplAI, a voice-first desktop assistant. The user talks to you; there is no chat window.
-Your words are spoken aloud by a TTS engine, and you have a display you control with the displai tools.
+SYSTEM = """You are Minerva, a voice-first desktop assistant. The user talks to you; there is no chat window.
+Your words are spoken aloud by a TTS engine, and you have a display you control with the minerva tools.
 Rules:
 - Speak little, show a lot. Start with ONE short spoken sentence (max ~12 words) so the user hears you quickly.
 - Anything with structure (lists, options, tables, numbers to compare) goes on the display via the show tool.
@@ -46,16 +46,16 @@ def wav16k(path):
 
 class Claude:
     def __init__(self, model, settings, tools="default"):
-        cfg = {"mcpServers": {"displai": {"type": "stdio", "command": sys.executable,
+        cfg = {"mcpServers": {"minerva": {"type": "stdio", "command": sys.executable,
                                           "args": ["-I", os.path.join(HERE, "fake_display_mcp.py")],
-                                          "env": {"DISPLAI_SPIKE_LOG": LOG}}}}
-        cfg_path = "/tmp/displai_spike_mcp.json"
+                                          "env": {"MINERVA_SPIKE_LOG": LOG}}}}
+        cfg_path = "/tmp/minerva_spike_mcp.json"
         with open(cfg_path, "w") as f:
             json.dump(cfg, f)
         cmd = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
                "--include-partial-messages", "--verbose", "--append-system-prompt", SYSTEM,
                "--mcp-config", cfg_path, "--strict-mcp-config",
-               "--allowedTools", "mcp__displai__show,mcp__displai__get_state",
+               "--allowedTools", "mcp__minerva__show,mcp__minerva__get_state",
                "--no-session-persistence", "--model", model]
         if tools == "none":
             cmd += ["--tools", ""]

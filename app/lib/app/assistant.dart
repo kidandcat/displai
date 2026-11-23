@@ -18,6 +18,7 @@ import '../remote/phone_host.dart';
 import '../remote/protocol.dart';
 import '../computer/computer_tools.dart';
 import '../routines/routines.dart';
+import '../store/legacy_data.dart';
 import '../store/store.dart';
 import '../tools/command_tools.dart';
 import '../tools/history_tools.dart';
@@ -70,10 +71,10 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   late final DisplayMcpServer _mcp;
   final _subs = <StreamSubscription<Object?>>[];
 
-  /// DisplAI's own data: history, memories, workers, routines (and skills on disk).
+  /// Minerva's own data: history, memories, workers, routines (and skills on disk).
   late final Store store;
 
-  /// DisplAI's own tools besides the display (served from our MCP server, not the brain's
+  /// Minerva's own tools besides the display (served from our MCP server, not the brain's
   /// built-ins): commands, computer use, memories, history, skills, workers and routines.
   late final List<ToolProvider> providers;
   late final Workers workers;
@@ -89,13 +90,13 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   /// What the brain has said in the current turn (saved to the history when it ends).
   final _reply = StringBuffer();
 
-  /// Wraps what DisplAI shows (display and presence) so the brain can capture it.
+  /// Wraps what Minerva shows (display and presence) so the brain can capture it.
   @override
-  final GlobalKey screenKey = GlobalKey(debugLabel: 'displai-screen');
+  final GlobalKey screenKey = GlobalKey(debugLabel: 'minerva-screen');
 
   static const _snapshotTool = McpTool(
     'snapshot',
-    'Capture how DisplAI\'s own display looks right now, as an image. Use it to check a view '
+    'Capture how Minerva\'s own display looks right now, as an image. Use it to check a view '
         'you just showed (layout, fit, readability). For the rest of the Mac use screen.',
     {'type': 'object', 'properties': {}},
   );
@@ -142,8 +143,9 @@ class Assistant extends ChangeNotifier implements AssistantUi {
 
   Future<void> start() async {
     try {
-      final dataDir = Platform.environment['DISPLAI_DATA_DIR'] ??
-          (await getApplicationSupportDirectory()).path;
+      final override = Platform.environment['MINERVA_DATA_DIR'];
+      final dataDir = override ?? (await getApplicationSupportDirectory()).path;
+      if (override == null) await migrateLegacyData(dataDir);
       store = await Store.open(dataDir);
       workers = Workers(
         store: store,
@@ -214,7 +216,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   // ---------------------------------------------------------------- phone remote
 
   String get _relay =>
-      Platform.environment['DISPLAI_RELAY'] ?? store.get('remote_relay') ?? RemoteProtocol.defaultRelay;
+      Platform.environment['MINERVA_RELAY'] ?? store.get('remote_relay') ?? RemoteProtocol.defaultRelay;
 
   /// The link the phone scans to pair (creates the pairing key the first time).
   String pairingLink() {
@@ -527,7 +529,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     final shot = await DisplayRunner.capture(screenKey);
     if (shot == null) return const ToolResult.error('error: display not ready');
     final (png, size) = shot;
-    return ToolResult('DisplAI display, ${size.width.round()}×${size.height.round()} logical px', png: png);
+    return ToolResult('Minerva display, ${size.width.round()}×${size.height.round()} logical px', png: png);
   }
 
   static String _activityFor(String tool) => switch (tool) {

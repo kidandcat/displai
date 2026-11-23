@@ -33,7 +33,7 @@ BARGE_IN_SECONDS = 0.3  # continuous speech needed to interrupt the assistant
 # utterance was a mid-sentence pause, not the end of the turn: merge both into one turn.
 CONTINUATION_SECONDS = 2.0
 
-SYSTEM = """You are DisplAI, a voice-first assistant running on the user's Mac. The user talks to you; there is no chat window.
+SYSTEM = """You are Minerva, a voice-first assistant running on the user's Mac. The user talks to you; there is no chat window.
 Everything you write is spoken aloud by a TTS engine, sentence by sentence.
 Rules:
 - Start with ONE short sentence (max ~12 words) so the user hears you quickly.
@@ -159,7 +159,7 @@ class Speaker:
 
 class Claude:
     def __init__(self, model, on_sentence):
-        self.cwd = tempfile.mkdtemp(prefix="displai-")
+        self.cwd = tempfile.mkdtemp(prefix="minerva-")
         cmd = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
                "--include-partial-messages", "--verbose", "--append-system-prompt", SYSTEM,
                "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config", "--tools", "",

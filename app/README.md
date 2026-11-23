@@ -1,4 +1,4 @@
-# displai
+# minerva
 
 A new Flutter project.
 

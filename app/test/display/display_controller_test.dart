@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:displai/display/display.dart';
+import 'package:minerva/display/display.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

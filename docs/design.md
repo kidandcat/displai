@@ -1,4 +1,4 @@
-# DisplAI — design (v0)
+# Minerva — design (v0)
 
 Status: draft, 2026-11-22. Numbers measured on an Apple M1 Pro (16 GB), macOS 26.6.2.
 
@@ -32,7 +32,7 @@ flowchart LR
   Mic[Mic 16 kHz PCM] --> VAD[Silero VAD]
   VAD -->|speech segment| STT[Parakeet TDT v3]
   STT -->|text| Brain
-  subgraph App[DisplAI Flutter app]
+  subgraph App[Minerva Flutter app]
     VAD
     STT
     Brain[Session manager]
@@ -61,7 +61,7 @@ Checked locally with Claude Code **2.1.302**.
 
 - Launch once per session and keep it alive:
   `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --verbose
-  --append-system-prompt <visual prompt> --mcp-config <displai.json> --strict-mcp-config`.
+  --append-system-prompt <visual prompt> --mcp-config <minerva.json> --strict-mcp-config`.
 - Spawn it with a **clean environment**: drop inherited `CLAUDE_CODE_*` / `CLAUDE_*` variables (for
   example, a parent Claude Code session's effort level and session ids leaked into the live test),
   and set the effort level explicitly.
@@ -80,15 +80,15 @@ Checked locally with Claude Code **2.1.302**.
   CLAUDE.md, MCP servers) pushed median time-to-first-text from ~1.6 s to ~6 s in our run. Default:
   `--setting-sources ""` plus our own MCP only; opt-in toggle to load the user's settings.
 - Permissions: Claude Code's own built-in tools are off except `WebSearch`/`WebFetch`
-  (`--tools WebSearch,WebFetch`). Everything that touches the Mac is a DisplAI tool (see 3.5), which
+  (`--tools WebSearch,WebFetch`). Everything that touches the Mac is a Minerva tool (see 3.5), which
   runs at once (no confirmations, see the policy in 3.5), so no `--permission-prompt-tool` is needed.
 - The brain is meant to be **pluggable** (Codex, Antigravity and others later): the capabilities live in
-  DisplAI's MCP server, and the brain adapter only has to speak MCP plus a streaming text protocol.
+  Minerva's MCP server, and the brain adapter only has to speak MCP plus a streaming text protocol.
 - Model: user-selectable; aliases only (`opus`, `sonnet`, `haiku`), never pinned IDs.
-- **One continuous conversation.** The session id lives in DisplAI's store; the first start passes
+- **One continuous conversation.** The session id lives in Minerva's store; the first start passes
   `--session-id <uuid>`, later starts `--resume <uuid>` (when Claude Code still has the transcript), so the
   conversation survives restarts. `--autocompact 100k` keeps the context small (faster first voice); the
-  full history stays searchable in DisplAI's own store (§3.6). Each user message is prefixed with the
+  full history stays searchable in Minerva's own store (§3.6). Each user message is prefixed with the
   local date and time.
 
 ### 3.2 Audio: sherpa-onnx
@@ -162,7 +162,7 @@ at it. Tools (v0):
 | `clear` | Clear the surface. |
 | `back` | Return to the previous view. |
 | `get_state` | Compact widget tree of what is on screen, ordinals, form values, last user actions. |
-| `snapshot` | PNG capture of DisplAI's own window (display and orb), longest side ≤ 1280 px, so the brain can check how a view looks. |
+| `snapshot` | PNG capture of Minerva's own window (display and orb), longest side ≤ 1280 px, so the brain can check how a view looks. |
 
 **The display never scrolls.** A view that does not fit is cut at the bottom (with a fade). The view
 measures how much is hidden after layout; `show` / `update` / `form` / `back` then return a warning
@@ -181,7 +181,7 @@ view "Cenas rápidas" (shown 12s ago)
 
 ### 3.5 Host tools: commands, files and computer use
 
-DisplAI controls the Mac with **its own tools**, served from the same embedded MCP server (not the
+Minerva controls the Mac with **its own tools**, served from the same embedded MCP server (not the
 brain's built-ins), so any MCP-capable brain gets the same capabilities.
 
 | Tool | Purpose |
@@ -193,7 +193,7 @@ brain's built-ins), so any MCP-capable brain gets the same capabilities.
 | `click`, `type_text`, `press_key`, `scroll` | CGEvent / AX actions, by `[n]` target or coordinates. |
 | `open`, `activate`, `apps`, `windows` | Apps, URLs and files. |
 
-The native side is `macos/Runner/ComputerControl.swift` (method channel `displai/computer`); it needs
+The native side is `macos/Runner/ComputerControl.swift` (method channel `minerva/computer`); it needs
 the Accessibility and Screen Recording permissions.
 
 **No confirmations (Jairo's choice): every tool runs at once.** There is no confirm card, no yes/no
@@ -207,9 +207,9 @@ waits for the answer. Workers get the same tools without confirmation too (see 3
 
 ### 3.6 Memory, history, skills, workers and routines
 
-All of it belongs to DisplAI, not to the brain, so another brain provider gets the same data and tools. Data
-lives in `~/Library/Application Support/com.kidandcat.displai/` (`DISPLAI_DATA_DIR` overrides it):
-`displai.db` (SQLite, WAL, FTS5 with accent-insensitive tokenizing) and `skills/`.
+All of it belongs to Minerva, not to the brain, so another brain provider gets the same data and tools. Data
+lives in `~/Library/Application Support/com.kidandcat.minerva/` (`MINERVA_DATA_DIR` overrides it):
+`minerva.db` (SQLite, WAL, FTS5 with accent-insensitive tokenizing) and `skills/`.
 
 | Feature | Tools | How it works |
 |---|---|---|
@@ -227,11 +227,11 @@ and the user not speaking.
 The same Flutter app runs on Android as a remote: the phone is the mic, the speaker and the display;
 speech recognition, the brain, the voice and all tools stay on the desktop. Same conversation, same memory.
 
-- **Relay** (`relay/`, Go, `wss://displai.jairo.cloud/ws?role=host|remote`): both sides dial out, so neither
+- **Relay** (`relay/`, Go, `wss://minerva.kidandcat.com/ws?role=host|remote`): both sides dial out, so neither
   needs a public address. `Authorization: Bearer <key>` (≥ 32 chars); the room is `sha256(key)`. It forwards
   frames between the two roles and sends only `{"t":"peer","up":…}`. A newer connection with the same role
-  replaces the old one (close code 4000). `DISPLAI_RELAY` overrides the relay URL.
-- **Pairing**: the desktop's phone button shows a QR with `displai://pair?r=<relay>&k=<key>` (key in the
+  replaces the old one (close code 4000). `MINERVA_RELAY` overrides the relay URL.
+- **Pairing**: the desktop's phone button shows a QR with `minerva://pair?r=<relay>&k=<key>` (key in the
   `kv` table, "Nuevo código" rotates it). The phone scans it or opens the link, and keeps it in `remote.json`.
 - **Protocol** (`app/lib/remote/protocol.dart`): binary frames are audio, byte 0 = kind (1 mic, phone→desktop;
   2 voice, desktop→phone) then PCM16LE. JSON frames:
@@ -390,7 +390,7 @@ Out (later):
 
 ## 9. Decisions
 
-1. Repo `kidandcat/displai`, public, **MIT** license.
+1. Repo `kidandcat/minerva`, public, **MIT** license.
 2. Default voice: **Supertonic 3** (no phonemizer, so no GPL espeak-ng dependency). Piper/Kokoro stay
    possible later as an opt-in that uses a user-installed espeak-ng.
 3. Default model alias: **`opus`**; user can switch to `sonnet` / `haiku` in settings.

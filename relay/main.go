@@ -1,4 +1,4 @@
-// Command displai-relay pairs a DisplAI desktop (the host, where all the processing runs) with
+// Command minerva-relay pairs a Minerva desktop (the host, where all the processing runs) with
 // its phone remote. Both sides dial out to the relay, so the desktop can stay behind NAT.
 //
 // Each side connects to /ws?role=host or /ws?role=remote with the same pairing key in
@@ -209,6 +209,6 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8094", "listen address")
 	flag.Parse()
 	srv := &http.Server{Addr: *addr, Handler: newRelay().routes(), ReadHeaderTimeout: 10 * time.Second}
-	log.Printf("displai-relay listening on %s", *addr)
+	log.Printf("minerva-relay listening on %s", *addr)
 	log.Fatal(srv.ListenAndServe())
 }

@@ -63,7 +63,7 @@ class DisplayMcpServer {
 
   McpServer _build() {
     final server = McpServer(
-      const Implementation(name: 'displai', version: '0.1.0'),
+      const Implementation(name: 'minerva', version: '0.1.0'),
       options: const McpServerOptions(protocol: McpProtocol.stable),
     );
     for (final t in tools) {

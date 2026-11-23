@@ -1,7 +1,7 @@
-"""Minimal stdio MCP server that mimics DisplAI's display tools for the spike.
+"""Minimal stdio MCP server that mimics Minerva's display tools for the spike.
 
 It only logs when each tool call arrives (wall-clock epoch seconds) to the file
-given in DISPLAI_SPIKE_LOG, so the e2e script can measure when the screen
+given in MINERVA_SPIKE_LOG, so the e2e script can measure when the screen
 would update.
 """
 
@@ -10,7 +10,7 @@ import os
 import sys
 import time
 
-LOG = os.environ.get("DISPLAI_SPIKE_LOG", "/tmp/displai_spike_mcp.log")
+LOG = os.environ.get("MINERVA_SPIKE_LOG", "/tmp/minerva_spike_mcp.log")
 
 TOOLS = [
     {
@@ -46,7 +46,7 @@ for line in sys.stdin:
     if m == "initialize":
         reply(msg["id"], {"protocolVersion": msg["params"].get("protocolVersion", "2025-06-18"),
                           "capabilities": {"tools": {}},
-                          "serverInfo": {"name": "displai", "version": "0.0.1"}})
+                          "serverInfo": {"name": "minerva", "version": "0.0.1"}})
     elif m == "tools/list":
         reply(msg["id"], {"tools": TOOLS})
     elif m == "tools/call":

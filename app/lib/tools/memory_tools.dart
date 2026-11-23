@@ -2,7 +2,7 @@ import '../mcp/display_mcp_server.dart';
 import '../store/store.dart';
 import 'tool_provider.dart';
 
-/// Lasting memories (preferences, facts, decisions) in DisplAI's store. Essential memories are
+/// Lasting memories (preferences, facts, decisions) in Minerva's store. Essential memories are
 /// put in the brain's system prompt at every start; the rest are found with search_memories.
 class MemoryTools extends ToolProvider {
   MemoryTools(this.store, {this.readOnly = false});

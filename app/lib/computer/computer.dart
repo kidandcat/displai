@@ -72,14 +72,14 @@ class AxTree {
 /// The element under a screen point, from [Computer.elementAt].
 typedef HitElement = ({String line, String app, int pid});
 
-/// Dart side of the `displai/computer` method channel (macos/Runner/ComputerControl.swift).
+/// Dart side of the `minerva/computer` method channel (macos/Runner/ComputerControl.swift).
 ///
 /// Coordinates are global screen points. Errors arrive as [PlatformException] with codes such as
 /// `no_accessibility`, `no_screen`, `bad_index`, `bad_args`, `not_found`.
 class Computer {
   Computer({MethodChannel? channel}) : _channel = channel ?? const MethodChannel(channelName);
 
-  static const channelName = 'displai/computer';
+  static const channelName = 'minerva/computer';
 
   final MethodChannel _channel;
 
