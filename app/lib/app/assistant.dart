@@ -18,7 +18,6 @@ import '../remote/phone_host.dart';
 import '../remote/protocol.dart';
 import '../computer/computer_tools.dart';
 import '../routines/routines.dart';
-import '../store/legacy_data.dart';
 import '../store/store.dart';
 import '../tools/command_tools.dart';
 import '../tools/history_tools.dart';
@@ -143,9 +142,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
 
   Future<void> start() async {
     try {
-      final override = Platform.environment['MINERVA_DATA_DIR'];
-      final dataDir = override ?? (await getApplicationSupportDirectory()).path;
-      if (override == null) await migrateLegacyData(dataDir);
+      final dataDir = Platform.environment['MINERVA_DATA_DIR'] ??
+          (await getApplicationSupportDirectory()).path;
       store = await Store.open(dataDir);
       workers = Workers(
         store: store,

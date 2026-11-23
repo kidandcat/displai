@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'app/assistant.dart';
 import 'app/main_view.dart';
+import 'store/legacy_data.dart';
 import 'remote/remote_app.dart';
 import 'voice/model_store.dart';
 
@@ -46,6 +48,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _boot() async {
+    // Before anything creates the data folder: it may still be under the app's former name.
+    if (Platform.environment['MINERVA_DATA_DIR'] == null) {
+      await migrateLegacyData((await getApplicationSupportDirectory()).path);
+    }
     await _models.ensure();
     if (!_models.ready) return;
     final a = Assistant(models: _models);

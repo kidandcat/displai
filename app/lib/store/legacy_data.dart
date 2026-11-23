@@ -19,6 +19,7 @@ Future<void> migrateLegacyData(String dataDir) async {
         final target = '$dataDir/${e.uri.pathSegments.where((s) => s.isNotEmpty).last}';
         if (FileSystemEntity.typeSync(target) == FileSystemEntityType.notFound) e.renameSync(target);
       }
+      if (oldDir.listSync().isEmpty) oldDir.deleteSync();
     } else {
       oldDir.renameSync(dataDir);
     }
