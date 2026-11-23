@@ -61,6 +61,9 @@ Checked locally with Claude Code **2.1.302**.
 - Launch once per session and keep it alive:
   `claude -p --input-format stream-json --output-format stream-json --include-partial-messages --verbose
   --append-system-prompt <visual prompt> --mcp-config <displai.json> --strict-mcp-config`.
+- Spawn it with a **clean environment**: drop inherited `CLAUDE_CODE_*` / `CLAUDE_*` variables (for
+  example, a parent Claude Code session's effort level and session ids leaked into the live test),
+  and set the effort level explicitly.
 - User turns go to stdin as `{"type":"user","message":{"role":"user","content":[...]}}`.
 - `--include-partial-messages` gives `stream_event` lines with `text_delta` (for TTS) and
   `input_json_delta` (for progressive display rendering).
