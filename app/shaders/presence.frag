@@ -121,7 +121,7 @@ void main() {
   float pxW = px * k * CAM_D / FOCAL; // one pixel, in world units at the orb
 
   // The whole object slowly turns; thinking spins it faster.
-  mat3 M = rotX(0.42 + 0.06 * sin(uTime * 0.23)) * rotY(uTime * 0.12 + uSpin * 0.05);
+  mat3 M = rotX(0.42 + 0.08 * sin(uSpin * 0.09)) * rotY(uTime * 0.06 + uSpin * 0.12);
 
   float shellR = 1.0 + 0.012 * sin(uTime * 1.4) * (wIdle + wListen) + 0.045 * lvl * react;
   vec2 hs = sphere(ro, rd, shellR);
@@ -203,8 +203,13 @@ void main() {
   for (int i = 0; i < 6; i++) {
     float fi = float(i);
     float polar = step(3.5, fi) * step(fi, 4.5); // ring 4
-    float tilt = mix(0.30 + 0.05 * fi, 1.12, polar) + 0.04 * sin(uTime * 0.27 + fi * 2.0);
-    float yaw = 1.5708 + (mod(fi, 2.0) - 0.5) * 0.6 + 0.25 * sin(uTime * 0.07 + fi * 1.7) + polar * 0.9;
+    // Each orbit precesses around the sphere and nods, driven by uSpin too, so
+    // activity makes the rings orbit and tumble, not just turn in place.
+    float dirO = 1.0 - 2.0 * mod(floor(fi * 0.5), 2.0);
+    float tilt = mix(0.30 + 0.05 * fi, 1.12, polar)
+        + (0.10 + 0.08 * polar) * sin(uSpin * (0.11 + 0.02 * fi) + fi * 2.0);
+    float yaw = 1.5708 + (mod(fi, 2.0) - 0.5) * 0.6 + polar * 0.9
+        + uSpin * dirO * (0.07 + 0.025 * fi + 0.1 * polar);
     vec3 nrm = normalize(vec3(sin(tilt) * cos(yaw), cos(tilt), sin(tilt) * sin(yaw)));
     vec3 u = normalize(cross(nrm, vec3(0.0, 0.0, 1.0)));
     vec3 v = cross(nrm, u);
