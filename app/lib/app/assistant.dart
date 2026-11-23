@@ -320,8 +320,9 @@ class Assistant extends ChangeNotifier {
     if (text.startsWith('error:')) return ToolResult.error(text);
     if (const {'show', 'update', 'form', 'back'}.contains(name)) {
       // Let the view lay out (and report what does not fit) before answering.
-      await WidgetsBinding.instance.endOfFrame;
-      await WidgetsBinding.instance.endOfFrame;
+      // Bounded: a hidden or minimised window produces no frames.
+      await _frame();
+      await _frame();
       final cut = display.overflow;
       if (cut > 0) {
         return ToolResult('$text\nwarning: the view does not fit the screen; about ${cut.round()} px '
@@ -332,8 +333,15 @@ class Assistant extends ChangeNotifier {
     return ToolResult(text);
   }
 
+  /// Waits for the next frame. Forced, because Flutter stops drawing while the window is hidden
+  /// behind others (lifecycle hidden), and the display must still lay out and be captured.
+  static Future<void> _frame() {
+    WidgetsBinding.instance.scheduleForcedFrame();
+    return WidgetsBinding.instance.endOfFrame.timeout(const Duration(milliseconds: 400), onTimeout: () {});
+  }
+
   Future<ToolResult> _snapshot() async {
-    await WidgetsBinding.instance.endOfFrame;
+    await _frame();
     final boundary = screenKey.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary) return const ToolResult.error('error: display not ready');
     final size = boundary.size;

@@ -108,7 +108,7 @@ void main() {
   float coreR = 0.025 * (1.0 + 0.6 * lvl + 0.2 * thinkPulse);
   float rc = r / coreR;
   hot += exp(-rc * rc) * coreI;
-  col += uAccent * (exp(-r * 24.0) * 0.55 * coreI + exp(-r * 6.0) * 0.07 * (1.0 + 1.5 * lvl));
+  col += uAccent * (exp(-r * 24.0) * 0.55 * coreI + exp(-r * 6.0) * 0.07 * (1.0 + 1.5 * lvl) * full); // no diffuse haze in the orb: it reads as a backdrop
 
   // --- Ring 0: fast twin arcs hugging the core (full only) ---------------
   if (full > 0.5) {
@@ -226,10 +226,10 @@ void main() {
     bg *= 1.0 - 0.5 * smoothstep(0.35, 1.0, length(p * vec2(0.75, 1.0)));
     fragColor = vec4(bg + col, 1.0);
   } else {
-    // Transparent orb: fade the glow out before the rect edge, then output
-    // premultiplied color with alpha following the light.
+    // Transparent orb: fade the glow out before the rect edge and add the
+    // light on top of whatever is behind (premultiplied, alpha 0 = additive),
+    // so the content under the orb is never darkened or hidden.
     col *= 1.0 - smoothstep(0.40 * zoom, 0.5 * zoom, r);
-    float a = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
-    fragColor = vec4(col, a);
+    fragColor = vec4(col, 0.0);
   }
 }
