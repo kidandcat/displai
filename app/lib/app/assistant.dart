@@ -89,7 +89,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   /// What the brain has said in the current turn (saved to the history when it ends).
   final _reply = StringBuffer();
 
-  /// Wraps what DisplAI shows (display, presence, cards) so the brain can capture it.
+  /// Wraps what DisplAI shows (display and presence) so the brain can capture it.
   @override
   final GlobalKey screenKey = GlobalKey(debugLabel: 'displai-screen');
 
@@ -99,18 +99,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         'you just showed (layout, fit, readability). For the rest of the Mac use screen.',
     {'type': 'object', 'properties': {}},
   );
-
-  /// A risky action waiting for the user's yes/no (shown as a card, asked by voice).
-  @override
-  String? confirmation;
-  Completer<bool>? _confirm;
-  Timer? _confirmTimeout;
-
-  /// Something the user said while a confirmation was pending that was not a yes/no:
-  /// sent as the next turn once the current one ends.
-  String? _queued;
-
-  static const confirmTimeout = Duration(seconds: 45);
 
   @override
   bool ready = false;
@@ -160,7 +148,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       workers = Workers(
         store: store,
         hostTools: [CommandTools(), MemoryTools(store, readOnly: true), HistoryTools(store), SkillTools(_skillsDir, readOnly: true)],
-        confirm: _requestConfirmation,
         notify: notify,
       )..addListener(notifyListeners);
       routines = Routines(store: store, notify: notify);
@@ -259,7 +246,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     final p = phone = PhoneHost(relay: _relay, key: store.get('remote_key')!, playRate: _speaker.sampleRate, log: _displayLog)
       ..onMic = _onPhoneMic
       ..onEvent = _onDisplayEvent
-      ..onConfirm = answerConfirmation
       ..onMute = ((on) => muted = on)
       ..onIdle = _onAudioIdle
       ..onJoin = _phoneJoined
@@ -304,7 +290,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       'activity': activity,
       'heard': lastHeard,
       'jobs': backgroundJobs,
-      'confirmation': confirmation,
       'muted': _muted,
     });
   }
@@ -338,17 +323,12 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     switch (e) {
       case SpeechStarted():
         _userSpeaking = true;
-        if (confirmation != null) return; // the user is answering, not interrupting
         if (busy && !_barged) _bargeIn();
       case Utterance():
         _userSpeaking = false;
         final wasBargeIn = _barged;
         _barged = false;
         if (_muted) return;
-        if (confirmation != null) {
-          _answerByVoice(e.text);
-          return;
-        }
         if (busy && !wasBargeIn) {
           debugPrint('ignored ${e.seconds.toStringAsFixed(1)}s of audio while speaking (no barge-in)');
           return;
@@ -370,7 +350,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   }
 
   void _onDisplayEvent(String event) {
-    if (confirmation != null) answerConfirmation(false);
     if (busy) {
       _stopTurn();
       _carry = '';
@@ -391,7 +370,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
 
   void _stopTurn() {
     _logReply(interrupted: true);
-    if (confirmation != null) answerConfirmation(false);
     _generation++;
     _pendingTts = 0;
     _sentence.clear();
@@ -459,14 +437,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
           _flushSentences(final_: true);
         }
         _setActivity('');
-        if (confirmation != null) answerConfirmation(false);
-        final queued = _queued;
-        _queued = null;
-        if (queued != null && !e.interrupted) {
-          _turnSpeechEnd = null;
-          _ask(queued);
-          return;
-        }
         if (e.error != null) {
           debugPrint('turn error: ${e.error}');
           _say('Ha habido un error con el cerebro. Vuelve a intentarlo.');
@@ -483,14 +453,14 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   }
 
   /// Hands a worker report or a routine prompt to the brain as soon as it is free (not
-  /// talking, not thinking, no confirmation pending, the user not speaking).
+  /// talking, not thinking, the user not speaking).
   void notify(String text) {
     _notices.add(text);
     _drainNotices();
   }
 
   void _drainNotices() {
-    if (!ready || _notices.isEmpty || busy || confirmation != null || _userSpeaking) return;
+    if (!ready || _notices.isEmpty || busy || _userSpeaking) return;
     _turnSpeechEnd = null;
     _ask(_notices.removeAt(0));
   }
@@ -526,7 +496,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     for (final p in providers) {
       if (p.handles(name)) {
         _setActivity(_activityFor(name));
-        return p.call(name, args, _requestConfirmation);
+        return p.call(name, args);
       }
     }
     if (onPhone) {
@@ -573,59 +543,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         'ui_tree' || 'apps' || 'windows' => 'Leyendo la interfaz…',
         _ => 'Usando el ordenador…',
       };
-
-  /// Shows [summary] on a card and asks "¿Lo hago?" by voice; resolves on yes/no or timeout.
-  Future<bool> _requestConfirmation(String summary) {
-    if (confirmation != null) answerConfirmation(false);
-    confirmation = summary;
-    final c = _confirm = Completer<bool>();
-    _confirmTimeout = Timer(confirmTimeout, () => answerConfirmation(false));
-    _flushSentences(final_: true);
-    _say('¿Lo hago?');
-    _setActivity('Esperando tu confirmación…');
-    notifyListeners();
-    return c.future;
-  }
-
-  /// The user's answer to the pending confirmation (card buttons, voice, or a timeout).
-  @override
-  void answerConfirmation(bool yes) {
-    final c = _confirm;
-    if (c == null) return;
-    debugPrint('confirmation ${yes ? 'approved' : 'declined'}: $confirmation');
-    _confirm = null;
-    confirmation = null;
-    _confirmTimeout?.cancel();
-    _setActivity(yes ? 'Hecho, sigo…' : '');
-    if (yes) _earconTick();
-    c.complete(yes);
-    notifyListeners();
-  }
-
-  void _answerByVoice(String text) {
-    if (text.isEmpty) return;
-    lastHeard = text;
-    store.addMessage('user', text);
-    final answer = parseYesNo(text);
-    answerConfirmation(answer == true);
-    // Anything that is not a plain yes/no is a new request: run it after this turn.
-    if (answer == null) _queued = text;
-  }
-
-  static final _yes = RegExp(
-      r'^(si|sí|vale|ok|okay|adelante|hazlo|hazla|confirmo|confirmado|dale|claro|correcto|afirmativo|yes|venga|por supuesto|de acuerdo|perfecto|exacto)(?=\s|$)');
-  static final _no = RegExp(r'^(no|cancela|cancelar|para|espera|nada|negativo|mejor no|ni hablar)(?=\s|$)');
-
-  /// true = yes, false = no, null = something else.
-  static bool? parseYesNo(String text) {
-    final t = text.toLowerCase().replaceAll(RegExp(r'[¡!¿?.,;:]'), ' ').trim();
-    if (_yes.hasMatch(t)) {
-      // "sí, pero ..." is a yes; "sí no" is ambiguous: treat as no.
-      return !RegExp(r'\bno\b').hasMatch(t);
-    }
-    if (_no.hasMatch(t)) return false;
-    return null;
-  }
 
   // ---------------------------------------------------------------- output
 

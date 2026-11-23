@@ -12,7 +12,7 @@ import 'dart:typed_data';
 /// Text frames are JSON objects with a "t" field:
 ///   relay → both:     peer {up}                       the other side joined or left
 ///   host → remote:    hello {rate}                    sent when the remote joins
-///                     state {mode, activity, heard, jobs, confirmation}
+///                     state {mode, activity, heard, jobs, muted}
 ///                     stop                            drop the queued voice (barge-in)
 ///                     reset                           clear the display (before a replay)
 ///                     tool {id?, name, args}          run a display tool; reply when id is set
@@ -22,7 +22,6 @@ import 'dart:typed_data';
 ///                     result {id, text, error?, png?} a display tool's result (png: base64)
 ///                     idle {n}                        voice queue drained after n voice frames
 ///                     event {text}                    a display action ("[display] ...")
-///                     confirm {yes}                   answer to the pending confirmation
 ///                     mute {on}                       the user muted or unmuted the phone mic
 class RemoteProtocol {
   static const kindMic = 1;

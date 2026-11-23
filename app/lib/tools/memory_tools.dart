@@ -61,7 +61,7 @@ class MemoryTools extends ToolProvider {
   List<McpTool> get tools => readOnly ? const [_search] : const [_remember, _search, _forget];
 
   @override
-  Future<ToolResult> call(String name, Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     switch (name) {
       case 'remember':
         final text = (args['text'] as String? ?? '').trim();

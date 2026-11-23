@@ -9,16 +9,12 @@ import 'package:displai/tools/command_tools.dart';
 
 Future<void> main() async {
   final tools = CommandTools();
-  final confirms = <String>[];
   final calls = <String>[];
   final mcp = DisplayMcpServer(
     tools: tools.tools,
     handler: (name, args) {
       calls.add('$name ${args['command'] ?? args['path'] ?? ''}');
-      return tools.call(name, args, (summary) async {
-        confirms.add(summary);
-        return false; // decline everything risky
-      });
+      return tools.call(name, args);
     },
   );
   await mcp.start();
@@ -43,7 +39,7 @@ Future<void> main() async {
     await done.timeout(const Duration(seconds: 120));
     await sub.cancel();
   }
-  print('\ncalls: $calls\nconfirms: $confirms');
+  print('\ncalls: $calls');
   claude.dispose();
   await mcp.stop();
   exit(0);

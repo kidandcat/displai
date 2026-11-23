@@ -81,7 +81,7 @@ Checked locally with Claude Code **2.1.302**.
   `--setting-sources ""` plus our own MCP only; opt-in toggle to load the user's settings.
 - Permissions: Claude Code's own built-in tools are off except `WebSearch`/`WebFetch`
   (`--tools WebSearch,WebFetch`). Everything that touches the Mac is a DisplAI tool (see 3.5), which
-  asks the user itself when an action is risky, so no `--permission-prompt-tool` is needed.
+  runs at once (no confirmations, see the policy in 3.5), so no `--permission-prompt-tool` is needed.
 - The brain is meant to be **pluggable** (Codex, Antigravity and others later): the capabilities live in
   DisplAI's MCP server, and the brain adapter only has to speak MCP plus a streaming text protocol.
 - Model: user-selectable; aliases only (`opus`, `sonnet`, `haiku`), never pinned IDs.
@@ -162,7 +162,7 @@ at it. Tools (v0):
 | `clear` | Clear the surface. |
 | `back` | Return to the previous view. |
 | `get_state` | Compact widget tree of what is on screen, ordinals, form values, last user actions. |
-| `snapshot` | PNG capture of DisplAI's own window (display, orb, cards), longest side ≤ 1280 px, so the brain can check how a view looks. |
+| `snapshot` | PNG capture of DisplAI's own window (display and orb), longest side ≤ 1280 px, so the brain can check how a view looks. |
 
 **The display never scrolls.** A view that does not fit is cut at the bottom (with a fade). The view
 measures how much is hidden after layout; `show` / `update` / `form` / `back` then return a warning
@@ -196,13 +196,14 @@ brain's built-ins), so any MCP-capable brain gets the same capabilities.
 The native side is `macos/Runner/ComputerControl.swift` (method channel `displai/computer`); it needs
 the Accessibility and Screen Recording permissions.
 
-**Confirmation policy (Jairo's choice): only risky actions are confirmed.** Reading, looking at the
-screen, opening apps and ordinary clicks or typing run directly. A command that is not on a read-only
-allowlist (any redirection, `rm`, `mv`, `git push`, `brew install`, `curl -X POST`, scripts…),
-overwriting a file, or a click whose target or `risky` flag means send / buy / pay / delete / publish
-shows a confirm card and the voice asks "¿Lo hago?". The user answers "sí / no" by voice or on the
-card; while a confirmation is pending, speech does not barge in. Anything that is not a yes or no
-declines the action and is sent as the next turn. No answer in 45 s means no.
+**No confirmations (Jairo's choice): every tool runs at once.** There is no confirm card, no yes/no
+step and no `risky` flag; the safety rules live in the prompts instead. The brain's system prompt
+(`app/lib/brain/system_prompt.dart`) tells it that the user's messages are local speech-recognition
+transcripts (misheard words, homophones, wrong names or numbers, cut-off sentences) and that for
+dangerous or very destructive actions (deleting files or data, sending messages or emails, buying or
+paying, publishing, overwriting, irreversible commands or clicks) it acts only when the request is
+unmistakably clear; if it is ambiguous or might be a misrecognition, it asks briefly by voice first and
+waits for the answer. Workers get the same tools without confirmation too (see 3.6).
 
 ### 3.6 Memory, history, skills, workers and routines
 
@@ -214,12 +215,12 @@ lives in `~/Library/Application Support/com.kidandcat.displai/` (`DISPLAI_DATA_D
 |---|---|---|
 | History | `search_history` | Every user message, display or worker/routine event, and spoken reply is saved. Search by words (any word, best ranked) or read around a message id. Covers what auto-compaction removed from the context. |
 | Memories | `remember`, `search_memories`, `forget_memory` | Short self-contained facts. `essential` ones (budget 4,000 chars) go into the system prompt at each start; the rest are searched. `remember` with `id` corrects one. |
-| Skills | `read_skill`, `save_skill`, `delete_skill` | `skills/<name>/SKILL.md` with name and description front matter. Only the index goes into the system prompt; the brain loads a skill before that kind of task. Deleting is confirmed. |
-| Workers | `start_worker`, `list_workers`, `worker_status`, `message_worker`, `stop_worker` | Each worker is its own headless Claude Code process (opus, effort medium, `--autocompact 200k`) with its own MCP endpoint: commands and files, read-only memories, history and skills, `report_progress`, plus `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`. No display and no mouse or keyboard. Risky actions are still confirmed, the card names the worker. Its final message is the report, handed to the brain as a `[worker …]` message. Its session is saved, so `message_worker` can continue it later, also after a restart. The status bar shows how many are running. |
+| Skills | `read_skill`, `save_skill`, `delete_skill` | `skills/<name>/SKILL.md` with name and description front matter. Only the index goes into the system prompt; the brain loads a skill before that kind of task. Deleting runs at once. |
+| Workers | `start_worker`, `list_workers`, `worker_status`, `message_worker`, `stop_worker` | Each worker is its own headless Claude Code process (opus, effort medium, `--autocompact 200k`) with its own MCP endpoint: commands and files, read-only memories, history and skills, `report_progress`, plus `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`. No display and no mouse or keyboard. Nothing is confirmed: its prompt says to do destructive actions only when the task clearly asks for them, otherwise to leave them out and say so in the report. Its final message is the report, handed to the brain as a `[worker …]` message. Its session is saved, so `message_worker` can continue it later, also after a restart. The status bar shows how many are running. |
 | Routines | `create_routine`, `list_routines`, `update_routine`, `delete_routine` | Schedules `once` (local time), `daily` (time, optional weekdays) or `interval` (minutes). Checked every 15 s while the app runs. At the due time the prompt is handed to the brain as a `[routine …]` message. A missed one-time reminder fires late at the next start; recurring runs missed by more than 2 h are skipped. |
 
-Worker reports and routine prompts wait in a queue until the brain is free: not thinking or talking, no
-confirmation pending, and the user not speaking.
+Worker reports and routine prompts wait in a queue until the brain is free: not thinking or talking,
+and the user not speaking.
 
 ### 3.7 Phone remote
 
@@ -234,10 +235,10 @@ speech recognition, the brain, the voice and all tools stay on the desktop. Same
   `kv` table, "Nuevo código" rotates it). The phone scans it or opens the link, and keeps it in `remote.json`.
 - **Protocol** (`app/lib/remote/protocol.dart`): binary frames are audio, byte 0 = kind (1 mic, phone→desktop;
   2 voice, desktop→phone) then PCM16LE. JSON frames:
-  - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,confirmation,muted}`, `stop`, `reset`,
+  - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,muted}`, `stop`, `reset`,
     `tool{id?,name,args}` (no id = replay), `partial{name,json}`, `cancel_partial`;
   - phone→desktop: `hello{w,h,platform}`, `result{id,text,error,png?}`, `idle{n}`, `event{text}`,
-    `confirm{yes}`, `mute{on}`.
+    `mute{on}`.
 - **While the phone is connected the desktop is quiet**: its mic is ignored, the phone's mic feeds the VAD
   and STT, the voice and the earcon go to the phone, and display tools run on the phone (10 s timeout, then
   locally). Brain messages get a `[phone WxH]` prefix so it designs for the phone screen. Mutating display
@@ -369,7 +370,7 @@ In:
 - Native macOS audio plugin (voice processing: echo-cancelled capture + playback).
 - Full-duplex with voice barge-in and continuation merge; Space mute toggle; arrow-key navigation; earcon; thinking strip.
 - Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `back`, `get_state`, `snapshot`, plus the host
-  tools (§3.5) with confirmation of risky actions.
+  tools (§3.5), which run without confirmations (the prompts carry the safety rules).
 - A2UI rendering via genui with high-level catalog items; progressive rendering of `show`.
 - Timeline of shown views; ordinals for voice selection.
 - Presence animation (fragment shader) reacting to mic and TTS audio, with the shrink-to-orb

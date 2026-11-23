@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Renders the DisplAI app icon: the presence orb (a numpy port of shaders/presence.frag)
-inside a macOS-style rounded square, and writes every size of the macOS AppIcon set.
+inside a macOS-style rounded square, and writes every size of the macOS AppIcon set (or the
+Android launcher icons).
 
 Run from app/: python3 tool/make_icon.py [--preview out.png]
+       python3 tool/make_icon.py --android   (the Android launcher icons instead)
 Needs numpy and Pillow.
 """
 import json
@@ -68,12 +70,13 @@ def field(q, t):
     return np.sin(w[:, 0] * 3.1 + t) * np.sin(w[:, 1] * 2.7 - t * 1.3) * np.sin(w[:, 2] * 3.4 + t * 0.8)
 
 
-def render(res):
-    """The orb with its backdrop, as linear-ish RGB floats, res x res."""
+def render(res, span=1.0):
+    """The orb with its backdrop, as linear-ish RGB floats, res x res. [span] is the side of the
+    rendered square in tile units (1.0 = the macOS tile; more shows more backdrop around it)."""
     ys, xs = np.mgrid[0:res, 0:res].astype(np.float64)
-    p = np.stack([(xs + 0.5) / res - 0.5, -((ys + 0.5) / res - 0.5)], -1).reshape(-1, 2)
+    p = np.stack([(xs + 0.5) / res - 0.5, -((ys + 0.5) / res - 0.5)], -1).reshape(-1, 2) * span
     n_px = p.shape[0]
-    px = 1.0 / res
+    px = span / res
     lvl = LEVEL
     react = min(W_LISTEN + W_SPEAK, 1.0)
 
@@ -261,13 +264,63 @@ def icon(canvas=2048):
     return out
 
 
+# Android launcher icons, per density: (folder, legacy icon px, adaptive layer px).
+ANDROID = [
+    ("mipmap-mdpi", 48, 108),
+    ("mipmap-hdpi", 72, 162),
+    ("mipmap-xhdpi", 96, 216),
+    ("mipmap-xxhdpi", 144, 324),
+    ("mipmap-xxxhdpi", 192, 432),
+]
+
+ADAPTIVE_XML = """<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
+"""
+
+COLOR_XML = """<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#05080D</color>
+</resources>
+"""
+
+
+def android(res_dir):
+    """Adaptive icon (API 26+): a full-bleed 108 dp layer whose central 72 dp, the part launchers
+    show, is the macOS tile. Legacy icon: the tile as a rounded square."""
+    layer = np.clip(render(1296, span=1.5), 0, 1)
+    layer = Image.fromarray((layer * 255 + 0.5).astype(np.uint8), "RGB")
+    tile = np.clip(render(1152), 0, 1)
+    tile = Image.fromarray((tile * 255 + 0.5).astype(np.uint8), "RGB").convert("RGBA")
+    legacy = Image.new("RGBA", (1152, 1152), (0, 0, 0, 0))
+    inner = 1152 * 22 // 24  # 1 dp margin of 24
+    off = (1152 - inner) // 2
+    small = tile.resize((inner, inner), Image.LANCZOS)
+    small.putalpha(squircle_mask(inner, round(inner * 0.18)))
+    legacy.alpha_composite(small, (off, off))
+    for folder, legacy_px, layer_px in ANDROID:
+        d = res_dir / folder
+        d.mkdir(parents=True, exist_ok=True)
+        legacy.resize((legacy_px, legacy_px), Image.LANCZOS).save(d / "ic_launcher.png")
+        layer.resize((layer_px, layer_px), Image.LANCZOS).save(d / "ic_launcher_foreground.png")
+        print("wrote", d)
+    (res_dir / "mipmap-anydpi-v26").mkdir(exist_ok=True)
+    (res_dir / "mipmap-anydpi-v26/ic_launcher.xml").write_text(ADAPTIVE_XML)
+    (res_dir / "values/ic_launcher_background.xml").write_text(COLOR_XML)
+
+
 def main():
+    root = Path(__file__).resolve().parent.parent
+    if "--android" in sys.argv:
+        android(root / "android/app/src/main/res")
+        return
     big = icon(2048)
     master = big.resize((1024, 1024), Image.LANCZOS)
     if "--preview" in sys.argv:
         master.save(sys.argv[sys.argv.index("--preview") + 1])
         return
-    root = Path(__file__).resolve().parent.parent
     icon_set = root / "macos/Runner/Assets.xcassets/AppIcon.appiconset"
     names = {img["filename"] for img in json.loads((icon_set / "Contents.json").read_text())["images"]}
     for name in sorted(names):

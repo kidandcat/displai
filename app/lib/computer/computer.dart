@@ -67,18 +67,6 @@ class AxTree {
 
   /// The line of element [index] without the index, e.g. `AXButton "Send" (10,20 30×40)`.
   String? line(int index) => _lines[index];
-
-  /// The quoted label of element [index] (title or description), or null.
-  String? label(int index) => labelOf(_lines[index]);
-
-  /// The first quoted string of an element line, e.g. `Send` in `AXButton "Send" = "x" (…)`.
-  static String? labelOf(String? line) {
-    if (line == null) return null;
-    return RegExp(r'^\S+ "([^"]*)"').firstMatch(line)?.group(1);
-  }
-
-  /// The role of an element line, e.g. `AXButton`.
-  static String? roleOf(String? line) => line == null ? null : RegExp(r'^\S+').stringMatch(line);
 }
 
 /// The element under a screen point, from [Computer.elementAt].

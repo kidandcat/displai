@@ -53,8 +53,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
   @override
   String lastHeard = '';
   @override
-  String? confirmation;
-  @override
   int backgroundJobs = 0;
 
   @override
@@ -103,7 +101,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
           display.cancelPartial();
           presence.mode = PresenceMode.idle;
           activity = '';
-          confirmation = null;
           notifyListeners();
         }
       case 'hello':
@@ -119,7 +116,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
         activity = '${m['activity'] ?? ''}';
         lastHeard = '${m['heard'] ?? ''}';
         backgroundJobs = (m['jobs'] as num?)?.toInt() ?? 0;
-        confirmation = m['confirmation'] as String?;
         muted = m['muted'] == true;
         notifyListeners();
       case 'stop':
@@ -195,13 +191,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
   void toggleMute() {
     muted = !muted;
     link.send({'t': 'mute', 'on': muted});
-    notifyListeners();
-  }
-
-  @override
-  void answerConfirmation(bool yes) {
-    link.send({'t': 'confirm', 'yes': yes});
-    confirmation = null;
     notifyListeners();
   }
 

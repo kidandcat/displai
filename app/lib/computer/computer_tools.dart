@@ -11,9 +11,7 @@ import 'computer.dart';
 /// to screen points here, so the model never deals with scale or origin. Elements from `ui_tree`
 /// are targeted by index, which is more robust than pixels.
 ///
-/// Reading, opening, activating, scrolling and ordinary clicks/typing run directly; clicks on
-/// elements labelled send/buy/pay/delete/publish…, destructive key combos and anything the model
-/// flags with `risky: true` are confirmed by the user first.
+/// Every action runs at once; nothing is confirmed by the user (design §3.5).
 class ComputerTools extends ToolProvider {
   ComputerTools({Computer? computer, this.settle = const Duration(milliseconds: 300)})
       : computer = computer ?? Computer();
@@ -27,10 +25,6 @@ class ComputerTools extends ToolProvider {
   AxTree? _tree;
   bool _askedPermissions = false;
 
-  static const _risky = {
-    'type': 'boolean',
-    'description': 'true if this action sends, buys, pays, deletes or publishes something.',
-  };
   static const _index = {'type': 'integer', 'description': 'Element [n] from the last ui_tree.'};
   static const _px = {'type': 'number', 'description': 'Pixel in the last screen image.'};
 
@@ -68,7 +62,7 @@ class ComputerTools extends ToolProvider {
     McpTool(
       'click',
       'Click element index (buttons/links are pressed directly), or pixel x,y of the last screen '
-          'image. Dangerous clicks are confirmed by the user automatically; do not ask first.',
+          'image.',
       {
         'type': 'object',
         'properties': {
@@ -80,7 +74,6 @@ class ComputerTools extends ToolProvider {
             'enum': ['left', 'right'],
           },
           'double': {'type': 'boolean'},
-          'risky': _risky,
         },
       },
     ),
@@ -93,7 +86,6 @@ class ComputerTools extends ToolProvider {
         'properties': {
           'text': {'type': 'string'},
           'index': _index,
-          'risky': _risky,
         },
         'required': ['text'],
       },
@@ -106,7 +98,6 @@ class ComputerTools extends ToolProvider {
         'type': 'object',
         'properties': {
           'combo': {'type': 'string'},
-          'risky': _risky,
         },
         'required': ['combo'],
       },
@@ -132,7 +123,6 @@ class ComputerTools extends ToolProvider {
         'type': 'object',
         'properties': {
           'target': {'type': 'string'},
-          'risky': _risky,
         },
         'required': ['target'],
       },
@@ -151,7 +141,7 @@ class ComputerTools extends ToolProvider {
   ];
 
   @override
-  Future<ToolResult> call(String name, Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     try {
       switch (name) {
         case 'screen':
@@ -163,15 +153,15 @@ class ComputerTools extends ToolProvider {
         case 'ui_tree':
           return await _uiTree(args);
         case 'click':
-          return await _click(args, confirm);
+          return await _click(args);
         case 'type_text':
-          return await _type(args, confirm);
+          return await _type(args);
         case 'press_key':
-          return await _key(args, confirm);
+          return await _key(args);
         case 'scroll':
           return await _scroll(args);
         case 'open':
-          return await _open(args, confirm);
+          return await _open(args);
         case 'activate':
           final pid = _int(args['pid']);
           if (pid == null) return const ToolResult.error('pid is required');
@@ -239,22 +229,14 @@ class ComputerTools extends ToolProvider {
 
   // Actions.
 
-  Future<ToolResult> _click(Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> _click(Map<String, dynamic> args) async {
     final index = _int(args['index']);
     final button = args['button'] == 'right' ? 'right' : 'left';
     final count = args['double'] == true ? 2 : 1;
-    final verb = count == 2 ? 'Doble clic en' : (button == 'right' ? 'Clic derecho en' : 'Pulsar');
 
     if (index != null) {
-      final tree = _tree;
-      final line = tree?.line(index);
-      if (tree == null || line == null) {
+      if (_tree?.line(index) == null) {
         return ToolResult.error('Unknown element [$index]: call ui_tree first.');
-      }
-      final label = AxTree.labelOf(line);
-      if (_isRisky(args) || isRiskyTarget(line)) {
-        final what = label != null && label.isNotEmpty ? '"$label"' : 'el elemento [$index]';
-        if (!await confirm('$verb $what en ${tree.app}')) return declined;
       }
       final r = await computer.click(index: index, button: button, count: count);
       await Future<void>.delayed(settle);
@@ -269,12 +251,6 @@ class ComputerTools extends ToolProvider {
     } on PlatformException {
       hit = null; // Best effort: only used to describe the target.
     }
-    final label = AxTree.labelOf(hit?.line);
-    if (_isRisky(args) || isRiskyTarget(hit?.line)) {
-      final what = label != null && label.isNotEmpty ? '"$label"' : 'la posición (${p.px}, ${p.py})';
-      final where = hit != null && hit.app.isNotEmpty ? ' en ${hit.app}' : '';
-      if (!await confirm('$verb $what$where')) return declined;
-    }
     await computer.click(x: p.x, y: p.y, button: button, count: count);
     await Future<void>.delayed(settle);
     final on = hit == null ? '' : ' on ${hit.line} in ${hit.app}';
@@ -282,28 +258,21 @@ class ComputerTools extends ToolProvider {
         'image (${p.px},${p.py})$on');
   }
 
-  Future<ToolResult> _type(Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> _type(Map<String, dynamic> args) async {
     final text = args['text'];
     if (text is! String || text.isEmpty) throw const _ArgError('text is required');
     final index = _int(args['index']);
     if (index != null && _tree?.line(index) == null) {
       return ToolResult.error('Unknown element [$index]: call ui_tree first.');
     }
-    if (_isRisky(args)) {
-      final where = index != null ? ' en ${_tree!.app}' : '';
-      if (!await confirm('Escribir "${_short(text)}"$where')) return declined;
-    }
     final r = await computer.type(text, index: index);
     await Future<void>.delayed(settle);
     return ToolResult(r);
   }
 
-  Future<ToolResult> _key(Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> _key(Map<String, dynamic> args) async {
     final combo = (args['combo'] as String?)?.trim() ?? '';
     if (combo.isEmpty) throw const _ArgError('combo is required');
-    if (_isRisky(args) || isDestructiveCombo(combo)) {
-      if (!await confirm('Pulsar las teclas $combo')) return declined;
-    }
     final r = await computer.key(combo);
     await Future<void>.delayed(settle);
     return ToolResult(r);
@@ -319,10 +288,9 @@ class ComputerTools extends ToolProvider {
     return ToolResult(p == null ? r : 'scrolled dx=$dx dy=$dy at image (${p.px},${p.py})');
   }
 
-  Future<ToolResult> _open(Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> _open(Map<String, dynamic> args) async {
     final target = (args['target'] as String?)?.trim() ?? '';
     if (target.isEmpty) throw const _ArgError('target is required');
-    if (_isRisky(args) && !await confirm('Abrir ${_short(target)}')) return declined;
     return ToolResult(await computer.open(target));
   }
 
@@ -342,59 +310,6 @@ class ComputerTools extends ToolProvider {
   }
 
   static int? _int(Object? v) => v is num ? v.toInt() : (v is String ? int.tryParse(v) : null);
-
-  static bool _isRisky(Map<String, dynamic> args) => args['risky'] == true || args['risky'] == 'true';
-
-  static String _short(String s) => s.length > 40 ? '${s.substring(0, 39)}…' : s;
-
-  static final _riskyWords = RegExp(
-    r'\b('
-    // English.
-    r'send|submit|buy|purchase|pay|checkout|check out|place (your )?order|order now|'
-    r'confirm (order|purchase|payment)|delete|remove|erase|move to trash|empty trash|publish|post|'
-    r'tweet|transfer|donate|subscribe|'
-    // Spanish (accents stripped).
-    r'enviar|envia|comprar|compra|pagar|paga|pedir|(realizar|tramitar|hacer|confirmar) (el )?pedido|'
-    r'confirmar (la )?(compra|pago)|eliminar|elimina|borrar|borra|suprimir|mover a la papelera|'
-    r'vaciar (la )?papelera|publicar|publica|transferir|transfiere|(hacer|realizar) (una )?transferencia|'
-    r'donar|suscribir(se|me)?'
-    r')\b',
-  );
-
-  /// Whether a UI label looks like an action that sends, buys, pays, deletes or publishes.
-  static bool isRiskyLabel(String? label) {
-    if (label == null || label.isEmpty) return false;
-    return _riskyWords.hasMatch(_fold(label));
-  }
-
-  static const _textInputs = {'AXTextField', 'AXTextArea', 'AXSearchField', 'AXComboBox'};
-
-  /// Whether clicking the element of a tree line (`AXButton "Send" (…)`) may be dangerous. Text
-  /// inputs are never: their label is often a placeholder such as "Send a message".
-  static bool isRiskyTarget(String? line) {
-    if (_textInputs.contains(AxTree.roleOf(line))) return false;
-    return isRiskyLabel(AxTree.labelOf(line));
-  }
-
-  static String _fold(String s) {
-    const from = 'áàäâéèëêíìïîóòöôúùüû';
-    const to = 'aaaaeeeeiiiioooouuuu';
-    final lower = s.toLowerCase();
-    final b = StringBuffer();
-    for (final ch in lower.split('')) {
-      final i = from.indexOf(ch);
-      b.write(i < 0 ? ch : to[i]);
-    }
-    return b.toString();
-  }
-
-  /// cmd+delete style combos (move to trash, delete line/message…).
-  static bool isDestructiveCombo(String combo) {
-    final parts = combo.toLowerCase().split('+').map((p) => p.trim()).toList();
-    final hasCmd = parts.any((p) => p == 'cmd' || p == 'command' || p == '⌘');
-    final deletes = parts.any((p) => const {'delete', 'backspace', 'forwarddelete', 'del'}.contains(p));
-    return hasCmd && deletes;
-  }
 }
 
 class _ArgError implements Exception {

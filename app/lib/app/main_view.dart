@@ -14,7 +14,7 @@ ThemeData displaiTheme() => ThemeData(
     );
 
 /// The main screen, the same on the desktop and on the phone: the presence orb, the display
-/// on top of it, the confirmation card, and a status bar.
+/// on top of it, and a status bar.
 class MainView extends StatelessWidget {
   const MainView({super.key, required this.assistant, this.actions = const [], this.compactOrb = 180});
 
@@ -56,8 +56,6 @@ class MainView extends StatelessWidget {
                     child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence),
                   ),
                   DisplayView(controller: a.display),
-                  if (a.confirmation != null)
-                    Positioned.fill(child: ConfirmCard(assistant: a, summary: a.confirmation!)),
                   // While something is on screen the presence shrinks to a large orb in the corner.
                   if (showing)
                     Positioned(
@@ -143,63 +141,6 @@ class StatusBar extends StatelessWidget {
           ],
           ...actions,
         ],
-      ),
-    );
-  }
-}
-
-/// A risky action waiting for the user's OK (also asked by voice: "sí" / "no").
-class ConfirmCard extends StatelessWidget {
-  const ConfirmCard({super.key, required this.assistant, required this.summary});
-
-  final AssistantUi assistant;
-  final String summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return ColoredBox(
-      color: const Color(0xB3000000),
-      child: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 560),
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0D1B22),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.6)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.amberAccent),
-                const SizedBox(width: 10),
-                Text('¿Lo hago?', style: t.titleLarge),
-              ]),
-              const SizedBox(height: 16),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: SelectableText(summary, style: t.bodyLarge?.copyWith(fontFamily: 'Menlo', height: 1.4)),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Wrap(
-                alignment: WrapAlignment.end,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Text('Di «sí» o «no»', style: t.bodySmall?.copyWith(color: Colors.white54)),
-                  TextButton(onPressed: () => assistant.answerConfirmation(false), child: const Text('No')),
-                  FilledButton(onPressed: () => assistant.answerConfirmation(true), child: const Text('Sí, hazlo')),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

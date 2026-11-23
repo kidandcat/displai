@@ -102,7 +102,7 @@ class Routines extends ToolProvider {
   void dispose() => _timer?.cancel();
 
   @override
-  Future<ToolResult> call(String name, Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     final id = (args['id'] as num?)?.toInt();
     switch (name) {
       case 'create_routine':

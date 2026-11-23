@@ -43,7 +43,7 @@ class SkillTools extends ToolProvider {
 
   static const _delete = McpTool(
     'delete_skill',
-    'Delete a saved skill by name (confirmed by the user automatically).',
+    'Delete a saved skill by name.',
     {
       'type': 'object',
       'properties': {
@@ -65,7 +65,7 @@ class SkillTools extends ToolProvider {
   File _file(String name) => File('$dir/${slug(name)}/SKILL.md');
 
   @override
-  Future<ToolResult> call(String name, Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     final skill = (args['name'] as String? ?? '').trim();
     if (slug(skill).isEmpty) return const ToolResult.error('error: name is required');
     final f = _file(skill);
@@ -88,7 +88,6 @@ class SkillTools extends ToolProvider {
         return ToolResult('${existed ? 'replaced' : 'saved'} skill ${slug(skill)}');
       case 'delete_skill':
         if (!f.existsSync()) return ToolResult.error('error: no skill "$skill"');
-        if (!await confirm('Borrar la skill «${slug(skill)}»')) return declined;
         await f.parent.delete(recursive: true);
         return ToolResult('deleted skill ${slug(skill)}');
     }

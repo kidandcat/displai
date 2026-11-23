@@ -27,7 +27,7 @@ class HistoryTools extends ToolProvider {
   ];
 
   @override
-  Future<ToolResult> call(String name, Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     final around = (args['around'] as num?)?.toInt();
     final rows = around != null
         ? store.messagesAround(around)

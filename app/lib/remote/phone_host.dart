@@ -43,7 +43,6 @@ class PhoneHost extends ChangeNotifier {
 
   void Function(Float32List samples)? onMic;
   void Function(String text)? onEvent;
-  void Function(bool yes)? onConfirm;
   void Function(bool on)? onMute;
 
   /// The phone finished playing everything it was sent.
@@ -97,8 +96,6 @@ class PhoneHost extends ChangeNotifier {
       case 'event':
         final text = m['text'];
         if (active && text is String && text.isNotEmpty) onEvent?.call(text);
-      case 'confirm':
-        if (active) onConfirm?.call(m['yes'] == true);
       case 'mute':
         if (active) onMute?.call(m['on'] == true);
     }

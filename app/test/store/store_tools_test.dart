@@ -7,9 +7,6 @@ import 'package:displai/tools/memory_tools.dart';
 import 'package:displai/tools/skill_tools.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<bool> _yes(String _) async => true;
-Future<bool> _no(String _) async => false;
-
 void main() {
   late Directory tmp;
   late Store store;
@@ -29,42 +26,41 @@ void main() {
     store.addMessage('assistant', 'Vale, te lo recuerdo.');
     store.addMessage('user', 'Pon música de jazz');
     final tools = HistoryTools(store);
-    final r = await tools.call('search_history', {'query': 'DENTISTA cita'}, _yes);
+    final r = await tools.call('search_history', {'query': 'DENTISTA cita'});
     expect(r.text, contains('«dentista»'));
     expect(r.text, isNot(contains('jazz')));
-    final latest = await tools.call('search_history', {'limit': 1}, _yes);
+    final latest = await tools.call('search_history', {'limit': 1});
     expect(latest.text, contains('jazz'));
-    final around = await tools.call('search_history', {'around': 2}, _yes);
+    final around = await tools.call('search_history', {'around': 2});
     expect(around.text.split('\n'), hasLength(3));
   });
 
   test('memories: save, update, search, forget, essential budget and prompt', () async {
     final m = MemoryTools(store);
-    expect((await m.call('remember', {'text': 'Jairo prefiere el café solo', 'essential': true}, _yes)).text,
+    expect((await m.call('remember', {'text': 'Jairo prefiere el café solo', 'essential': true})).text,
         'saved memory 1');
-    await m.call('remember', {'text': 'El coche es un Golf azul'}, _yes);
-    expect((await m.call('search_memories', {'query': 'cafe'}, _yes)).text, contains('café solo'));
-    await m.call('remember', {'id': 1, 'text': 'Jairo prefiere el café con leche'}, _yes);
-    expect((await m.call('search_memories', {'query': 'café'}, _yes)).text, contains('con leche'));
-    expect((await m.call('search_memories', {'query': 'solo'}, _yes)).text, 'no memories found');
+    await m.call('remember', {'text': 'El coche es un Golf azul'});
+    expect((await m.call('search_memories', {'query': 'cafe'})).text, contains('café solo'));
+    await m.call('remember', {'id': 1, 'text': 'Jairo prefiere el café con leche'});
+    expect((await m.call('search_memories', {'query': 'café'})).text, contains('con leche'));
+    expect((await m.call('search_memories', {'query': 'solo'})).text, 'no memories found');
     expect(MemoryTools.promptSection(store), contains('[1] Jairo prefiere el café con leche'));
     expect(MemoryTools.promptSection(store), isNot(contains('Golf')));
     final big = 'x' * MemoryTools.essentialBudget;
-    expect((await m.call('remember', {'text': big, 'essential': true}, _yes)).isError, isTrue);
-    expect((await m.call('forget_memory', {'id': 2}, _yes)).text, 'forgot memory 2');
-    expect((await m.call('search_memories', {'query': 'Golf'}, _yes)).text, 'no memories found');
+    expect((await m.call('remember', {'text': big, 'essential': true})).isError, isTrue);
+    expect((await m.call('forget_memory', {'id': 2})).text, 'forgot memory 2');
+    expect((await m.call('search_memories', {'query': 'Golf'})).text, 'no memories found');
     expect(MemoryTools(store, readOnly: true).tools.map((t) => t.name), ['search_memories']);
   });
 
-  test('skills: save, list, read, delete with confirmation', () async {
+  test('skills: save, list, read, delete', () async {
     final dir = '${tmp.path}/skills';
     final s = SkillTools(dir);
-    await s.call('save_skill', {'name': 'Pedir Pizza', 'description': 'Order a pizza.', 'body': '1. Call.'}, _yes);
+    await s.call('save_skill', {'name': 'Pedir Pizza', 'description': 'Order a pizza.', 'body': '1. Call.'});
     expect(SkillTools.list(dir).single.name, 'pedir-pizza');
     expect(SkillTools.promptSection(dir), contains('- pedir-pizza: Order a pizza.'));
-    expect((await s.call('read_skill', {'name': 'pedir pizza'}, _yes)).text, contains('1. Call.'));
-    expect((await s.call('delete_skill', {'name': 'pedir-pizza'}, _no)).text, startsWith('declined'));
-    await s.call('delete_skill', {'name': 'pedir-pizza'}, _yes);
+    expect((await s.call('read_skill', {'name': 'pedir pizza'})).text, contains('1. Call.'));
+    expect((await s.call('delete_skill', {'name': 'pedir-pizza'})).text, 'deleted skill pedir-pizza');
     expect(SkillTools.list(dir), isEmpty);
   });
 
@@ -89,18 +85,18 @@ void main() {
         'name': 'Dentista',
         'prompt': 'Recuérdale la cita del dentista.',
         'schedule': {'type': 'once', 'at': '2026-11-23T17:05'},
-      }, _yes);
+      });
       expect(made.text, startsWith('created routine 1'));
       await r.call('create_routine', {
         'name': 'Agua',
         'prompt': 'Recuérdale beber agua.',
         'schedule': {'type': 'interval', 'minutes': 60},
-      }, _yes);
+      });
       expect((await r.call('create_routine', {
         'name': 'Tarde',
         'prompt': 'x',
         'schedule': {'type': 'once', 'at': '2026-11-23T10:00'},
-      }, _yes)).isError, isTrue);
+      })).isError, isTrue);
 
       r.tick();
       expect(fired, isEmpty);
@@ -109,7 +105,7 @@ void main() {
       expect(fired.single, contains('Recuérdale la cita del dentista.'));
       r.tick();
       expect(fired, hasLength(1)); // a one-time reminder fires once
-      expect((await r.call('list_routines', {}, _yes)).text, contains('«Dentista» once at 2026-11-23 17:05 (Mon), paused'));
+      expect((await r.call('list_routines', {})).text, contains('«Dentista» once at 2026-11-23 17:05 (Mon), paused'));
 
       now = DateTime(2026, 11, 23, 18, 1);
       r.tick();
@@ -117,13 +113,13 @@ void main() {
       now = DateTime(2026, 11, 24, 9, 0); // app closed overnight: skipped, rescheduled
       r.tick();
       expect(fired, hasLength(2));
-      expect((await r.call('list_routines', {}, _yes)).text, contains('next 2026-11-24 10:00'));
+      expect((await r.call('list_routines', {})).text, contains('next 2026-11-24 10:00'));
 
-      await r.call('update_routine', {'id': 2, 'enabled': false}, _yes);
+      await r.call('update_routine', {'id': 2, 'enabled': false});
       now = DateTime(2026, 11, 24, 12, 0);
       r.tick();
       expect(fired, hasLength(2));
-      expect((await r.call('delete_routine', {'id': 2}, _yes)).text, 'deleted routine 2');
+      expect((await r.call('delete_routine', {'id': 2})).text, 'deleted routine 2');
     });
   });
 }

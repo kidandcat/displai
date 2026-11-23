@@ -12,13 +12,13 @@ import '../tools/tool_provider.dart';
 ///
 /// A worker gets DisplAI's host tools (commands and files, read-only memories, history and
 /// skills) from its own MCP endpoint, but no display and no mouse or keyboard: it must not fight
-/// the user for the screen. Risky actions still go through the user's confirmation. When it
-/// finishes, its report is handed to the main brain through [notify].
+/// the user for the screen. Nothing asks the user for confirmation: the worker prompt keeps
+/// destructive actions to tasks that clearly ask for them. When it finishes, its report is
+/// handed to the main brain through [notify].
 class Workers extends ToolProvider with ChangeNotifier {
   Workers({
     required this.store,
     required this.hostTools,
-    required this.confirm,
     required this.notify,
     this.model = 'opus',
     this.effort = 'medium',
@@ -31,7 +31,6 @@ class Workers extends ToolProvider with ChangeNotifier {
 
   /// Tools served to workers (host tools; no display, no computer use).
   final List<ToolProvider> hostTools;
-  final ConfirmAction confirm;
 
   /// Hands a message to the main brain (queued until it is free).
   final void Function(String text) notify;
@@ -60,7 +59,7 @@ class Workers extends ToolProvider with ChangeNotifier {
 You are a background worker of DisplAI, a voice assistant on the user's Mac. The assistant gave you a task; do it fully on your own. Nobody reads your messages while you work. Your final message is your report: the assistant reads it and tells the user by voice.
 
 - Use DisplAI's tools for commands and files (run_command, read_file, write_file, list_dir), plus Read, Glob, Grep and the web. You have no screen and no mouse or keyboard.
-- Risky actions (delete, send, buy, pay, publish, overwrite) are confirmed by the user automatically; mark them risky: true and do them only when the task needs them. If declined, continue without them.
+- Nobody confirms anything: your tools run at once. Do destructive actions (deleting files or data, sending messages or emails, buying or paying, publishing, overwriting, irreversible commands) only when the task clearly asks for them. Otherwise do not do them: say in your report what you would do, and let the assistant ask the user.
 - Call report_progress at each milestone with a one-line note.
 - Final report: first line is the outcome (done, partly done, or failed, and why). Then the key results, short and concrete (paths, numbers, links). Write it in the user's language (usually Spanish). Never invent results.
 ''';
@@ -126,7 +125,7 @@ You are a background worker of DisplAI, a voice assistant on the user's Mac. The
   ];
 
   @override
-  Future<ToolResult> call(String name, Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     final id = (args['id'] as num?)?.toInt();
     switch (name) {
       case 'start_worker':
@@ -205,7 +204,7 @@ You are a background worker of DisplAI, a voice assistant on the user's Mac. The
     }
     for (final p in hostTools) {
       if (p.handles(name)) {
-        return p.call(name, args, (summary) => confirm('Worker «${w.title}»: $summary'));
+        return p.call(name, args);
       }
     }
     return ToolResult.error('error: unknown tool $name');

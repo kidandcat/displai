@@ -23,9 +23,6 @@ abstract interface class AssistantUi implements Listenable {
   /// Last thing the user said.
   String get lastHeard;
 
-  /// A risky action waiting for the user's yes/no, or null.
-  String? get confirmation;
-
   /// Background workers running.
   int get backgroundJobs;
 
@@ -33,5 +30,4 @@ abstract interface class AssistantUi implements Listenable {
   String get linkNote;
 
   void toggleMute();
-  void answerConfirmation(bool yes);
 }

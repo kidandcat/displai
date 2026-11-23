@@ -7,8 +7,7 @@ import 'tool_provider.dart';
 
 /// Shell commands and files on the user's Mac.
 ///
-/// Read-only commands run directly; anything that may change something is confirmed by the user
-/// first (design §3.4: confirm only dangerous actions).
+/// Everything runs at once, nothing is confirmed by the user (design §3.5).
 class CommandTools extends ToolProvider {
   CommandTools({String? home}) : home = home ?? Platform.environment['HOME'] ?? '/';
 
@@ -16,26 +15,18 @@ class CommandTools extends ToolProvider {
 
   static const _maxOutput = 12000;
 
-  static const _riskyProp = {
-    'type': 'boolean',
-    'description': 'true if this deletes, sends, buys, publishes or changes something important.',
-  };
-
   @override
   final List<McpTool> tools = const [
     McpTool(
       'run_command',
       'Run a zsh command on the user\'s Mac (login shell, cwd = home unless given). Returns exit '
-          'code and output (truncated). Read-only commands run at once; commands that change things '
-          'are confirmed by the user automatically, do not ask first. Not for long-running servers.',
+          'code and output (truncated). Runs at once. Not for long-running servers.',
       {
         'type': 'object',
         'properties': {
           'command': {'type': 'string'},
           'cwd': {'type': 'string'},
           'timeout_s': {'type': 'integer', 'description': 'Default 60, max 600.'},
-          'summary': {'type': 'string', 'description': 'What it does, in a few Spanish words, for the user.'},
-          'risky': _riskyProp,
         },
         'required': ['command'],
       },
@@ -55,8 +46,7 @@ class CommandTools extends ToolProvider {
     ),
     McpTool(
       'write_file',
-      'Create or overwrite a text file (append: true adds to the end). Overwriting is confirmed by '
-          'the user automatically.',
+      'Create or overwrite a text file (append: true adds to the end).',
       {
         'type': 'object',
         'properties': {
@@ -80,14 +70,14 @@ class CommandTools extends ToolProvider {
   ];
 
   @override
-  Future<ToolResult> call(String name, Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     switch (name) {
       case 'run_command':
-        return _run(args, confirm);
+        return _run(args);
       case 'read_file':
         return _read(args);
       case 'write_file':
-        return _write(args, confirm);
+        return _write(args);
       case 'list_dir':
         return _list(args);
     }
@@ -101,16 +91,9 @@ class CommandTools extends ToolProvider {
     return p.startsWith('/') ? p : '$home/$p';
   }
 
-  Future<ToolResult> _run(Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> _run(Map<String, dynamic> args) async {
     final command = (args['command'] as String? ?? '').trim();
     if (command.isEmpty) return const ToolResult.error('error: empty command');
-    final risky = args['risky'] == true || !isReadOnlyCommand(command);
-    if (risky) {
-      final summary = (args['summary'] as String?)?.trim();
-      final short = command.length > 120 ? '${command.substring(0, 117)}…' : command;
-      final ok = await confirm(summary == null || summary.isEmpty ? 'Ejecutar: $short' : '$summary\n$short');
-      if (!ok) return declined;
-    }
     final timeout = Duration(seconds: ((args['timeout_s'] as num?)?.toInt() ?? 60).clamp(1, 600));
     final cwd = _path(args['cwd'] as String?);
     if (!Directory(cwd).existsSync()) return ToolResult.error('error: cwd not found: $cwd');
@@ -147,13 +130,10 @@ class CommandTools extends ToolProvider {
     return ToolResult('${_truncate(body)}$more');
   }
 
-  Future<ToolResult> _write(Map<String, dynamic> args, ConfirmAction confirm) async {
+  Future<ToolResult> _write(Map<String, dynamic> args) async {
     final f = File(_path(args['path'] as String?));
     final content = args['content'] as String? ?? '';
     final append = args['append'] == true;
-    if (f.existsSync() && !append) {
-      if (!await confirm('Sobrescribir ${f.path}')) return declined;
-    }
     await f.parent.create(recursive: true);
     await f.writeAsString(content, mode: append ? FileMode.append : FileMode.write);
     return ToolResult('${append ? 'appended to' : 'wrote'} ${f.path} (${content.length} chars)');
@@ -180,79 +160,5 @@ class CommandTools extends ToolProvider {
     const head = _maxOutput * 2 ~/ 3;
     const tail = _maxOutput - head;
     return '${s.substring(0, head)}\n[… ${s.length - _maxOutput} chars cut …]\n${s.substring(s.length - tail)}';
-  }
-
-  // ------------------------------------------------------------------ risk heuristic
-
-  static const _readOnly = {
-    'ls', 'cat', 'head', 'tail', 'grep', 'egrep', 'rg', 'wc', 'du', 'df', 'ps', 'pwd', 'echo',
-    'printf', 'date', 'cal', 'which', 'whereis', 'type', 'whoami', 'id', 'uname', 'sw_vers',
-    'system_profiler', 'mdfind', 'mdls', 'file', 'stat', 'sort', 'uniq', 'cut', 'tr', 'jq',
-    'uptime', 'hostname', 'env', 'printenv', 'tree', 'less', 'more', 'diff', 'cmp', 'md5',
-    'shasum', 'basename', 'dirname', 'realpath', 'readlink', 'ping', 'dig', 'nslookup', 'host',
-    'lsof', 'top', 'vm_stat', 'sysctl', 'ioreg', 'networksetup', 'scutil', 'pmset', 'defaults',
-    'git', 'brew', 'open', 'curl', 'find', 'sed', 'awk', 'column', 'nl', 'fold', 'tac', 'rev',
-    'xxd', 'od', 'strings', 'otool', 'codesign', 'spctl', 'sips', 'say', 'true', 'test', '[',
-    'osascript', 'pbpaste', 'mdutil', 'log', 'launchctl', 'man', 'python3', 'node',
-  };
-
-  static const _gitReadOnly = {
-    'status', 'log', 'diff', 'show', 'branch', 'remote', 'rev-parse', 'ls-files', 'blame',
-    'describe', 'tag', 'config', 'shortlog', 'reflog', 'grep',
-  };
-
-  /// True when every part of [command] only reads (no redirection into files, no destructive
-  /// flags). Conservative: unknown commands count as changing something.
-  static bool isReadOnlyCommand(String command) {
-    final c = command.replaceAll(RegExp(r'\d?>\s*/dev/null|2>&1'), '');
-    if (c.contains('>') || c.contains('`') || c.contains(r'$(') || c.contains('sudo')) return false;
-    for (var part in c.split(RegExp(r'\|\||&&|[|;\n&]'))) {
-      part = part.trim();
-      if (part.isEmpty) continue;
-      final words = part.split(RegExp(r'\s+')).where((w) => !RegExp(r'^\w+=').hasMatch(w)).toList();
-      if (words.isEmpty) continue;
-      final cmd = words.first.split('/').last;
-      final rest = words.skip(1).toList();
-      if (!_readOnly.contains(cmd)) return false;
-      switch (cmd) {
-        case 'git':
-          final sub = rest.firstWhere((w) => !w.startsWith('-'), orElse: () => '');
-          if (!_gitReadOnly.contains(sub)) return false;
-          if ((sub == 'branch' || sub == 'tag' || sub == 'remote' || sub == 'config') &&
-              rest.any((w) => w.startsWith('-d') || w.startsWith('-D') || w == 'add' || w == 'rm' ||
-                  w == 'remove' || w == '--unset' || w == '--delete' || (sub == 'config' && rest.length > 2))) {
-            return false;
-          }
-        case 'brew':
-          if (!rest.any((w) => const {'list', 'info', 'search', 'outdated', 'deps', 'doctor', '--version'}.contains(w))) {
-            return false;
-          }
-        case 'curl':
-          if (rest.any((w) => RegExp(r'^(-X|--request|-d|--data.*|-F|--form|-T|--upload-file|-o|-O|--output)$').hasMatch(w))) {
-            return false;
-          }
-        case 'find':
-          if (rest.any((w) => w == '-delete' || w.startsWith('-exec') || w.startsWith('-ok'))) return false;
-        case 'sed':
-          if (rest.any((w) => w.startsWith('-i') || w == '--in-place')) return false;
-        case 'awk':
-          if (part.contains('system(')) return false;
-        case 'defaults':
-          if (rest.isEmpty || rest.first != 'read') return false;
-        case 'launchctl':
-          if (rest.isEmpty || !const {'list', 'print'}.contains(rest.first)) return false;
-        case 'pmset':
-          if (rest.isEmpty || rest.first != '-g') return false;
-        case 'networksetup':
-          if (rest.isEmpty || !rest.first.startsWith('-get') && !rest.first.startsWith('-list')) return false;
-        case 'osascript' || 'python3' || 'node':
-          return false; // arbitrary code
-        case 'mdutil':
-          if (!rest.contains('-s')) return false;
-        case 'top':
-          if (!rest.contains('-l')) return false;
-      }
-    }
-    return true;
   }
 }
