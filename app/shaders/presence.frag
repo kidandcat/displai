@@ -1,7 +1,7 @@
 // DisplAI presence: a 3D orb that reacts to voice.
 //
 // A glass sphere with a volumetric energy core, a holographic lat/long grid on
-// its shell and three tilted rings orbiting it, all ray-traced (orthographic, so every ring shares the center).
+// its shell and six tilted rings orbiting it, all ray-traced (orthographic, so every ring shares the center).
 //
 // Uniform layout (float indices for FragmentShader.setFloat):
 //   0      uTime        seconds since start
@@ -121,7 +121,7 @@ void main() {
   float pxW = px / screenR; // one pixel, in world units
 
   // The whole object slowly turns; thinking spins it faster.
-  mat3 M = rotX(0.42 + 0.08 * sin(uSpin * 0.09)) * rotY(uTime * 0.06 + uSpin * 0.12);
+  mat3 M = rotX(0.42 + 0.08 * sin(uSpin * 0.09)) * rotY(uTime * 0.06 + uSpin * 0.04);
 
   float shellR = 1.0 + 0.012 * sin(uTime * 1.4) * (wIdle + wListen) + 0.045 * lvl * react;
   vec2 hs = sphere(ro, rd, shellR);

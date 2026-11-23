@@ -152,12 +152,13 @@ class _PresenceViewState extends State<PresenceView>
           dt *
           // Resting (idle, or listening in silence) turns slowly; voice, thinking and speaking
           // make the rings spin and orbit visibly faster.
+          // Roughly 8x at rest -> speaking and 12x at rest -> thinking.
           (1.0 +
               0.3 * w[1] +
-              3.0 * w[3] +
-              5.0 * w[2] +
-              2.5 * w[2] * signal.activity +
-              3.0 * react * signal.level);
+              8.0 * w[3] +
+              12.0 * w[2] +
+              4.0 * w[2] * signal.activity +
+              6.0 * react * signal.level);
     _frame.bands.setAll(0, signal.bands);
     _frame.markDirty();
   }
