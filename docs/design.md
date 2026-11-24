@@ -84,7 +84,14 @@ Checked locally with Claude Code **2.1.302**.
   runs at once (no confirmations, see the policy in 3.5), so no `--permission-prompt-tool` is needed.
 - The brain is meant to be **pluggable** (Codex, Antigravity and others later): the capabilities live in
   Minerva's MCP server, and the brain adapter only has to speak MCP plus a streaming text protocol.
-- Model: user-selectable; aliases only (`opus`, `sonnet`, `haiku`), never pinned IDs.
+- Model: user-selectable in the status bar's model picker, separately for the conversation (default
+  `opus`, effort low) and for the workers (default `opus`, effort medium): model, effort and speed
+  (fast mode, where the model and the account allow it). The list is never hard-coded: every brain start
+  asks Claude Code for its models (the `initialize` control request) and Minerva keeps the answer in its
+  store. The newest model of each family is listed first (its alias, such as `opus`, so it follows new
+  releases), the older ones fold under "Previous models". Effort is fitted to what the chosen model
+  supports. Changing the conversation's model restarts Claude Code with `--resume` on the same session,
+  at once or when the answer in progress ends; a worker change applies to workers started afterwards.
 - **One continuous conversation.** The session id lives in Minerva's store; the first start passes
   `--session-id <uuid>`, later starts `--resume <uuid>` (when Claude Code still has the transcript), so the
   conversation survives restarts. `--autocompact 100k` keeps the context small (faster first voice); the
@@ -220,7 +227,7 @@ lives in `~/Library/Application Support/com.kidandcat.minerva/` (`MINERVA_DATA_D
 | History | `search_history` | Every user message, display or worker/routine event, and spoken reply is saved. Search by words (any word, best ranked) or read around a message id. Covers what auto-compaction removed from the context. |
 | Memories | `remember`, `search_memories`, `forget_memory` | Short self-contained facts. `essential` ones (budget 4,000 chars) go into the system prompt at each start; the rest are searched. `remember` with `id` corrects one. |
 | Skills | `read_skill`, `save_skill`, `delete_skill` | `skills/<name>/SKILL.md` with name and description front matter. Only the index goes into the system prompt; the brain loads a skill before that kind of task. Deleting runs at once. |
-| Workers | `start_worker`, `list_workers`, `worker_status`, `message_worker`, `stop_worker` | Each worker is its own headless Claude Code process (opus, effort medium, `--autocompact 200k`) with its own MCP endpoint: commands and files, read-only memories, history and skills, `report_progress`, plus `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`. No display and no mouse or keyboard. Nothing is confirmed: its prompt says to do destructive actions only when the task clearly asks for them, otherwise to leave them out and say so in the report. Its final message is the report, handed to the brain as a `[worker …]` message. Its session is saved, so `message_worker` can continue it later, also after a restart. The status bar shows how many are running. |
+| Workers | `start_worker`, `list_workers`, `worker_status`, `message_worker`, `stop_worker` | Each worker is its own headless Claude Code process (the workers' model from the model picker, by default opus with effort medium, `--autocompact 200k`) with its own MCP endpoint: commands and files, read-only memories, history and skills, `report_progress`, plus `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`. No display and no mouse or keyboard. Nothing is confirmed: its prompt says to do destructive actions only when the task clearly asks for them, otherwise to leave them out and say so in the report. Its final message is the report, handed to the brain as a `[worker …]` message. Its session is saved, so `message_worker` can continue it later, also after a restart. The status bar shows how many are running. |
 | Routines | `create_routine`, `list_routines`, `update_routine`, `delete_routine` | Schedules `once` (local time), `daily` (time, optional weekdays) or `interval` (minutes). Checked every 15 s while the app runs. At the due time the prompt is handed to the brain as a `[routine …]` message. A missed one-time reminder fires late at the next start; recurring runs missed by more than 2 h are skipped. |
 
 Worker reports and routine prompts wait in a queue until the brain is free: not thinking or talking,
@@ -526,7 +533,7 @@ Out (later):
 1. Repo `kidandcat/minerva`, public, **MIT** license.
 2. Default voice: **Supertonic 3** (no phonemizer, so no GPL espeak-ng dependency). Piper/Kokoro stay
    possible later as an opt-in that uses a user-installed espeak-ng.
-3. Default model alias: **`opus`**; user can switch to `sonnet` / `haiku` in settings.
+3. Default model alias: **`opus`**; the user can pick any model Claude Code offers (see 3.1).
 
 ## Appendix: spike
 

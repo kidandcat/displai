@@ -44,7 +44,7 @@ Future<void> main() async {
         stdout.write(e.text);
       case ToolStart():
         print('\n[$ms ms] tool start ${e.name}');
-      case ToolInput() || Compacting() || MessageTaken():
+      case ToolInput() || Compacting() || MessageTaken() || Described() || FastModeState():
         break;
       case TurnDone():
         print('\n[$ms ms] done interrupted=${e.interrupted} error=${e.error}');

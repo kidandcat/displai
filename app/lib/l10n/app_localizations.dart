@@ -601,6 +601,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'System language'**
   String get languageSystem;
+
+  /// Tooltip and title of the picker of the Claude model Minerva runs on.
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get modelTitle;
+
+  /// No description provided for @modelConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation'**
+  String get modelConversation;
+
+  /// No description provided for @modelWorkers.
+  ///
+  /// In en, this message translates to:
+  /// **'Workers'**
+  String get modelWorkers;
+
+  /// No description provided for @modelSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search models'**
+  String get modelSearch;
+
+  /// No description provided for @modelDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'default'**
+  String get modelDefault;
+
+  /// No description provided for @modelPrevious.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous models ({count})'**
+  String modelPrevious(int count);
+
+  /// No description provided for @modelNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No model matches'**
+  String get modelNoMatch;
+
+  /// No description provided for @modelLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading Claude Code\'s models…'**
+  String get modelLoading;
+
+  /// No description provided for @modelEffort.
+  ///
+  /// In en, this message translates to:
+  /// **'Effort'**
+  String get modelEffort;
+
+  /// No description provided for @effortLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low'**
+  String get effortLow;
+
+  /// No description provided for @effortMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Medium'**
+  String get effortMedium;
+
+  /// No description provided for @effortHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High'**
+  String get effortHigh;
+
+  /// No description provided for @effortXhigh.
+  ///
+  /// In en, this message translates to:
+  /// **'Very high'**
+  String get effortXhigh;
+
+  /// No description provided for @effortMax.
+  ///
+  /// In en, this message translates to:
+  /// **'Max'**
+  String get effortMax;
+
+  /// No description provided for @modelSpeed.
+  ///
+  /// In en, this message translates to:
+  /// **'Speed'**
+  String get modelSpeed;
+
+  /// No description provided for @speedStandard.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get speedStandard;
+
+  /// No description provided for @speedFast.
+  ///
+  /// In en, this message translates to:
+  /// **'Fast'**
+  String get speedFast;
+
+  /// No description provided for @fastUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Fast mode is not available: {reason}'**
+  String fastUnavailable(String reason);
+
+  /// No description provided for @fastExtraUsageDisabled.
+  ///
+  /// In en, this message translates to:
+  /// **'extra usage is turned off on your Claude account'**
+  String get fastExtraUsageDisabled;
+
+  /// No description provided for @modelConversationNote.
+  ///
+  /// In en, this message translates to:
+  /// **'The conversation goes on with the new model.'**
+  String get modelConversationNote;
+
+  /// No description provided for @modelWorkersNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Applies to workers started from now on.'**
+  String get modelWorkersNote;
 }
 
 class _AppLocalizationsDelegate

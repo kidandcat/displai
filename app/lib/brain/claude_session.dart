@@ -36,6 +36,21 @@ class Compacting extends BrainEvent {
 /// a new turn or attached to the turn in progress (only with [ClaudeSession.replayUserMessages]).
 class MessageTaken extends BrainEvent {}
 
+/// Claude Code's answer to the initialize request (only with [ClaudeSession.describe]): its
+/// version, the models it offers and whether fast mode is on (see [ClaudeCatalog]).
+class Described extends BrainEvent {
+  Described(this.info);
+  final Map<String, dynamic> info;
+}
+
+/// Claude Code's fast mode state after a turn: fast mode can turn off once a request finds the
+/// account can't use it (only [reason] then says why, e.g. `extra_usage_disabled`).
+class FastModeState extends BrainEvent {
+  FastModeState({required this.on, this.reason});
+  final bool on;
+  final String? reason;
+}
+
 class TurnDone extends BrainEvent {
   TurnDone({required this.interrupted, this.error, this.result = ''});
   final bool interrupted;
@@ -57,16 +72,25 @@ class ClaudeSession {
     required this.workDir,
     required this.sessionId,
     this.effort = 'low',
+    this.fast = false,
+    this.describe = false,
     this.builtinTools = const ['WebSearch', 'WebFetch'],
     this.autocompact = '100k',
     this.replayUserMessages = false,
   });
 
-  final String model;
+  /// Claude Code model (an alias such as `opus` or a full id), effort level (null: the
+  /// model has none) and fast mode. Change them with [reconfigure].
+  String model;
+  String? effort;
+  bool fast;
+
   final String systemPrompt;
   final String mcpUrl;
   final String workDir;
-  final String effort;
+
+  /// Ask Claude Code, at every start, for its version and models (a [Described] event).
+  final bool describe;
 
   /// Claude Code session id (a UUID). Resumed when Claude Code already has it on disk.
   final String sessionId;
@@ -92,6 +116,10 @@ class ClaudeSession {
   Process? _proc;
   bool busy = false;
   bool _discard = false;
+  Future<void>? _starting;
+
+  /// [reconfigure] waits for the turn in progress to end.
+  bool _restartPending = false;
 
   /// The message of the turn in progress, and whether it was already re-sent after a crash.
   String? _inFlight;
@@ -103,7 +131,10 @@ class ClaudeSession {
   /// Last stderr lines, for diagnostics.
   String get stderrTail => _log.toString();
 
-  Future<void> start() async {
+  /// Starts Claude Code, resuming [sessionId] if it exists. Concurrent calls share one start.
+  Future<void> start() => _starting ??= _start().whenComplete(() => _starting = null);
+
+  Future<void> _start() async {
     final env = await _cleanEnvironment();
     final claude = await _which('claude', env['PATH']!);
     await Directory(workDir).create(recursive: true);
@@ -129,7 +160,10 @@ class ClaudeSession {
       '--setting-sources', '',
       if (resume) ...['--resume', sessionId] else ...['--session-id', sessionId],
       '--autocompact', autocompact,
-      '--effort', effort,
+      if (effort != null) ...['--effort', effort!],
+      // Fast mode is opt-in for headless sessions; the account may still refuse it (see
+      // [Described]).
+      if (fast) ...['--settings', jsonEncode({'fastMode': true})],
       '--model', model,
     ];
     final p = await Process.start(claude, args, workingDirectory: workDir, environment: env,
@@ -166,11 +200,42 @@ class ClaudeSession {
       _retried = false;
       _events.add(TurnDone(interrupted: _discard, error: _discard ? null : 'claude exited ($code): ${stderrTail.trim()}'));
     }));
+    if (describe) {
+      _write({
+        'type': 'control_request',
+        'request_id': 'describe',
+        'request': {'subtype': 'initialize'},
+      });
+    }
+  }
+
+  /// Switches the model, effort or fast mode. A running process is restarted on the same
+  /// conversation ([sessionId] is resumed), at once when idle, else when the turn ends.
+  void reconfigure({required String model, required String? effort, required bool fast}) {
+    if (model == this.model && effort == this.effort && fast == this.fast) return;
+    this.model = model;
+    this.effort = effort;
+    this.fast = fast;
+    if (_proc == null && _starting == null) return;
+    if (busy) {
+      _restartPending = true;
+    } else {
+      _restart();
+    }
+  }
+
+  void _restart() {
+    _restartPending = false;
+    final p = _proc;
+    _proc = null; // its exit is then not taken for a crash
+    p?.kill();
+    unawaited(start().catchError((Object e) => _log.write('claude restart failed: $e\n')));
   }
 
   bool get running => _proc != null;
 
   Future<void> send(String text) async {
+    if (_starting != null) await _starting;
     if (_proc == null) await start();
     // An interrupted turn closes within a few ms; wait for it so turns don't overlap.
     for (var i = 0; i < 100 && busy; i++) {
@@ -255,6 +320,16 @@ class ClaudeSession {
           error: isError ? '${ev['result'] ?? ev['subtype']}' : null,
           result: ev['result'] is String ? ev['result'] as String : '',
         ));
+        if (fast && ev['fast_mode_state'] is String) {
+          _events.add(FastModeState(
+              on: ev['fast_mode_state'] == 'on', reason: ev['fast_mode_disabled_reason'] as String?));
+        }
+        if (_restartPending) _restart();
+      case 'control_response':
+        final r = ev['response'];
+        if (r is Map && r['request_id'] == 'describe' && r['subtype'] == 'success' && r['response'] is Map) {
+          _events.add(Described((r['response'] as Map).cast<String, dynamic>()));
+        }
     }
   }
 

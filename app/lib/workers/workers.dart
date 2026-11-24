@@ -39,8 +39,10 @@ class Workers extends ToolProvider with ChangeNotifier {
 
   /// Applied to every tool result a worker gets (the vault's redaction).
   final ToolResult Function(ToolResult result)? scrub;
-  final String model;
-  final String effort;
+  /// Model, effort (null: the model has none) and fast mode for workers started from now on.
+  String model;
+  String? effort;
+  bool fast = false;
 
   final _running = <int, _Worker>{};
 
@@ -177,6 +179,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     final session = ClaudeSession(
       model: model,
       effort: effort,
+      fast: fast,
       systemPrompt: _systemPrompt,
       mcpUrl: mcp.url,
       workDir: '${store.dir}/workers',

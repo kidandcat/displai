@@ -301,4 +301,73 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get languageSystem => 'System language';
+
+  @override
+  String get modelTitle => 'Model';
+
+  @override
+  String get modelConversation => 'Conversation';
+
+  @override
+  String get modelWorkers => 'Workers';
+
+  @override
+  String get modelSearch => 'Search models';
+
+  @override
+  String get modelDefault => 'default';
+
+  @override
+  String modelPrevious(int count) {
+    return 'Previous models ($count)';
+  }
+
+  @override
+  String get modelNoMatch => 'No model matches';
+
+  @override
+  String get modelLoading => 'Loading Claude Code\'s models…';
+
+  @override
+  String get modelEffort => 'Effort';
+
+  @override
+  String get effortLow => 'Low';
+
+  @override
+  String get effortMedium => 'Medium';
+
+  @override
+  String get effortHigh => 'High';
+
+  @override
+  String get effortXhigh => 'Very high';
+
+  @override
+  String get effortMax => 'Max';
+
+  @override
+  String get modelSpeed => 'Speed';
+
+  @override
+  String get speedStandard => 'Standard';
+
+  @override
+  String get speedFast => 'Fast';
+
+  @override
+  String fastUnavailable(String reason) {
+    return 'Fast mode is not available: $reason';
+  }
+
+  @override
+  String get fastExtraUsageDisabled =>
+      'extra usage is turned off on your Claude account';
+
+  @override
+  String get modelConversationNote =>
+      'The conversation goes on with the new model.';
+
+  @override
+  String get modelWorkersNote => 'Applies to workers started from now on.';
 }

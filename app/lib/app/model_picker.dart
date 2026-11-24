@@ -1,0 +1,288 @@
+import 'package:flutter/material.dart';
+
+import '../brain/claude_models.dart';
+import '../l10n/l10n.dart';
+import 'assistant.dart';
+import 'main_view.dart';
+
+/// Status bar button with the conversation's model; opens [ModelPicker].
+class ModelButton extends StatelessWidget {
+  const ModelButton({super.key, required this.assistant});
+
+  final Assistant assistant;
+
+  @override
+  Widget build(BuildContext context) {
+    final choice = assistant.brainModel;
+    final name = assistant.catalog?.find(choice.model)?.name ?? choice.model;
+    return Tooltip(
+      message: AppLocalizations.of(context).modelTitle,
+      child: TextButton.icon(
+        style: TextButton.styleFrom(foregroundColor: Colors.white54),
+        onPressed: () => showDialog<void>(
+          context: context,
+          barrierColor: Colors.black26,
+          builder: (_) => ModelPicker(assistant: assistant),
+        ),
+        icon: const Icon(Icons.memory, size: 18),
+        label: Text(name),
+      ),
+    );
+  }
+}
+
+/// Picks the model, effort and speed of the conversation and, on its other tab, of the workers.
+/// The list comes from the installed Claude Code: its newest model of each family, then the
+/// previous ones folded away.
+class ModelPicker extends StatefulWidget {
+  const ModelPicker({super.key, required this.assistant});
+
+  final Assistant assistant;
+
+  @override
+  State<ModelPicker> createState() => _ModelPickerState();
+}
+
+class _ModelPickerState extends State<ModelPicker> {
+  bool _workers = false;
+  bool _showPrevious = false;
+  String _query = '';
+
+  Assistant get _a => widget.assistant;
+
+  ModelChoice get _choice => _workers ? _a.workerModel : _a.brainModel;
+
+  ModelChoice get _default => _workers ? Assistant.defaultWorkerModel : Assistant.defaultBrainModel;
+
+  void _set(ModelChoice c) => _workers ? _a.setWorkerModel(c) : _a.setBrainModel(c);
+
+  void _pick(ClaudeModel m) => _set(_choice.copyWith(model: m.value));
+
+  bool _matches(ClaudeModel m) {
+    final q = _query.trim().toLowerCase();
+    return q.isEmpty ||
+        m.name.toLowerCase().contains(q) ||
+        m.value.toLowerCase().contains(q) ||
+        m.description.toLowerCase().contains(q);
+  }
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.bottomRight,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 12, bottom: 56),
+          child: Material(
+            color: const Color(0xFF15111C),
+            elevation: 12,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: Colors.white12),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(
+              width: 380,
+              child: ListenableBuilder(listenable: _a, builder: (context, _) => _body(context)),
+            ),
+          ),
+        ),
+      );
+
+  Widget _body(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final catalog = _a.catalog;
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Row(
+            children: [
+              Text('Claude', style: theme.textTheme.titleMedium),
+              const SizedBox(width: 8),
+              if (catalog != null && catalog.version.isNotEmpty)
+                Text('${catalog.version} (Claude Code)',
+                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: SegmentedButton<bool>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(value: false, label: Text(l.modelConversation)),
+              ButtonSegment(value: true, label: Text(l.modelWorkers)),
+            ],
+            selected: {_workers},
+            onSelectionChanged: (s) => setState(() => _workers = s.first),
+          ),
+        ),
+        if (catalog == null)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              children: [
+                const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 12),
+                Expanded(child: Text(l.modelLoading, style: const TextStyle(color: Colors.white54))),
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: TextField(
+              autofocus: true,
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 18),
+                hintText: l.modelSearch,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 340),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              children: _models(context, catalog),
+            ),
+          ),
+          const Divider(height: 1, color: Colors.white12),
+          ..._settings(context, catalog),
+        ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+          child: Text(_workers ? l.modelWorkersNote : l.modelConversationNote,
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38)),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _models(BuildContext context, ClaudeCatalog catalog) {
+    final l = AppLocalizations.of(context);
+    if (_query.trim().isNotEmpty) {
+      final found = catalog.all.where(_matches).toList();
+      if (found.isEmpty) {
+        return [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(l.modelNoMatch, style: const TextStyle(color: Colors.white38)),
+          ),
+        ];
+      }
+      return [for (final m in found) _tile(context, m)];
+    }
+    return [
+      for (final m in catalog.latest) _tile(context, m),
+      if (catalog.previous.isNotEmpty)
+        ListTile(
+          dense: true,
+          title: Text(l.modelPrevious(catalog.previous.length), style: const TextStyle(color: Colors.white54)),
+          trailing: Icon(_showPrevious ? Icons.expand_less : Icons.expand_more, color: Colors.white38),
+          onTap: () => setState(() => _showPrevious = !_showPrevious),
+        ),
+      if (_showPrevious)
+        for (final m in catalog.previous) _tile(context, m),
+    ];
+  }
+
+  Widget _tile(BuildContext context, ClaudeModel m) {
+    final l = AppLocalizations.of(context);
+    final selected = m.value == _choice.model;
+    final isDefault = m.value == _default.model;
+    return ListTile(
+      dense: true,
+      selected: selected,
+      selectedColor: kAccent,
+      title: Row(
+        children: [
+          Flexible(child: Text(m.name, overflow: TextOverflow.ellipsis)),
+          if (isDefault) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: Text(l.modelDefault, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+            ),
+          ],
+        ],
+      ),
+      subtitle: m.description.isEmpty
+          ? null
+          : Text(m.description,
+              maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white38)),
+      trailing: selected ? const Icon(Icons.check, size: 18, color: kAccent) : null,
+      onTap: () => _pick(m),
+    );
+  }
+
+  List<Widget> _settings(BuildContext context, ClaudeCatalog catalog) {
+    final l = AppLocalizations.of(context);
+    final model = catalog.find(_choice.model);
+    final effort = effortFor(model, _choice.effort);
+    final names = {
+      'low': l.effortLow,
+      'medium': l.effortMedium,
+      'high': l.effortHigh,
+      'xhigh': l.effortXhigh,
+      'max': l.effortMax,
+    };
+    final efforts = model?.efforts ?? effortLevels;
+    final unavailable = _a.fastUnavailable;
+    return [
+      if (effort != null)
+        _row(
+          l.modelEffort,
+          DropdownButton<String>(
+            value: effort,
+            isDense: true,
+            underline: const SizedBox(),
+            items: [for (final e in efforts) DropdownMenuItem(value: e, child: Text(names[e] ?? e))],
+            onChanged: (v) => v == null ? null : _set(_choice.copyWith(effort: v)),
+          ),
+        ),
+      if (model?.fast ?? false) ...[
+        _row(
+          l.modelSpeed,
+          DropdownButton<bool>(
+            value: _choice.fast,
+            isDense: true,
+            underline: const SizedBox(),
+            items: [
+              DropdownMenuItem(value: false, child: Text(l.speedStandard)),
+              DropdownMenuItem(value: true, child: Text(l.speedFast)),
+            ],
+            onChanged: (v) => v == null ? null : _set(_choice.copyWith(fast: v)),
+          ),
+        ),
+        if (unavailable != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Text(
+              l.fastUnavailable(unavailable == 'extra_usage_disabled' ? l.fastExtraUsageDisabled : unavailable),
+              style: const TextStyle(fontSize: 12, color: Colors.orangeAccent),
+            ),
+          ),
+      ],
+    ];
+  }
+
+  Widget _row(String label, Widget control) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: const TextStyle(color: Colors.white70))),
+            control,
+          ],
+        ),
+      );
+}

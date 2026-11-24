@@ -395,5 +395,43 @@
   "languageSystem": "System language",
   "@languageSystem": {
     "description": "Language menu item: follow the operating system's language."
-  }
+  },
+  "modelTitle": "Model",
+  "@modelTitle": {
+    "description": "Tooltip and title of the picker of the Claude model Minerva runs on."
+  },
+  "modelConversation": "Conversation",
+  "modelWorkers": "Workers",
+  "modelSearch": "Search models",
+  "modelDefault": "default",
+  "modelPrevious": "Previous models ({count})",
+  "@modelPrevious": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "modelNoMatch": "No model matches",
+  "modelLoading": "Loading Claude Code's models…",
+  "modelEffort": "Effort",
+  "effortLow": "Low",
+  "effortMedium": "Medium",
+  "effortHigh": "High",
+  "effortXhigh": "Very high",
+  "effortMax": "Max",
+  "modelSpeed": "Speed",
+  "speedStandard": "Standard",
+  "speedFast": "Fast",
+  "fastUnavailable": "Fast mode is not available: {reason}",
+  "@fastUnavailable": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "fastExtraUsageDisabled": "extra usage is turned off on your Claude account",
+  "modelConversationNote": "The conversation goes on with the new model.",
+  "modelWorkersNote": "Applies to workers started from now on."
 }

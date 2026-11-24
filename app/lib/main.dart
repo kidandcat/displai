@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'app/assistant.dart';
 import 'app/main_view.dart';
+import 'app/model_picker.dart';
 import 'l10n/l10n.dart';
 import 'presence/presence.dart';
 import 'store/legacy_data.dart';
@@ -148,6 +149,7 @@ class _HomePageState extends State<HomePage> {
                 actions: [
                   if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),
                   if (a.ready) _VaultButton(vault: a.vault),
+                  if (a.ready) ModelButton(assistant: a),
                   if (a.ready) _LanguageButton(assistant: a),
                   if (a.ready) _PhoneButton(assistant: a),
                 ],

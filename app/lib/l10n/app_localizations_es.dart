@@ -302,4 +302,74 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get languageSystem => 'Idioma del sistema';
+
+  @override
+  String get modelTitle => 'Modelo';
+
+  @override
+  String get modelConversation => 'Conversación';
+
+  @override
+  String get modelWorkers => 'Workers';
+
+  @override
+  String get modelSearch => 'Buscar modelos';
+
+  @override
+  String get modelDefault => 'predeterminado';
+
+  @override
+  String modelPrevious(int count) {
+    return 'Modelos anteriores ($count)';
+  }
+
+  @override
+  String get modelNoMatch => 'Ningún modelo coincide';
+
+  @override
+  String get modelLoading => 'Cargando los modelos de Claude Code…';
+
+  @override
+  String get modelEffort => 'Esfuerzo';
+
+  @override
+  String get effortLow => 'Bajo';
+
+  @override
+  String get effortMedium => 'Medio';
+
+  @override
+  String get effortHigh => 'Alto';
+
+  @override
+  String get effortXhigh => 'Muy alto';
+
+  @override
+  String get effortMax => 'Máximo';
+
+  @override
+  String get modelSpeed => 'Velocidad';
+
+  @override
+  String get speedStandard => 'Estándar';
+
+  @override
+  String get speedFast => 'Rápida';
+
+  @override
+  String fastUnavailable(String reason) {
+    return 'El modo rápido no está disponible: $reason';
+  }
+
+  @override
+  String get fastExtraUsageDisabled =>
+      'el uso extra está desactivado en tu cuenta de Claude';
+
+  @override
+  String get modelConversationNote =>
+      'La conversación sigue con el nuevo modelo.';
+
+  @override
+  String get modelWorkersNote =>
+      'Se aplica a los workers que empiecen a partir de ahora.';
 }

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../audio/native_audio.dart';
 import 'desktop_window.dart';
+import '../brain/claude_models.dart';
 import '../brain/claude_session.dart';
 import '../brain/system_prompt.dart';
 import '../display/display.dart';
@@ -41,11 +42,24 @@ import 'assistant_ui.dart';
 /// Display tool calls arrive through the embedded MCP server; partial tool input streams into
 /// the [DisplayController] while Claude is still writing it.
 class Assistant extends ChangeNotifier implements AssistantUi {
-  Assistant({required this.models, this.model = 'opus', this.effort = 'low', this.voice = 1});
+  Assistant({required this.models, this.voice = 1});
 
   final ModelStore models;
-  final String model;
-  final String effort;
+
+  /// What the conversation and the workers run on unless the user picks otherwise.
+  static const defaultBrainModel = ModelChoice(model: 'opus', effort: 'low');
+  static const defaultWorkerModel = ModelChoice(model: 'opus', effort: 'medium');
+
+  /// The conversation's model (the main brain) and the workers', saved in the store.
+  ModelChoice brainModel = defaultBrainModel;
+  ModelChoice workerModel = defaultWorkerModel;
+
+  /// The models of the installed Claude Code (null until it first reported them).
+  ClaudeCatalog? catalog;
+
+  /// Why Claude Code says fast mode can't be used on this account (a reason code such as
+  /// `extra_usage_disabled`), else null.
+  String? fastUnavailable;
 
   /// Supertonic 3 speaker id: 0–4 are female voices (F1–F5), 5–9 male (M1–M5).
   final int voice;
@@ -208,6 +222,9 @@ class Assistant extends ChangeNotifier implements AssistantUi {
           (await getApplicationSupportDirectory()).path;
       store = await Store.open(dataDir);
       languageSetting.value = validLanguage(store.get('language'));
+      catalog = ClaudeCatalog.load(store);
+      brainModel = ModelChoice.load(store, 'brain', defaultBrainModel);
+      workerModel = ModelChoice.load(store, 'workers', defaultWorkerModel);
       vault = await Vault.open('${store.dir}/vault');
       workers = Workers(
         store: store,
@@ -221,6 +238,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         scrub: vault.scrubResult,
         notify: notify,
       )..addListener(notifyListeners);
+      _applyWorkerModel();
       routines = Routines(store: store, notify: notify);
       providers = [
         CommandTools(vault: vault),
@@ -258,9 +276,12 @@ class Assistant extends ChangeNotifier implements AssistantUi {
           ..addListener(notifyListeners);
         await webhooks!.start();
       }
+      final brain = brainModel.resolve(catalog);
       _claude = ClaudeSession(
-        model: model,
-        effort: effort,
+        model: brain.model,
+        effort: brain.effort,
+        fast: brain.fast,
+        describe: true,
         systemPrompt: buildSystemPrompt([
           languagePromptSection(speechLanguage, strings),
           MemoryTools.promptSection(store),
@@ -318,6 +339,50 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     if (tell) notify('[settings] The user changed Minerva\'s language.\n$section');
     notifyListeners();
     return section;
+  }
+
+  // ---------------------------------------------------------------- models
+
+  /// Switches the conversation's model, effort or speed. The brain restarts on the same
+  /// conversation, at once or when the answer in progress ends.
+  void setBrainModel(ModelChoice choice) {
+    brainModel = choice;
+    choice.save(store, 'brain');
+    final r = choice.resolve(catalog);
+    _claude.reconfigure(model: r.model, effort: r.effort, fast: r.fast);
+    notifyListeners();
+  }
+
+  /// Switches the model, effort or speed of workers started from now on.
+  void setWorkerModel(ModelChoice choice) {
+    workerModel = choice;
+    choice.save(store, 'workers');
+    _applyWorkerModel();
+    notifyListeners();
+  }
+
+  void _applyWorkerModel() {
+    final r = workerModel.resolve(catalog);
+    workers
+      ..model = r.model
+      ..effort = r.effort
+      ..fast = r.fast;
+  }
+
+  /// Claude Code (re)started: keep its model list, and note whether the account can use fast mode.
+  void _described(Map<String, dynamic> info) {
+    final c = ClaudeCatalog.fromInfo(info);
+    if (c.all.isNotEmpty) {
+      catalog = c..save(store);
+      _applyWorkerModel();
+    }
+    // At start Claude Code reports fast mode as asked for; whether the account can use it shows
+    // after the first request (FastModeState). Only a reason other than "not asked for" counts.
+    final reason = info['fast_mode_disabled_reason'] as String?;
+    if (info['fast_mode_state'] != 'on' && reason != null && reason != 'sdk_opt_in_required') {
+      fastUnavailable = reason;
+    }
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------- phone remote
@@ -582,6 +647,13 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         }
       case MessageTaken():
         break;
+      case Described():
+        _described(e.info);
+      case FastModeState():
+        if (fastUnavailable != (e.on ? null : e.reason)) {
+          fastUnavailable = e.on ? null : e.reason;
+          notifyListeners();
+        }
       case Compacting():
         // Takes a few seconds once the context is full; say why the answer is late.
         _setActivity(e.active ? strings.activityCompacting : strings.activityThinking);
