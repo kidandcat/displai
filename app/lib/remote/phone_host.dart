@@ -42,6 +42,10 @@ class PhoneHost extends ChangeNotifier {
   double width = 0, height = 0;
   String platform = '';
 
+  /// The phone control's setup on the phone ({accessibility, overlay, screenshots, sdk}), or null
+  /// when its app has none (see PhoneTools).
+  Map<String, dynamic>? control;
+
   void Function(Float32List samples)? onMic;
   void Function(String text)? onEvent;
   void Function(bool on)? onMute;
@@ -87,6 +91,7 @@ class PhoneHost extends ChangeNotifier {
         width = (m['w'] as num?)?.toDouble() ?? 0;
         height = (m['h'] as num?)?.toDouble() ?? 0;
         platform = '${m['platform'] ?? ''}';
+        control = (m['control'] as Map?)?.cast<String, dynamic>();
         if (!active) {
           active = true;
           _lastState = '';
@@ -96,6 +101,9 @@ class PhoneHost extends ChangeNotifier {
           debugPrint('phone joined (${width.round()}×${height.round()} $platform)');
           onJoin?.call();
         }
+        notifyListeners();
+      case 'control':
+        control = {...m}..remove('t');
         notifyListeners();
       case 'result':
         _pending.remove(m['id'])?.complete(m);
@@ -124,6 +132,7 @@ class PhoneHost extends ChangeNotifier {
   void _leave() {
     active = false;
     playing = false;
+    control = null;
     for (final c in _pending.values) {
       c.complete(null);
     }

@@ -19,6 +19,7 @@ import '../l10n/l10n.dart';
 import '../mcp/display_mcp_server.dart';
 import '../presence/presence.dart';
 import '../remote/phone_host.dart';
+import '../remote/phone_tools.dart';
 import '../remote/protocol.dart';
 import '../computer/computer_tools.dart';
 import '../routines/routines.dart';
@@ -305,6 +306,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         workers,
         routines,
         if (webhooks != null) WebhookTools(webhooks!),
+        PhoneTools(phone: () => phone, vault: vault),
       ];
       _speaker = await Speaker.start(modelDir: models.supertonic, voice: voice, language: speechLanguage);
       _listener = await Listener.start(vadModel: models.vad, parakeetDir: models.parakeet);
@@ -1024,7 +1026,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         'read_file' || 'list_dir' => l.activityReadingFiles,
         'write_file' => l.activityWritingFile,
         'screen' => l.activityLookingAtScreen,
-        'ui_tree' || 'apps' || 'windows' => l.activityReadingUi,
+        'ui_tree' || 'apps' || 'windows' || 'phone_ui_tree' || 'phone_apps' => l.activityReadingUi,
+        'phone_screen' => l.activityLookingAtScreen,
+        _ when tool.startsWith('phone_') => l.activityUsingPhone,
         _ => l.activityUsingComputer,
       };
 

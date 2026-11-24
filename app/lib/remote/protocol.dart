@@ -17,6 +17,7 @@ import 'dart:typed_data';
 ///                     stop                            drop the queued voice (barge-in)
 ///                     reset                           clear the display (before a replay)
 ///                     tool {id?, name, args}          run a display tool; reply when id is set
+///                                                     (phone_* tools act on the phone itself)
 ///                     partial {name, json}            streaming tool input (progressive show)
 ///                     cancel_partial
 ///                     settings {brain, workers, catalog, fast_unavailable, language, voice,
@@ -24,7 +25,11 @@ import 'dart:typed_data';
 ///                               webhooks?: {on, status, hooks: [{name, description, url}]}}
 ///                                                     the desktop's settings, when they change
 ///                                                     (field names only, never vault values)
-///   remote → host:    hello {w, h, platform}          logical screen size of the remote display
+///   remote → host:    hello {w, h, platform, control?}
+///                                                     logical screen size of the remote display;
+///                                                     control: the phone control's setup
+///                                                     {accessibility, overlay, screenshots, sdk}
+///                     control {accessibility, ...}    that setup changed
 ///                     result {id, text, error?, png?} a display tool's result (png: base64)
 ///                     idle {n}                        voice queue drained after n voice frames
 ///                     event {text}                    a display action ("[display] ...")
