@@ -134,7 +134,9 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
           _hostReady = false;
           unawaited(audio.stop());
           display.cancelPartial();
-          presence.mode = PresenceMode.idle;
+          presence
+            ..mode = PresenceMode.idle
+            ..workers = const [];
           activity = '';
           notifyListeners();
         }
@@ -151,6 +153,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
         activity = '${m['activity'] ?? ''}';
         lastHeard = '${m['heard'] ?? ''}';
         backgroundJobs = (m['jobs'] as num?)?.toInt() ?? 0;
+        presence.workers = [for (final id in m['workers'] as List? ?? const []) (id as num).toInt()];
         muted = m['muted'] == true;
         presence.muted = muted;
         if (_unmuteOnState) {

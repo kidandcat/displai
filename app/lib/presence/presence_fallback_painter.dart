@@ -7,7 +7,7 @@ import 'presence_view.dart';
 /// Canvas-only version of the presence (used when the fragment shader cannot
 /// be loaded). Same layout and inputs as the shader, far fewer details: the
 /// glowing nucleus, the shell's outline, the three gyroscope orbits with their
-/// comets and the ring of spectrum bars.
+/// comets and the workers' satellites, and the ring of spectrum bars.
 class PresenceFallbackPainter extends CustomPainter {
   PresenceFallbackPainter({
     required this.frame,
@@ -106,16 +106,24 @@ class PresenceFallbackPainter extends CustomPainter {
       stroke
         ..strokeWidth = math.max(1.0, minStroke)
         ..color = ringColor.withValues(alpha: 0.4 + 0.25 * think);
-      canvas
-        ..drawOval(
-          Rect.fromCenter(
-            center: Offset.zero,
-            width: 2 * radius * nz.abs(),
-            height: 2 * radius,
-          ),
-          stroke,
-        )
-        ..restore();
+      final orbit = Rect.fromCenter(
+        center: Offset.zero,
+        width: 2 * radius * nz.abs(),
+        height: 2 * radius,
+      );
+      canvas.drawOval(orbit, stroke);
+      // A background worker on this orbit turns it amber; one that ended
+      // flares it.
+      final work = frame.work[i], done = frame.done[i];
+      if (work + done > 0.002) {
+        stroke
+          ..strokeWidth = math.max(1.5, minStroke)
+          ..color = kPresenceWorkerAccent.withValues(
+            alpha: (0.6 * work + 0.9 * done).clamp(0.0, 1.0),
+          );
+        canvas.drawOval(orbit, stroke);
+      }
+      canvas.restore();
       // The comet's head sits at -u (screen y points down, the plane's up).
       fill.color = Color.lerp(ringColor, _white, 0.7)!;
       canvas.drawCircle(
@@ -123,6 +131,19 @@ class PresenceFallbackPainter extends CustomPainter {
         math.max(unit * 0.03, 1.5),
         fill,
       );
+      // The worker's satellite, where the shader puts it.
+      if (work > 0.002) {
+        final sgn = i == 1 ? -1.0 : 1.0;
+        final ma = sgn * frame.time * (0.45 + 0.1 * i) + i * 2.1;
+        final a = math.cos(ma), b = math.sin(ma);
+        final at = c + Offset(a * ux + b * vx, -(a * uy + b * vy)) * radius;
+        final sr = math.max(unit * (compact ? 0.085 : 0.045), 2.5);
+        fill.color = kPresenceWorkerAccent.withValues(alpha: 0.35 * work);
+        canvas.drawCircle(at, sr * 2.2, fill);
+        fill.color = Color.lerp(kPresenceWorkerAccent, _white, 0.5)!
+            .withValues(alpha: work);
+        canvas.drawCircle(at, sr, fill);
+      }
     }
 
     // Spectrum bars, mirrored four ways like the shader's.

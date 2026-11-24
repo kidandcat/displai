@@ -20,9 +20,9 @@
 //   speaking   the nucleus and the plasma flare with Minerva's voice, ripples travel outward and a
 //              voice contour blooms around the shell
 //   muted      the app fades both accents to red
-//   workers    each running background worker (up to three) takes an orbit of the gyroscope: the
-//              orbit breathes brighter and a small moon travels along it with a short wake; when
-//              the worker ends, the orbit flares once and fades back
+//   workers    each running background worker (up to three) takes an orbit of the gyroscope: a
+//              bright amber satellite (kPresenceWorkerAccent) travels along it with an amber wake,
+//              the only amber in the orb; when the worker ends, the orbit flares amber and fades
 //
 // Uniform layout (float indices for FragmentShader.setFloat):
 //   0      uTime        seconds, wrapped by the app at 2000*pi
@@ -91,6 +91,8 @@ out vec4 fragColor;
 
 const float PI = 3.14159265;
 const float TAU = 6.28318531;
+// kPresenceWorkerAccent (presence_view.dart): amber, apart from both accents and the muted reds.
+const vec3 WORK = vec3(1.0, 0.682, 0.259);
 
 float hash11(float x) {
   x = fract(x * 0.1031);
@@ -265,6 +267,10 @@ void main() {
       vec2 dir = ab / len;
       float grad = max(length(dir.x * m.xy + dir.y * m.zw), 1e-3);
       float ds = (len - rad) / grad; // distance to the orbit, on screen
+      // Where a worker's satellite is on this orbit, as an angle of its plane; it goes the way the
+      // comets go.
+      float sgn = i == 1 ? -1.0 : 1.0;
+      float ma = sgn * uTime * (0.45 + 0.1 * float(i)) + float(i) * 2.1;
       if (abs(ds) < 0.2) {
         float turn = atan(ab.y, ab.x) / TAU + 0.5;
         float depth = dot(zc, ab);
@@ -292,22 +298,29 @@ void main() {
         float vis = depth >= 0.0 ? 1.0 : mix(0.5, 0.13, 1.0 - smoothstep(shellR - 0.02, shellR + 0.02, r));
         vec3 rc = mix(A, B, i == 1 ? 0.85 : 0.12);
         col += (rc * lum + hot * head * 1.3) * vis * (0.8 + 0.4 * wThink + 0.35 * lvl * react);
-        // A background worker on this orbit: the orbit breathes brighter and a small moon travels
-        // along it with a short wake, the way the comets go. When the worker ends, the orbit
-        // flares and fades back.
+        // A background worker on this orbit: the orbit turns amber, brightest in the satellite's
+        // wake. When the worker ends, the whole orbit flares amber and fades back.
         if (wk + wd > 0.002) {
-          float sgn = i == 1 ? -1.0 : 1.0;
-          float ma = sgn * uTime * (0.2 + 0.05 * float(i)) + float(i) * 2.1;
-          float dm = length(ab - rad * vec2(cos(ma), sin(ma)));
-          float wake = exp(-fract(sgn * (ma / TAU + 0.5 - turn)) * 9.0);
-          float breathe = 0.75 + 0.25 * sin(uTime * 2.2 + float(i) * 2.1);
-          vec3 wc = mix(rc, hot, 0.25);
-          float glow = line(ds, lw * 1.4, pxW) * (0.35 * breathe + 0.9 * wake)
-              + exp(-abs(ds) * 26.0) * (0.06 * breathe + 0.2 * wake);
-          float moon = exp(-dm * dm * mix(1800.0, 500.0, compact));
-          col += (wc * glow + hot * moon * 1.4 + B * exp(-dm * 40.0) * 0.12) * wk * vis;
-          col += (hot * line(ds, lw * 2.0, pxW) * 0.9 + wc * exp(-abs(ds) * 20.0) * 0.45) * wd * vis;
+          float wake = exp(-fract(sgn * (ma / TAU + 0.5 - turn)) * 5.0);
+          float tint = line(ds, lw * 1.3, pxW) * (0.45 + 1.4 * wake) + exp(-abs(ds) * 24.0) * (0.06 + 0.3 * wake);
+          col += WORK * tint * wk * max(vis, 0.35);
+          col += (mix(WORK, vec3(1.0), 0.4) * line(ds, lw * 2.2, pxW) * 1.3 + WORK * exp(-abs(ds) * 16.0) * 0.6)
+              * wd * max(vis, 0.35);
         }
+      }
+      // The worker's satellite: a white-hot amber bead with a wide halo, a few pixels across even on
+      // the corner orb, and only dimmed (never hidden) behind the shell.
+      if (wk > 0.002) {
+        vec2 sab = rad * vec2(cos(ma), sin(ma));
+        // Back from the orbit's plane to the screen: the inverse of m.
+        vec2 sq = vec2(m.w * sab.x - m.y * sab.y, m.x * sab.y - m.z * sab.x) / (m.x * m.w - m.y * m.z);
+        float dm = length(q - sq);
+        float sr = max(mix(0.045, 0.085, compact), 2.5 * pxW);
+        float behind = dot(zc, sab) < 0.0 && length(sq) < shellR ? 0.5 : 1.0;
+        float beat = 0.85 + 0.15 * sin(uTime * 3.0 + float(i) * 2.1);
+        float core = 1.0 - smoothstep(sr - pxW, sr + pxW, dm);
+        float halo = exp(-dm * dm / (sr * sr) * 0.35);
+        col += (mix(WORK, vec3(1.0), 0.5) * core * 2.5 + WORK * halo * 1.1 * beat) * wk * behind;
       }
     }
   }

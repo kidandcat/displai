@@ -23,6 +23,11 @@ const Color kPresenceMutedAccent = Color(0xFFFF2A2A);
 /// What the second accent fades to while the microphone is muted.
 const Color kPresenceMutedAccent2 = Color(0xFFFF6A3C);
 
+/// Colour of the running background workers: amber, apart from both accents
+/// and the muted reds, so a worker never reads as one of the idle comets.
+/// shaders/presence.frag has it as WORK.
+const Color kPresenceWorkerAccent = Color(0xFFFFAE42);
+
 /// Near-black background used behind the full-window presence.
 const Color kPresenceBackground = Color(0xFF040206);
 
@@ -238,8 +243,8 @@ class _PresenceViewState extends State<PresenceView> {
 
   // Seconds (~63%) for an orbit to light up for a worker, to let it go, and
   // for the flare of a worker that ended to fade.
-  static const double _workRiseTau = 0.5;
-  static const double _workFallTau = 1.0;
+  static const double _workRiseTau = 0.3;
+  static const double _workFallTau = 0.6;
   static const double _doneTau = 0.5;
 
   // The timer that asks for the next frame fires this long before the frame

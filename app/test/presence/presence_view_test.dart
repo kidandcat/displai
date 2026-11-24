@@ -23,13 +23,24 @@ Widget _host(PresenceSignal signal, {required bool compact}) => Directionality(
   ),
 );
 
-/// Runs every mode with some audio for a handful of frames.
+/// Runs every mode with some audio for a handful of frames, then background
+/// workers starting and ending.
 Future<void> _exercise(WidgetTester tester, PresenceSignal signal) async {
   for (final mode in PresenceMode.values) {
     signal.mode = mode;
     if (mode == PresenceMode.thinking) signal.bumpActivity();
     for (var i = 0; i < 6; i++) {
       signal.addAudio(_tone(512), 16000);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+  }
+  for (final running in [
+    [1, 2, 3],
+    [2],
+    <int>[],
+  ]) {
+    signal.workers = running;
+    for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
   }

@@ -551,6 +551,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       'activity': activity,
       'heard': lastHeard,
       'jobs': backgroundJobs,
+      // Ids of the running workers, for the orb's satellites.
+      'workers': ready ? workers.runningIds.toList() : const <int>[],
       'muted': _muted,
     });
   }

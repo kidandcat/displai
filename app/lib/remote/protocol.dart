@@ -13,7 +13,7 @@ import 'dart:typed_data';
 /// JSON messages have a "t" field:
 ///   link → both:      peer {up}                       the encrypted session came up or went down
 ///   host → remote:    hello {rate}                    sent when the remote joins
-///                     state {mode, activity, heard, jobs, muted}
+///                     state {mode, activity, heard, jobs, workers, muted}
 ///                     stop                            drop the queued voice (barge-in)
 ///                     reset                           clear the display (before a replay)
 ///                     tool {id?, name, args}          run a display tool; reply when id is set
