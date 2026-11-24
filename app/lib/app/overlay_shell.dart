@@ -205,50 +205,55 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
       RRect.fromRectAndRadius(Rect.fromCircle(center: local, radius: 2 * from.r), Radius.circular(2 * from.r)),
       shape,
     )!;
+    // The shell sits above the navigator (MaterialApp.builder), so nothing gives its texts a
+    // Material: this one does, with the theme's text style.
     return TickerMode(
       enabled: _window.open || orbMode,
-      child: Stack(
-        children: [
-          Positioned.fromRect(
-            rect: panel,
-            child: Offstage(
-              offstage: t == 1,
-              child: TickerMode(
-                enabled: t < 1,
-                child: Opacity(
-                  opacity: 1 - const Interval(0.8, 1).transform(t),
-                  child: Transform(
-                    transform: Matrix4.translationValues(to.dx, to.dy, 0)
-                      ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
-                      ..multiply(Matrix4.translationValues(-local.dx, -local.dy, 0)),
-                    child: ClipRRect(
-                      clipper: _RRectClip(clip),
-                      // Still, the panel's shadow shows.
-                      clipBehavior: t == 0 ? Clip.none : Clip.antiAlias,
-                      child: _Panel(
-                        onMove: (d) => setState(() => _panel = _fit(panel.shift(d), usable)),
-                        onResize: (d) => setState(() => _panel = _fit(
-                              Rect.fromLTWH(
-                                panel.left,
-                                panel.top,
-                                math.max(_minPanel.width, panel.width + d.dx),
-                                math.max(_minPanel.height, panel.height + d.dy),
-                              ),
-                              usable,
-                            )),
-                        onDone: () {
-                          final p = _panel;
-                          if (p != null) _window.setPanel(p);
-                        },
-                        onClose: () => unawaited(_window.hide()),
-                        child: MediaQuery(
-                          data: mq.copyWith(
-                            size: Size(panel.width, panel.height - _bar),
-                            padding: EdgeInsets.zero,
-                            viewPadding: EdgeInsets.zero,
-                            viewInsets: EdgeInsets.zero,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Stack(
+          children: [
+            Positioned.fromRect(
+              rect: panel,
+              child: Offstage(
+                offstage: t == 1,
+                child: TickerMode(
+                  enabled: t < 1,
+                  child: Opacity(
+                    opacity: 1 - const Interval(0.8, 1).transform(t),
+                    child: Transform(
+                      transform: Matrix4.translationValues(to.dx, to.dy, 0)
+                        ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
+                        ..multiply(Matrix4.translationValues(-local.dx, -local.dy, 0)),
+                      child: ClipRRect(
+                        clipper: _RRectClip(clip),
+                        // Still, the panel's shadow shows.
+                        clipBehavior: t == 0 ? Clip.none : Clip.antiAlias,
+                        child: _Panel(
+                          onMove: (d) => setState(() => _panel = _fit(panel.shift(d), usable)),
+                          onResize: (d) => setState(() => _panel = _fit(
+                                Rect.fromLTWH(
+                                  panel.left,
+                                  panel.top,
+                                  math.max(_minPanel.width, panel.width + d.dx),
+                                  math.max(_minPanel.height, panel.height + d.dy),
+                                ),
+                                usable,
+                              )),
+                          onDone: () {
+                            final p = _panel;
+                            if (p != null) _window.setPanel(p);
+                          },
+                          onClose: () => unawaited(_window.hide()),
+                          child: MediaQuery(
+                            data: mq.copyWith(
+                              size: Size(panel.width, panel.height - _bar),
+                              padding: EdgeInsets.zero,
+                              viewPadding: EdgeInsets.zero,
+                              viewInsets: EdgeInsets.zero,
+                            ),
+                            child: widget.child,
                           ),
-                          child: widget.child,
                         ),
                       ),
                     ),
@@ -256,33 +261,33 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
                 ),
               ),
             ),
-          ),
-          if (widgetRect != null)
-            Positioned.fromRect(
-              rect: widgetRect,
-              child: _Widget(
-                assistant: a!,
-                onMove: (d) => setState(() => _widgetShift += d),
-              ),
-            ),
-          if (t > 0 && a != null)
-            Positioned.fromRect(
-              rect: orb,
-              child: Opacity(
-                opacity: const Interval(0.75, 1).transform(t),
-                child: _Orb(
-                  presence: a.presence,
-                  onTap: a.toggleMute,
-                  onMove: (d) => setState(() => _orb = _fit(orb.shift(d), screen).topLeft),
-                  onDone: () {
-                    final o = _orb;
-                    if (o != null) _window.setOrb(o);
-                  },
-                  onMenu: () => unawaited(_window.contextMenu()),
+            if (widgetRect != null)
+              Positioned.fromRect(
+                rect: widgetRect,
+                child: _Widget(
+                  assistant: a!,
+                  onMove: (d) => setState(() => _widgetShift += d),
                 ),
               ),
-            ),
-        ],
+            if (t > 0 && a != null)
+              Positioned.fromRect(
+                rect: orb,
+                child: Opacity(
+                  opacity: const Interval(0.75, 1).transform(t),
+                  child: _Orb(
+                    presence: a.presence,
+                    onTap: a.toggleMute,
+                    onMove: (d) => setState(() => _orb = _fit(orb.shift(d), screen).topLeft),
+                    onDone: () {
+                      final o = _orb;
+                      if (o != null) _window.setOrb(o);
+                    },
+                    onMenu: () => unawaited(_window.contextMenu()),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
