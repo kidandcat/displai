@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart' show GlobalKey, WidgetsBinding;
 
 import 'display_controller.dart';
+import 'form_widgets.dart' show secretsHidden;
 import 'html_widgets.dart' show capturePages;
 
 /// Runs display tool calls against a [DisplayController] that is on screen, the same way on
@@ -46,8 +47,18 @@ class DisplayRunner {
   }
 
   /// A PNG of what [screenKey] (a RepaintBoundary) shows, at most 1280 px on the long side,
-  /// with its logical size; or null when it is not on screen.
+  /// with its logical size; or null when it is not on screen. Secret form fields are drawn
+  /// obscured in it even when the user revealed them.
   static Future<(Uint8List, ui.Size)?> capture(GlobalKey screenKey) async {
+    secretsHidden.value++;
+    try {
+      return await _capture(screenKey);
+    } finally {
+      secretsHidden.value--;
+    }
+  }
+
+  static Future<(Uint8List, ui.Size)?> _capture(GlobalKey screenKey) async {
     await frame();
     final boundary = screenKey.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary) return null;

@@ -27,6 +27,7 @@ abstract final class DisplayActions {
   static const String tap = 'tap';
   static const String press = 'press';
   static const String submit = 'submit';
+  static const String cancel = 'cancel';
 
   /// `minerva.send(...)` from a custom HTML page; context {text}.
   static const String message = 'message';
@@ -94,6 +95,9 @@ final Catalog displayCatalog = Catalog([
     'fields',
     'ord',
     'submitted',
+    'cancel',
+    'vault',
+    'vaultDescription',
   ], _form),
 ], catalogId: displayCatalogId);
 
@@ -1190,5 +1194,6 @@ Widget _form(CatalogItemContext ctx, _Json data) {
     data: data,
     dataContext: ctx.dataContext,
     onSubmit: () => _dispatch(ctx, DisplayActions.submit),
+    onCancel: () => _dispatch(ctx, DisplayActions.cancel),
   );
 }
