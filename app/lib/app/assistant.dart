@@ -529,6 +529,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       case SpeechStarted():
         _userSpeaking = true;
         if (busy && !_barged) _bargeIn();
+      case SpeechDropped():
+        _heardNothing();
       case Utterance():
         _userSpeaking = false;
         final wasBargeIn = _barged;
@@ -538,8 +540,14 @@ class Assistant extends ChangeNotifier implements AssistantUi {
           return;
         }
         var text = e.text;
-        if (text.isEmpty) return;
-        if (_carry.isNotEmpty) {
+        if (text.isEmpty) {
+          // A short word Parakeet could not make out. If it cut off the answer to what the user
+          // had just said, that is asked again rather than lost; otherwise back to listening.
+          debugPrint('heard nothing intelligible (${e.seconds.toStringAsFixed(1)}s)');
+          if (!wasBargeIn || _carry.isEmpty) return _heardNothing();
+          text = _carry;
+          _carry = '';
+        } else if (_carry.isNotEmpty) {
           text = '$_carry $text';
           _carry = '';
         }
@@ -574,6 +582,17 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       event = vault.scrub('[display] could not save credential ${s.name}: $e');
     }
     _onDisplayEvent(event);
+  }
+
+  /// Speech that ended without a turn: the user is no longer talking, nothing is carried over,
+  /// and whatever waited for the silence (notices, the status line) goes on.
+  void _heardNothing() {
+    _userSpeaking = false;
+    _barged = false;
+    _carry = '';
+    _updatePresence();
+    _drainNotices();
+    notifyListeners();
   }
 
   /// The user talked over the assistant: stop the voice and the brain at once.

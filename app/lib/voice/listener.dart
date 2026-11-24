@@ -10,7 +10,11 @@ sealed class HeardEvent {}
 /// The user has been talking continuously for [bargeInSeconds]: enough to interrupt the assistant.
 class SpeechStarted extends HeardEvent {}
 
-/// A finished utterance (end of turn after [endSilence] of silence) and its transcript.
+/// Speech announced with [SpeechStarted] was thrown away ([Listener.reset]): no [Utterance] follows.
+class SpeechDropped extends HeardEvent {}
+
+/// A finished utterance (end of turn after [endSilence] of silence) and its transcript (empty
+/// when nothing intelligible was recognized, common for one short word).
 class Utterance extends HeardEvent {
   Utterance(this.text, this.seconds, this.speechEnd, this.sttDone);
 
@@ -24,7 +28,8 @@ class Utterance extends HeardEvent {
 
 /// Voice activity detection + speech recognition (Silero VAD + Parakeet v3) in a background isolate.
 ///
-/// Feed it echo-cancelled 16 kHz mic audio with [add]; it emits [SpeechStarted] and [Utterance].
+/// Feed it echo-cancelled 16 kHz mic audio with [add]; it emits [SpeechStarted], then [Utterance]
+/// or [SpeechDropped].
 class Listener {
   Listener._(this._isolate, this._send, this.events);
 
@@ -54,6 +59,8 @@ class Listener {
         if (!ready.isCompleted) ready.completeError(m);
       } else if (m == 'speech') {
         ctrl.add(SpeechStarted());
+      } else if (m == 'dropped') {
+        ctrl.add(SpeechDropped());
       } else if (m is List) {
         ctrl.add(
           Utterance(
@@ -156,6 +163,7 @@ class Listener {
           return;
         }
         if (m == 'reset') {
+          if (announced) out.send('dropped');
           buf = Float32List(0);
           vad.reset();
           speechRun = 0;
