@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart' show GlobalKey;
 import 'package:path_provider/path_provider.dart';
 
 import '../audio/native_audio.dart';
+import 'desktop_window.dart';
 import '../brain/claude_session.dart';
 import '../brain/system_prompt.dart';
 import '../display/display.dart';
@@ -50,6 +51,10 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   static const continuationWindow = Duration(seconds: 2);
 
   final audio = NativeAudio();
+
+  /// The desktop window: the Mac listens only while it is open, and it becomes a corner orb
+  /// while a phone is connected.
+  final window = DesktopWindow();
   @override
   final display = DisplayController();
   @override
@@ -186,8 +191,10 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         sessionId: sessionId,
       );
       await _claude.start();
-      final format = await audio.start(playRate: _speaker.sampleRate);
-      debugPrint('audio: $format');
+      window.onTap = toggleMute;
+      await window.init();
+      window.addListener(_syncAudio);
+      _syncAudio();
       _earcon = _makeEarcon(_speaker.sampleRate);
       presence.addListener(_pushState);
       if (store.get('remote_key') != null) _startPhone();
@@ -254,8 +261,11 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   }
 
   void _phoneJoined() {
-    // The Mac goes quiet: its voice stops, its mic is ignored, the phone takes over.
+    // The Mac goes quiet: its voice stops, its mic is released, the phone takes over, and the
+    // window shrinks to the corner orb.
     unawaited(audio.stop());
+    unawaited(window.setOverlay(true));
+    _syncAudio();
     _listener.reset();
     _pushState();
     _updatePresence();
@@ -263,6 +273,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   }
 
   void _phoneLeft() {
+    unawaited(window.setOverlay(false));
+    _syncAudio();
     _listener.reset();
     // Bring the display back to the Mac as the phone had it.
     display.reset();
@@ -270,6 +282,29 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     _updatePresence();
     _drainNotices();
     notifyListeners();
+  }
+
+  Future<void> _audioSync = Future.value();
+
+  /// The Mac's own mic and speaker run only while its window is open and no phone is connected
+  /// (and never with MINERVA_NO_MIC set, for test instances next to people).
+  void _syncAudio() {
+    _audioSync = _audioSync.then((_) async {
+      final want = window.open && !onPhone && Platform.environment['MINERVA_NO_MIC'] == null;
+      if (want == audio.running) return;
+      try {
+        if (want) {
+          debugPrint('audio: ${await audio.start(playRate: _speaker.sampleRate)}');
+        } else {
+          await audio.shutdown();
+          debugPrint('audio: off (window closed or phone connected)');
+        }
+      } catch (e) {
+        debugPrint('audio ${want ? 'start' : 'shutdown'} failed: $e');
+      }
+      if (!onPhone) _listener.reset();
+      _updatePresence();
+    });
   }
 
   void _onPhoneMic(Float32List samples) {
@@ -615,6 +650,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       s.cancel();
     }
     _noticeTimer?.cancel();
+    window.removeListener(_syncAudio);
+    window.dispose();
     presence.removeListener(_pushState);
     unawaited(phone?.close());
     if (ready) {

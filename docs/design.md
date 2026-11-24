@@ -264,6 +264,27 @@ speech recognition, the brain, the voice and all tools stay on the desktop. Same
   The phone reports `idle{n}` when the voice it got has played, which ends the desktop's "speaking" state.
 - `app/tool/remote_smoke.dart` is a headless remote for testing without a phone.
 
+### 3.8 Desktop service and window states
+
+Minerva runs as a background app on the Mac (`app/tool/install_macos_service.sh`: a LaunchAgent
+starts `/Applications/Minerva.app --background` at login, restarts it after a crash, not after a
+quit). One window, three states (`MainFlutterWindow.swift`, `lib/app/desktop_window.dart`):
+
+| State | When | Mac mic and speaker | Dock |
+|---|---|---|---|
+| open | window shown | on | yes |
+| hidden | closed, minimized, or started with `--background` | off (audio engine shut down) | no (menu bar item) |
+| overlay | a phone is connected | off | no |
+
+- The audio engine runs only while the window is open, no phone is connected and `MINERVA_NO_MIC` is
+  unset; otherwise it is shut down, so macOS shows no mic in use.
+- **Overlay**: a 132 pt round window with the orb, floating above other apps on every Space,
+  bottom-right by default. The native window handles the mouse: a click mutes, a drag moves it
+  (position kept in `overlayOrigin`), a right click opens the menu. When the phone leaves it goes
+  back to open or hidden.
+- The Flutter engine starts headless, before any window is shown. A second launch asks the running
+  instance to show its window and exits. App Nap is disabled so routines and the relay keep their timers.
+
 ## 4. Latency (measured)
 
 Spike: `spike/e2e.py`. A recorded utterance is fed to the VAD in real time; Parakeet transcribes;

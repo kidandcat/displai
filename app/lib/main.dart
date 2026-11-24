@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'app/assistant.dart';
 import 'app/main_view.dart';
+import 'presence/presence.dart';
 import 'store/legacy_data.dart';
 import 'remote/remote_app.dart';
 import 'voice/model_store.dart';
@@ -95,12 +96,34 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final a = _assistant;
-    return Scaffold(
-      body: a == null
-          ? ListenableBuilder(listenable: _models, builder: (context, _) => _ModelsScreen(models: _models))
-          : ListenableBuilder(
-              listenable: Listenable.merge([a, a.display]),
-              builder: (context, _) => MainView(
+    if (a == null) {
+      return Scaffold(
+        body: ListenableBuilder(listenable: _models, builder: (context, _) => _ModelsScreen(models: _models)),
+      );
+    }
+    return ListenableBuilder(
+      listenable: Listenable.merge([a, a.display, a.window]),
+      builder: (context, _) => a.window.overlay
+          // A phone is connected: the window is just the orb on a dark disc, the rest transparent.
+          ? Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Center(
+                child: Container(
+                  width: 124,
+                  height: 124,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: kBackground.withValues(alpha: 0.88),
+                    border: Border.all(color: kAccent.withValues(alpha: 0.25)),
+                  ),
+                  child: ClipOval(
+                    child: PresenceView(signal: a.presence, compact: true, compactSize: 122),
+                  ),
+                ),
+              ),
+            )
+          : Scaffold(
+              body: MainView(
                 assistant: a,
                 actions: [if (a.ready) _PhoneButton(assistant: a)],
               ),

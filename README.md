@@ -14,4 +14,17 @@ To see what the relay sees, run your own with `cd relay && go run . -addr 0.0.0.
 it with `MINERVA_RELAY=ws://<host>:8094`, and pair the phone: apart from two handshake frames with
 ephemeral public keys, every frame it logs is ciphertext.
 
+## Running as a service on the Mac
+
+```sh
+cd app && flutter build macos --release && tool/install_macos_service.sh
+```
+
+This installs `/Applications/Minerva.app` and a LaunchAgent that starts it hidden at login. The
+Mac only listens while the window is open; closed or minimized, Minerva keeps running in the
+background (menu bar item), so the phone works without the window in front. While a phone is
+connected the window turns into a small orb, always on top in a corner: click it to mute, drag it
+to move it. "Salir de Minerva" quits until the next login; `tool/install_macos_service.sh
+--uninstall` removes the LaunchAgent. For tests, `MINERVA_NO_MIC=1` keeps the Mac's mic off.
+
 Status: design phase. See [docs/design.md](docs/design.md).

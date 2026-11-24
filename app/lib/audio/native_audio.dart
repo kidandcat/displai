@@ -15,6 +15,7 @@ class NativeAudio {
   final _idle = StreamController<void>.broadcast();
   StreamSubscription<dynamic>? _sub;
   bool _playing = false;
+  bool _running = false;
 
   /// Echo-cancelled mic audio, 16 kHz mono.
   Stream<Float32List> get mic => _mic.stream;
@@ -26,6 +27,9 @@ class NativeAudio {
   Stream<void> get idle => _idle.stream;
 
   bool get isPlaying => _playing;
+
+  /// The engine is on: the Mac's mic is open and its speaker plays.
+  bool get running => _running;
 
   Future<String> start({required int playRate}) async {
     _sub ??= _events.receiveBroadcastStream().listen((e) {
@@ -40,17 +44,35 @@ class NativeAudio {
           _idle.add(null);
       }
     });
-    return (await _methods.invokeMethod<String>('start', {'playRate': playRate}))!;
+    final format = (await _methods.invokeMethod<String>('start', {'playRate': playRate}))!;
+    _running = true;
+    return format;
   }
 
+  /// Stops the engine and releases the mic (the menu bar mic indicator goes away).
+  Future<void> shutdown() async {
+    _running = false;
+    _playing = false;
+    await _methods.invokeMethod('shutdown');
+  }
+
+  /// Plays mono samples; while the engine is off they are dropped (and it reports idle at once).
   Future<void> play(Float32List samples) async {
     if (samples.isEmpty) return;
+    if (!_running) {
+      scheduleMicrotask(() => _idle.add(null));
+      return;
+    }
     _playing = true;
     await _methods.invokeMethod('play', samples);
   }
 
   Future<void> stop() async {
     _playing = false;
+    if (!_running) {
+      scheduleMicrotask(() => _idle.add(null));
+      return;
+    }
     await _methods.invokeMethod('stop');
   }
 }
