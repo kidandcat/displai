@@ -410,4 +410,68 @@ class AppLocalizationsEn extends AppLocalizations {
   String voiceMale(int n) {
     return 'Male $n';
   }
+
+  @override
+  String get activityUsingPhone => 'Using the phone…';
+
+  @override
+  String get phoneControl => 'Phone control';
+
+  @override
+  String get phoneControlOn => 'On: Minerva can use this phone\'s apps';
+
+  @override
+  String get phoneControlOff => 'Off: let Minerva use this phone\'s apps';
+
+  @override
+  String get phoneControlIntro =>
+      'While you talk to Minerva from this phone, it can use the phone for you: read the screen of the app in front, tap, type, scroll, open apps and take screenshots. Everything else (memories, routines, webhooks, credentials, workers) keeps running on the computer.';
+
+  @override
+  String get phoneControlAccessibility => 'Accessibility service';
+
+  @override
+  String get phoneControlAccessibilityHelp =>
+      'Lets Minerva read the screen and act on it. In the list that opens, tap Minerva (under downloaded or installed apps) and turn it on.';
+
+  @override
+  String get phoneControlAccessibilityStopped =>
+      'Turned on, but Android has not started it: turn it off and on again.';
+
+  @override
+  String get phoneControlRestricted =>
+      'If Android says the setting is restricted (Android 13 and later, for apps not installed from a store): open the app info, tap ⋮ > Allow restricted settings, and try again.';
+
+  @override
+  String get phoneControlOverlay => 'Display over other apps';
+
+  @override
+  String get phoneControlOverlayHelp =>
+      'Shows Minerva\'s orb above the other apps while it works on them. Not needed while the accessibility service is on, which shows the orb itself.';
+
+  @override
+  String get phoneControlScreenshots => 'Screenshots';
+
+  @override
+  String get phoneControlScreenshotsAuto =>
+      'Included with the accessibility service on this Android version.';
+
+  @override
+  String get phoneControlScreenshotsAsk =>
+      'The first time Minerva takes a screenshot, the phone asks you: tap Start now (and tick Don\'t show again if offered).';
+
+  @override
+  String get phoneControlScreenshotsReady => 'Allowed until Minerva closes.';
+
+  @override
+  String get statusOn => 'On';
+
+  @override
+  String get statusOff => 'Off';
+
+  @override
+  String get openSettings => 'Open settings';
+
+  @override
+  String get openAppInfo => 'App info';
 }

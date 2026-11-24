@@ -3,4 +3,5 @@
     <!-- The name is the same in every language. The UI strings are in the Flutter app
          (lib/l10n); permission prompts come from Android itself. -->
     <string name="app_name" translatable="false">Minerva</string>
+    <string name="phone_control_description">Lets Minerva use the phone for you when you ask it by voice: it reads the screen of the app in front, taps, types, scrolls, opens apps and takes screenshots. Minerva only acts on what you ask.</string>
 </resources>

@@ -14,8 +14,10 @@ import io.flutter.plugin.common.MethodChannel
  * Minerva on a phone is the remote of a desktop that does all the processing. This activity
  * gives Flutter the phone's echo-cancelled mic and its speaker ([VoiceAudio], channel
  * minerva/audio, the same contract as the macOS engine) and the pairing links it is opened
- * with (channel minerva/link), and tells it when it was opened as the phone's assistant
- * (channel minerva/assist, see [AssistService]).
+ * with (channel minerva/link), tells it when it was opened as the phone's assistant
+ * (channel minerva/assist, see [AssistService]), and runs the brain's phone tools (channel
+ * minerva/phone, see [PhoneControl]). While the audio runs, [LinkService] keeps it going behind
+ * other apps.
  */
 class MainActivity : FlutterActivity() {
     private var audio: VoiceAudio? = null
@@ -63,6 +65,7 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(messenger, "minerva/phone").setMethodCallHandler(PhoneControl(this))
         MethodChannel(messenger, "minerva/webview").setMethodCallHandler { call, result ->
             if (call.method == "snapshot") {
                 PageSnapshots.capture(this) { pages -> result.success(pages) }
@@ -95,6 +98,7 @@ class MainActivity : FlutterActivity() {
     private fun startAudio(rate: Int, result: MethodChannel.Result) {
         try {
             result.success(audio!!.start(rate))
+            LinkService.start(this)
         } catch (e: Exception) {
             result.error("audio", e.message, null)
         }
@@ -123,7 +127,19 @@ class MainActivity : FlutterActivity() {
         (intent.getBooleanExtra(EXTRA_ASSIST, false) ||
             intent.action == Intent.ACTION_ASSIST || intent.action == Intent.ACTION_VOICE_COMMAND)
 
+    override fun onStart() {
+        super.onStart()
+        OrbOverlay.appVisible(this, true)
+    }
+
+    override fun onStop() {
+        OrbOverlay.appVisible(this, false)
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        LinkService.stop(this)
+        OrbOverlay.setState(this, emptyMap<String, Any>())
         audio?.release()
         audio = null
         super.onDestroy()

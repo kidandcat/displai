@@ -15,6 +15,7 @@ import 'app/overlay_shell.dart';
 import 'app/settings.dart';
 import 'l10n/l10n.dart';
 import 'store/legacy_data.dart';
+import 'remote/phone_orb.dart';
 import 'remote/remote_app.dart';
 import 'vault/vault.dart';
 import 'voice/model_store.dart';
@@ -29,6 +30,13 @@ void main() {
   } else {
     runApp(const MinervaApp());
   }
+}
+
+/// The orb over the phone's other apps, in its own engine (android/.../OrbOverlay.kt).
+@pragma('vm:entry-point')
+void orbMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const PhoneOrbApp());
 }
 
 class MinervaApp extends StatefulWidget {

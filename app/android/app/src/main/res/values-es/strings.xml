@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_control_description">Permite que Minerva use el móvil por ti cuando se lo pides por voz: lee la pantalla de la app que tienes delante, toca, escribe, desplaza, abre apps y hace capturas. Minerva solo hace lo que le pides.</string>
+</resources>
