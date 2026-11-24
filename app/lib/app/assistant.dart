@@ -36,35 +36,38 @@ import '../voice/speaker.dart';
 import '../webhooks/webhook_tools.dart';
 import '../webhooks/webhooks.dart';
 import 'assistant_ui.dart';
+import 'settings.dart';
 
 /// Wires voice, brain and display together (docs/design.md §2 and §5).
 ///
 /// Mic (echo-cancelled) → [Listener] → [ClaudeSession] → sentences → [Speaker] → [NativeAudio].
 /// Display tool calls arrive through the embedded MCP server; partial tool input streams into
 /// the [DisplayController] while Claude is still writing it.
-class Assistant extends ChangeNotifier implements AssistantUi {
-  Assistant({required this.models, this.voice = 1, DesktopWindow? window})
+class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings {
+  Assistant({required this.models, this.voice = defaultVoice, DesktopWindow? window})
       : window = window ?? DesktopWindow();
 
   final ModelStore models;
 
-  /// What the conversation and the workers run on unless the user picks otherwise.
-  static const defaultBrainModel = ModelChoice(model: 'opus', effort: 'low');
-  static const defaultWorkerModel = ModelChoice(model: 'opus', effort: 'medium');
-
   /// The conversation's model (the main brain) and the workers', saved in the store.
+  @override
   ModelChoice brainModel = defaultBrainModel;
+  @override
   ModelChoice workerModel = defaultWorkerModel;
 
   /// The models of the installed Claude Code (null until it first reported them).
+  @override
   ClaudeCatalog? catalog;
 
   /// Why Claude Code says fast mode can't be used on this account (a reason code such as
   /// `extra_usage_disabled`), else null.
+  @override
   String? fastUnavailable;
 
-  /// Supertonic 3 speaker id: 0–4 are female voices (F1–F5), 5–9 male (M1–M5).
-  final int voice;
+  /// Supertonic 3 speaker id: 0–4 are female voices (F1–F5), 5–9 male (M1–M5); the one in the
+  /// store once started.
+  @override
+  int voice;
 
   /// The user can resume talking this long after the answer became audible and it still
   /// counts as the same turn (design §5, continuation merge).
@@ -257,7 +260,9 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       catalog = ClaudeCatalog.load(store);
       brainModel = ModelChoice.load(store, 'brain', defaultBrainModel);
       workerModel = ModelChoice.load(store, 'workers', defaultWorkerModel);
+      voice = validVoice(int.tryParse(store.get('voice') ?? '')) ?? voice;
       vault = await Vault.open('${store.dir}/vault');
+      vault.addListener(_pushSettings);
       workers = Workers(
         store: store,
         hostTools: [
@@ -362,6 +367,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   /// UI, the voice and the native menus at once, and the brain (told now, and in its prompt from
   /// the next start). Returns the brain's new language section. [tell]: notify the brain (not
   /// needed when it asked for the change itself).
+  @override
   Future<String> setLanguage(String? code, {bool tell = true}) async {
     code = validLanguage(code);
     store.set('language', code);
@@ -375,10 +381,24 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     return section;
   }
 
+  // ---------------------------------------------------------------- voice
+
+  /// Switches the voice the replies are read with, from the next sentence on.
+  @override
+  void setVoice(int voice) {
+    final v = validVoice(voice);
+    if (v == null) return;
+    this.voice = v;
+    store.set('voice', v == defaultVoice ? null : '$v');
+    _speaker.voice = v;
+    notifyListeners();
+  }
+
   // ---------------------------------------------------------------- models
 
   /// Switches the conversation's model, effort or speed. The brain restarts on the same
   /// conversation, at once or when the answer in progress ends.
+  @override
   void setBrainModel(ModelChoice choice) {
     brainModel = choice;
     choice.save(store, 'brain');
@@ -388,6 +408,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   }
 
   /// Switches the model, effort or speed of workers started from now on.
+  @override
   void setWorkerModel(ModelChoice choice) {
     workerModel = choice;
     choice.save(store, 'workers');
@@ -455,6 +476,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       ..onMic = _onPhoneMic
       ..onEvent = _onDisplayEvent
       ..onVault = _onVaultSubmission
+      ..onSettings = _onPhoneSettings
+      ..onVaultDelete = _onPhoneVaultDelete
       ..onMute = ((on) => muted = on)
       ..onIdle = _onAudioIdle
       ..onJoin = _phoneJoined
@@ -532,9 +555,66 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     });
   }
 
+  /// Sends the settings to the phone (it shows them, and changes them through [_onPhoneSettings]).
+  void _pushSettings() {
+    final p = phone;
+    if (p == null || !p.active || !ready) return;
+    final hooks = webhooks;
+    p.pushSettings({
+      'brain': brainModel.toJson(),
+      'workers': workerModel.toJson(),
+      'catalog': catalog?.toJson(),
+      'fast_unavailable': fastUnavailable,
+      'language': languageSetting.value,
+      'voice': voice,
+      // Names and field names only: credential values never leave the vault.
+      'vault': {
+        'error': vault.loadError,
+        'credentials': [
+          for (final c in vault.credentials)
+            {'name': c.name, 'description': c.description, 'fields': [for (final f in c.fields) f.name]},
+        ],
+      },
+      if (hooks != null)
+        'webhooks': {
+          'on': hooks.online && hooks.certOk,
+          'status': hooks.status,
+          'hooks': [
+            for (final h in hooks.hooks) {'name': h.name, 'description': h.description, 'url': hooks.urlOf(h)},
+          ],
+        },
+    });
+  }
+
+  /// The user changed settings on the phone: the same as changing them here.
+  void _onPhoneSettings(Map<String, dynamic> m) {
+    if (!ready) return;
+    final brain = ModelChoice.fromJson(m['brain']);
+    if (brain != null && brain != brainModel) setBrainModel(brain);
+    final workers = ModelChoice.fromJson(m['workers']);
+    if (workers != null && workers != workerModel) setWorkerModel(workers);
+    if (m.containsKey('language')) {
+      final code = m['language'] is String ? m['language'] as String : null;
+      if (validLanguage(code) != languageSetting.value) unawaited(setLanguage(code));
+    }
+    final v = m['voice'];
+    if (v is num && v.toInt() != voice) setVoice(v.toInt());
+  }
+
+  /// The user deleted a credential on the phone.
+  Future<void> _onPhoneVaultDelete(String name) async {
+    if (!ready) return;
+    try {
+      await vault.delete(name);
+    } catch (e) {
+      debugPrint('vault: could not delete $name from the phone: $e');
+    }
+  }
+
   @override
   void notifyListeners() {
     _pushState();
+    _pushSettings();
     super.notifyListeners();
   }
 

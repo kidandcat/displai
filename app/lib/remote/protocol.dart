@@ -19,6 +19,11 @@ import 'dart:typed_data';
 ///                     tool {id?, name, args}          run a display tool; reply when id is set
 ///                     partial {name, json}            streaming tool input (progressive show)
 ///                     cancel_partial
+///                     settings {brain, workers, catalog, fast_unavailable, language, voice,
+///                               vault: {error, credentials: [{name, description, fields}]},
+///                               webhooks?: {on, status, hooks: [{name, description, url}]}}
+///                                                     the desktop's settings, when they change
+///                                                     (field names only, never vault values)
 ///   remote → host:    hello {w, h, platform}          logical screen size of the remote display
 ///                     result {id, text, error?, png?} a display tool's result (png: base64)
 ///                     idle {n}                        voice queue drained after n voice frames
@@ -28,6 +33,11 @@ import 'dart:typed_data';
 ///                                                     a credential typed in a vault form; the
 ///                                                     host saves it in its vault, never in the
 ///                                                     brain's conversation
+///                     set {brain?, workers?, language?, voice?}
+///                                                     the user changed settings on the phone
+///                                                     (brain/workers: {model, effort, fast};
+///                                                     language null: follow the OS)
+///                     vault_delete {name}             the user deleted a credential
 class RemoteProtocol {
   static const kindMic = 1;
   static const kindVoice = 2;

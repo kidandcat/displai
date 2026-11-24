@@ -106,5 +106,11 @@
   "fastUnavailable": "El modo rápido no está disponible: {reason}",
   "fastExtraUsageDisabled": "el uso extra está desactivado en tu cuenta de Claude",
   "modelConversationNote": "La conversación sigue con el nuevo modelo.",
-  "modelWorkersNote": "Se aplica a los workers que empiecen a partir de ahora."
+  "modelWorkersNote": "Se aplica a los workers que empiecen a partir de ahora.",
+  "settings": "Ajustes",
+  "settingsOffline": "Conecta con el ordenador para cambiar sus ajustes.",
+  "settingsAppliedOnComputer": "Son los ajustes del ordenador: los cambios se aplican a Minerva allí.",
+  "voice": "Voz",
+  "voiceFemale": "Femenina {n}",
+  "voiceMale": "Masculina {n}"
 }

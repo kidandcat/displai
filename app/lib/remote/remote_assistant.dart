@@ -6,7 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show GlobalKey, Size;
 
 import '../app/assistant_ui.dart';
+import '../app/settings.dart';
 import '../audio/native_audio.dart';
+import '../brain/claude_models.dart';
 import '../display/display.dart';
 import '../display/display_runner.dart';
 import '../l10n/l10n.dart';
@@ -16,7 +18,9 @@ import 'remote_link.dart';
 
 /// The phone side of Minerva: the mic, the speaker and the display of a desktop that does all
 /// the processing (speech recognition, the brain, the voice). See [RemoteProtocol].
-class RemoteAssistant extends ChangeNotifier implements AssistantUi {
+///
+/// Its settings are the desktop's: shown as the desktop last sent them, and changed by asking it.
+class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSettings {
   RemoteAssistant({required this.relay, required this.key});
 
   final String relay;
@@ -55,6 +59,33 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
   String lastHeard = '';
   @override
   int backgroundJobs = 0;
+
+  // Settings, as the desktop last sent them.
+
+  /// The desktop has sent its settings.
+  bool settingsKnown = false;
+  @override
+  ModelChoice brainModel = defaultBrainModel;
+  @override
+  ModelChoice workerModel = defaultWorkerModel;
+  @override
+  ClaudeCatalog? catalog;
+  @override
+  String? fastUnavailable;
+  @override
+  int voice = defaultVoice;
+
+  /// The desktop's saved credentials: names, descriptions and field names (never values).
+  List<({String name, String description, List<String> fields})> credentials = const [];
+
+  /// Why the desktop's vault can't be used, or null.
+  String? vaultError;
+
+  /// The desktop's webhooks (null when it does not run them), its status line, and whether they
+  /// can be received.
+  List<({String name, String description, String? url})>? webhooks;
+  String webhooksStatus = '';
+  bool webhooksOn = false;
 
   @override
   String get linkNote {
@@ -137,7 +168,88 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
         display.streamPartial('${m['name']}', '${m['json']}');
       case 'cancel_partial':
         display.cancelPartial();
+      case 'settings':
+        _applySettings(m);
     }
+  }
+
+  /// A message from the desktop, as if it came over the link.
+  @visibleForTesting
+  void handleMessage(Map<String, dynamic> m) => _onMessage(m);
+
+  /// The desktop's settings message (see [RemoteProtocol]).
+  void _applySettings(Map<String, dynamic> m) {
+    settingsKnown = true;
+    brainModel = ModelChoice.fromJson(m['brain']) ?? brainModel;
+    workerModel = ModelChoice.fromJson(m['workers']) ?? workerModel;
+    catalog = ClaudeCatalog.fromJson(m['catalog']) ?? catalog;
+    fastUnavailable = m['fast_unavailable'] as String?;
+    // The phone's screens follow the desktop's language too.
+    languageSetting.value = validLanguage(m['language'] as String?);
+    voice = validVoice((m['voice'] as num?)?.toInt()) ?? voice;
+    final vault = m['vault'] is Map ? m['vault'] as Map : const {};
+    vaultError = vault['error'] as String?;
+    credentials = [
+      for (final c in vault['credentials'] as List? ?? const [])
+        if (c is Map && c['name'] is String)
+          (
+            name: c['name'] as String,
+            description: '${c['description'] ?? ''}',
+            fields: [for (final f in c['fields'] as List? ?? const []) '$f'],
+          ),
+    ];
+    final hooks = m['webhooks'];
+    if (hooks is Map) {
+      webhooksOn = hooks['on'] == true;
+      webhooksStatus = '${hooks['status'] ?? ''}';
+      webhooks = [
+        for (final h in hooks['hooks'] as List? ?? const [])
+          if (h is Map && h['name'] is String)
+            (name: h['name'] as String, description: '${h['description'] ?? ''}', url: h['url'] as String?),
+      ];
+    } else {
+      webhooks = null;
+    }
+    notifyListeners();
+  }
+
+  /// Asks the desktop to change settings; shown at once, then as the desktop confirms them.
+  void _set(Map<String, Object?> change) {
+    link.send({'t': 'set', ...change});
+    notifyListeners();
+  }
+
+  @override
+  void setBrainModel(ModelChoice choice) {
+    brainModel = choice;
+    _set({'brain': choice.toJson()});
+  }
+
+  @override
+  void setWorkerModel(ModelChoice choice) {
+    workerModel = choice;
+    _set({'workers': choice.toJson()});
+  }
+
+  @override
+  Future<void> setLanguage(String? code) async {
+    languageSetting.value = validLanguage(code);
+    _set({'language': languageSetting.value});
+  }
+
+  @override
+  void setVoice(int voice) {
+    final v = validVoice(voice);
+    if (v == null) return;
+    this.voice = v;
+    _set({'voice': v});
+  }
+
+  /// Deletes one of the desktop's credentials.
+  void deleteCredential(String name) {
+    credentials = [for (final c in credentials) if (c.name != name) c];
+    link.send({'t': 'vault_delete', 'name': name});
+    notifyListeners();
   }
 
   Future<void> _startAudio(int rate) async {

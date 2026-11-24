@@ -263,9 +263,16 @@ speech recognition, the brain, the voice and all tools stay on the desktop. Same
 - **Protocol** (`app/lib/remote/protocol.dart`), inside the encrypted channel: audio frames are byte 0 =
   kind (1 mic, phone→desktop; 2 voice, desktop→phone) then PCM16LE. JSON messages:
   - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,muted}`, `stop`, `reset`,
-    `tool{id?,name,args}` (no id = replay), `partial{name,json}`, `cancel_partial`;
+    `tool{id?,name,args}` (no id = replay), `partial{name,json}`, `cancel_partial`,
+    `settings{brain,workers,catalog,fast_unavailable,language,voice,vault,webhooks?}` (whenever they change;
+    credential and field names only, never values);
   - phone→desktop: `hello{w,h,platform}`, `result{id,text,error,png?}`, `idle{n}`, `event{text}`,
-    `mute{on}`, `vault{name,description,fields}` (a credential typed in a vault form, see 3.9).
+    `mute{on}`, `vault{name,description,fields}` (a credential typed in a vault form, see 3.9),
+    `set{brain?,workers?,language?,voice?}`, `vault_delete{name}`.
+- **Settings on the phone**: the phone's settings screen (tune button) has what the desktop's status bar has
+  (conversation and worker models with effort and speed, voice, language, credentials, webhooks). They are
+  the desktop's: the phone shows the last `settings` it got and sends changes with `set`, which the desktop
+  applies as if made there. The phone's screens follow the desktop's language setting.
 - **While the phone is connected the desktop is quiet**: its mic is ignored, the phone's mic feeds the VAD
   and STT, the voice and the earcon go to the phone, and display tools run on the phone (10 s timeout, then
   locally). Brain messages get a `[phone WxH]` prefix so it designs for the phone screen. Mutating display
@@ -518,7 +525,8 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
 - **No scrolling**: one view = one screen; long content is split into several views.
 - **Ordinals**: every selectable item gets a visible number; `get_state` reports them so the agent can
   resolve "la segunda", "el último", "ese".
-- Settings: model alias, voice, input device, hotkey, "use my Claude Code settings" toggle.
+- Settings: model alias, voice, input device, hotkey, "use my Claude Code settings" toggle. The voice
+  button picks one of Supertonic 3's ten speakers (female 1–5, male 1–5; `kv.voice`), from the next sentence.
 
 ### 7.1 Language
 

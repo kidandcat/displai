@@ -441,5 +441,39 @@
   },
   "fastExtraUsageDisabled": "extra usage is turned off on your Claude account",
   "modelConversationNote": "The conversation goes on with the new model.",
-  "modelWorkersNote": "Applies to workers started from now on."
+  "modelWorkersNote": "Applies to workers started from now on.",
+  "settings": "Settings",
+  "@settings": {
+    "description": "Phone: title of the settings screen and tooltip of its button."
+  },
+  "settingsOffline": "Connect to the computer to change its settings.",
+  "@settingsOffline": {
+    "description": "Phone settings screen while the computer is not connected."
+  },
+  "settingsAppliedOnComputer": "These are the computer's settings: changes apply to Minerva there.",
+  "@settingsAppliedOnComputer": {
+    "description": "Phone settings screen: note at the top."
+  },
+  "voice": "Voice",
+  "@voice": {
+    "description": "Setting: the voice Minerva reads its replies with."
+  },
+  "voiceFemale": "Female {n}",
+  "@voiceFemale": {
+    "description": "One of the female voices.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceMale": "Male {n}",
+  "@voiceMale": {
+    "description": "One of the male voices.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  }
 }

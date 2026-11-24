@@ -128,18 +128,27 @@ class ClaudeCatalog {
     final raw = store.get(_storeKey);
     if (raw == null) return null;
     try {
-      final j = jsonDecode(raw) as Map<String, dynamic>;
-      return ClaudeCatalog(
-        version: j['version'] as String? ?? '',
-        models: [for (final m in j['models'] as List) ClaudeModel.fromJson((m as Map).cast<String, dynamic>())],
-      );
+      return fromJson(jsonDecode(raw));
     } catch (_) {
       return null;
     }
   }
 
-  void save(Store store) =>
-      store.set(_storeKey, jsonEncode({'version': version, 'models': [for (final m in all) m.toJson()]}));
+  void save(Store store) => store.set(_storeKey, jsonEncode(toJson()));
+
+  Map<String, Object?> toJson() => {'version': version, 'models': [for (final m in all) m.toJson()]};
+
+  /// From [toJson] (the store, or the desktop's settings sent to the phone); null if malformed.
+  static ClaudeCatalog? fromJson(Object? j) {
+    if (j is! Map || j['models'] is! List) return null;
+    return ClaudeCatalog(
+      version: j['version'] as String? ?? '',
+      models: [
+        for (final m in j['models'] as List)
+          if (m is Map && m['value'] is String) ClaudeModel.fromJson(m.cast<String, dynamic>()),
+      ],
+    );
+  }
 }
 
 /// Effort levels from lowest to highest, as Claude Code names them.
@@ -157,6 +166,10 @@ String? effortFor(ClaudeModel? model, String wanted) {
   }
   return model.efforts.first;
 }
+
+/// What the conversation and the workers run on unless the user picks otherwise.
+const defaultBrainModel = ModelChoice(model: 'opus', effort: 'low');
+const defaultWorkerModel = ModelChoice(model: 'opus', effort: 'medium');
 
 /// The model, effort and speed one kind of Claude session runs with (the conversation, or the
 /// workers), saved in the store under `<prefix>.model`, `.effort` and `.fast`.
@@ -179,6 +192,21 @@ class ModelChoice {
       ..set('$prefix.effort', effort)
       ..set('$prefix.fast', fast ? '1' : null);
   }
+
+  Map<String, Object?> toJson() => {'model': model, 'effort': effort, 'fast': fast};
+
+  /// From [toJson] (a choice sent between the desktop and the phone); null if malformed.
+  static ModelChoice? fromJson(Object? j) {
+    if (j is! Map || j['model'] is! String || j['effort'] is! String) return null;
+    return ModelChoice(model: j['model'] as String, effort: j['effort'] as String, fast: j['fast'] == true);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ModelChoice && other.model == model && other.effort == effort && other.fast == fast;
+
+  @override
+  int get hashCode => Object.hash(model, effort, fast);
 
   ModelChoice copyWith({String? model, String? effort, bool? fast}) =>
       ModelChoice(model: model ?? this.model, effort: effort ?? this.effort, fast: fast ?? this.fast);

@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../brain/claude_models.dart';
 import '../l10n/l10n.dart';
-import 'assistant.dart';
 import 'main_view.dart';
+import 'settings.dart';
 
 /// Status bar button with the conversation's model; opens [ModelPicker].
 class ModelButton extends StatelessWidget {
   const ModelButton({super.key, required this.assistant});
 
-  final Assistant assistant;
+  final AssistantSettings assistant;
 
   @override
   Widget build(BuildContext context) {
@@ -31,28 +31,44 @@ class ModelButton extends StatelessWidget {
   }
 }
 
+/// The name of an effort level, as the pickers show it.
+String effortName(AppLocalizations l, String effort) =>
+    {
+      'low': l.effortLow,
+      'medium': l.effortMedium,
+      'high': l.effortHigh,
+      'xhigh': l.effortXhigh,
+      'max': l.effortMax,
+    }[effort] ??
+    effort;
+
 /// Picks the model, effort and speed of the conversation and, on its other tab, of the workers.
 /// The list comes from the installed Claude Code: its newest model of each family, then the
-/// previous ones folded away.
+/// previous ones folded away. Above the status bar on the desktop; on a phone, across the screen.
 class ModelPicker extends StatefulWidget {
-  const ModelPicker({super.key, required this.assistant});
+  const ModelPicker({super.key, required this.assistant, this.workers = false});
 
-  final Assistant assistant;
+  final AssistantSettings assistant;
+
+  /// Opens on the workers' tab.
+  final bool workers;
 
   @override
   State<ModelPicker> createState() => _ModelPickerState();
 }
 
 class _ModelPickerState extends State<ModelPicker> {
-  bool _workers = false;
+  late bool _workers = widget.workers;
   bool _showPrevious = false;
   String _query = '';
 
-  Assistant get _a => widget.assistant;
+  AssistantSettings get _a => widget.assistant;
 
   ModelChoice get _choice => _workers ? _a.workerModel : _a.brainModel;
 
-  ModelChoice get _default => _workers ? Assistant.defaultWorkerModel : Assistant.defaultBrainModel;
+  ModelChoice get _default => _workers ? defaultWorkerModel : defaultBrainModel;
+
+  bool _narrow(BuildContext context) => MediaQuery.sizeOf(context).width < 600;
 
   void _set(ModelChoice c) => _workers ? _a.setWorkerModel(c) : _a.setBrainModel(c);
 
@@ -67,43 +83,63 @@ class _ModelPickerState extends State<ModelPicker> {
   }
 
   @override
-  Widget build(BuildContext context) => Align(
-        alignment: Alignment.bottomRight,
-        child: Padding(
-          padding: const EdgeInsets.only(right: 12, bottom: 56),
-          child: Material(
-            color: const Color(0xFF15111C),
-            elevation: 12,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: Colors.white12),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: SizedBox(
-              width: 380,
-              child: ListenableBuilder(listenable: _a, builder: (context, _) => _body(context)),
-            ),
+  Widget build(BuildContext context) {
+    final narrow = _narrow(context);
+    final media = MediaQuery.of(context);
+    final padding = narrow
+        ? EdgeInsets.fromLTRB(8, media.padding.top + 8, 8, media.viewInsets.bottom + media.padding.bottom + 8)
+        : const EdgeInsets.only(right: 12, bottom: 56);
+    return Align(
+      alignment: narrow ? Alignment.center : Alignment.bottomRight,
+      child: Padding(
+        padding: padding,
+        child: Material(
+          color: const Color(0xFF15111C),
+          elevation: 12,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: Colors.white12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            width: narrow ? double.infinity : 380,
+            child: ListenableBuilder(listenable: _a, builder: (context, _) => _body(context)),
           ),
         ),
-      );
+      ),
+    );
+  }
 
   Widget _body(BuildContext context) {
     final l = AppLocalizations.of(context);
     final catalog = _a.catalog;
     final theme = Theme.of(context);
+    final narrow = _narrow(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          padding: EdgeInsets.fromLTRB(16, narrow ? 6 : 14, narrow ? 4 : 16, 4),
           child: Row(
             children: [
               Text('Claude', style: theme.textTheme.titleMedium),
               const SizedBox(width: 8),
               if (catalog != null && catalog.version.isNotEmpty)
-                Text('${catalog.version} (Claude Code)',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38)),
+                Expanded(
+                  child: Text('${catalog.version} (Claude Code)',
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38)),
+                )
+              else
+                const Spacer(),
+              // A phone has no space bar or click outside to close it.
+              if (narrow)
+                IconButton(
+                  tooltip: l.close,
+                  icon: const Icon(Icons.close, color: Colors.white54),
+                  onPressed: () => Navigator.pop(context),
+                ),
             ],
           ),
         ),
@@ -134,7 +170,8 @@ class _ModelPickerState extends State<ModelPicker> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: TextField(
-              autofocus: true,
+              // On a phone the keyboard would cover the list.
+              autofocus: !narrow,
               decoration: InputDecoration(
                 isDense: true,
                 prefixIcon: const Icon(Icons.search, size: 18),
@@ -144,12 +181,15 @@ class _ModelPickerState extends State<ModelPicker> {
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 340),
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              children: _models(context, catalog),
+          // On a phone the list takes what the screen leaves.
+          Flexible(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: narrow ? double.infinity : 340),
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                children: _models(context, catalog),
+              ),
             ),
           ),
           const Divider(height: 1, color: Colors.white12),
@@ -229,13 +269,6 @@ class _ModelPickerState extends State<ModelPicker> {
     final l = AppLocalizations.of(context);
     final model = catalog.find(_choice.model);
     final effort = effortFor(model, _choice.effort);
-    final names = {
-      'low': l.effortLow,
-      'medium': l.effortMedium,
-      'high': l.effortHigh,
-      'xhigh': l.effortXhigh,
-      'max': l.effortMax,
-    };
     final efforts = model?.efforts ?? effortLevels;
     final unavailable = _a.fastUnavailable;
     return [
@@ -246,7 +279,7 @@ class _ModelPickerState extends State<ModelPicker> {
             value: effort,
             isDense: true,
             underline: const SizedBox(),
-            items: [for (final e in efforts) DropdownMenuItem(value: e, child: Text(names[e] ?? e))],
+            items: [for (final e in efforts) DropdownMenuItem(value: e, child: Text(effortName(l, e)))],
             onChanged: (v) => v == null ? null : _set(_choice.copyWith(effort: v)),
           ),
         ),

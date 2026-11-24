@@ -376,4 +376,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get modelWorkersNote => 'Applies to workers started from now on.';
+
+  @override
+  String get settings => 'Settings';
+
+  @override
+  String get settingsOffline =>
+      'Connect to the computer to change its settings.';
+
+  @override
+  String get settingsAppliedOnComputer =>
+      'These are the computer\'s settings: changes apply to Minerva there.';
+
+  @override
+  String get voice => 'Voice';
+
+  @override
+  String voiceFemale(int n) {
+    return 'Female $n';
+  }
+
+  @override
+  String voiceMale(int n) {
+    return 'Male $n';
+  }
 }

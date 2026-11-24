@@ -739,6 +739,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Applies to workers started from now on.'**
   String get modelWorkersNote;
+
+  /// Phone: title of the settings screen and tooltip of its button.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settings;
+
+  /// Phone settings screen while the computer is not connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to the computer to change its settings.'**
+  String get settingsOffline;
+
+  /// Phone settings screen: note at the top.
+  ///
+  /// In en, this message translates to:
+  /// **'These are the computer\'s settings: changes apply to Minerva there.'**
+  String get settingsAppliedOnComputer;
+
+  /// Setting: the voice Minerva reads its replies with.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice'**
+  String get voice;
+
+  /// One of the female voices.
+  ///
+  /// In en, this message translates to:
+  /// **'Female {n}'**
+  String voiceFemale(int n);
+
+  /// One of the male voices.
+  ///
+  /// In en, this message translates to:
+  /// **'Male {n}'**
+  String voiceMale(int n);
 }
 
 class _AppLocalizationsDelegate

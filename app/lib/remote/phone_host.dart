@@ -49,6 +49,12 @@ class PhoneHost extends ChangeNotifier {
   /// A credential the user typed in a vault form on the phone (for the vault, not the brain).
   void Function(VaultSubmission submission)? onVault;
 
+  /// The user changed settings on the phone (any of the keys of [pushSettings]).
+  void Function(Map<String, dynamic> settings)? onSettings;
+
+  /// The user deleted a credential on the phone.
+  void Function(String name)? onVaultDelete;
+
   /// The phone finished playing everything it was sent.
   void Function()? onIdle;
   void Function()? onJoin;
@@ -63,6 +69,7 @@ class PhoneHost extends ChangeNotifier {
   final _pending = <int, Completer<Map<String, dynamic>?>>{};
 
   String _lastState = '';
+  String _lastSettings = '';
   Timer? _partialTimer;
   (String, String)? _partial;
 
@@ -83,6 +90,7 @@ class PhoneHost extends ChangeNotifier {
         if (!active) {
           active = true;
           _lastState = '';
+          _lastSettings = '';
           link.send({'t': 'reset'});
           log.replay((name, args) => link.send({'t': 'tool', 'name': name, 'args': args}));
           debugPrint('phone joined (${width.round()}×${height.round()} $platform)');
@@ -105,6 +113,11 @@ class PhoneHost extends ChangeNotifier {
       case 'vault':
         final submission = VaultSubmission.fromJson(m);
         if (active && submission != null) onVault?.call(submission);
+      case 'set':
+        if (active) onSettings?.call(m);
+      case 'vault_delete':
+        final name = m['name'];
+        if (active && name is String && name.isNotEmpty) onVaultDelete?.call(name);
     }
   }
 
@@ -179,6 +192,15 @@ class PhoneHost extends ChangeNotifier {
     final json = jsonEncode({'t': 'state', ...state});
     if (json == _lastState) return;
     _lastState = json;
+    link.send(jsonDecode(json) as Map<String, Object?>);
+  }
+
+  /// Sends the settings to the phone when they changed.
+  void pushSettings(Map<String, Object?> settings) {
+    if (!active) return;
+    final json = jsonEncode({'t': 'settings', ...settings});
+    if (json == _lastSettings) return;
+    _lastSettings = json;
     link.send(jsonDecode(json) as Map<String, Object?>);
   }
 

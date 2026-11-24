@@ -12,6 +12,7 @@ import 'app/desktop_window.dart';
 import 'app/main_view.dart';
 import 'app/model_picker.dart';
 import 'app/overlay_shell.dart';
+import 'app/settings.dart';
 import 'l10n/l10n.dart';
 import 'store/legacy_data.dart';
 import 'remote/remote_app.dart';
@@ -148,6 +149,7 @@ class HomePage extends StatelessWidget {
                   if (a.ready) _VaultButton(vault: a.vault),
                   if (a.ready) ModelButton(assistant: a),
                   if (a.ready) _LanguageButton(assistant: a),
+                  if (a.ready) _VoiceButton(assistant: a),
                   if (a.ready) _PhoneButton(assistant: a),
                 ],
               ),
@@ -394,6 +396,27 @@ class _LanguageButton extends StatelessWidget {
         CheckedPopupMenuItem(value: _system, checked: current == null, child: Text(l.languageSystem)),
         for (final c in languageChoices)
           CheckedPopupMenuItem(value: c, checked: current == c, child: Text(languageNames[c] ?? c)),
+      ],
+    );
+  }
+}
+
+/// The voice Minerva reads its replies with.
+class _VoiceButton extends StatelessWidget {
+  const _VoiceButton({required this.assistant});
+
+  final Assistant assistant;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return PopupMenuButton<int>(
+      tooltip: l.voice,
+      icon: const Icon(Icons.record_voice_over_outlined, color: Colors.white54),
+      onSelected: assistant.setVoice,
+      itemBuilder: (_) => [
+        for (var v = 0; v < voiceCount; v++)
+          CheckedPopupMenuItem(value: v, checked: assistant.voice == v, child: Text(voiceName(l, v))),
       ],
     );
   }

@@ -11,20 +11,26 @@ import '../app/main_view.dart';
 import '../l10n/l10n.dart';
 import 'protocol.dart';
 import 'remote_assistant.dart';
+import 'remote_settings.dart';
 
-/// Minerva on a phone: the remote of a desktop that does all the processing.
+/// Minerva on a phone: the remote of a desktop that does all the processing. Its screens are in
+/// the desktop's language setting, else the phone's.
 class RemoteApp extends StatelessWidget {
   const RemoteApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'Minerva',
-        debugShowCheckedModeBanner: false,
-        theme: minervaTheme(),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        localeListResolutionCallback: (locales, _) => resolveLocale(locales),
-        home: const RemoteHome(),
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        valueListenable: languageSetting,
+        builder: (context, language, _) => MaterialApp(
+          title: 'Minerva',
+          debugShowCheckedModeBanner: false,
+          theme: minervaTheme(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: language == null ? null : Locale(language),
+          localeListResolutionCallback: (locales, _) => resolveLocale(locales),
+          home: const RemoteHome(),
+        ),
       );
 }
 
@@ -159,6 +165,13 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
                         assistant: a,
                         compactOrb: 96,
                         actions: [
+                          IconButton(
+                            tooltip: AppLocalizations.of(context).settings,
+                            icon: const Icon(Icons.tune, color: Colors.white54),
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(builder: (_) => RemoteSettingsPage(assistant: a)),
+                            ),
+                          ),
                           PopupMenuButton<String>(
                             icon: const Icon(Icons.more_vert, color: Colors.white54),
                             onSelected: (v) {

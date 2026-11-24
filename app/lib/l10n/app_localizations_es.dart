@@ -379,4 +379,28 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get modelWorkersNote =>
       'Se aplica a los workers que empiecen a partir de ahora.';
+
+  @override
+  String get settings => 'Ajustes';
+
+  @override
+  String get settingsOffline =>
+      'Conecta con el ordenador para cambiar sus ajustes.';
+
+  @override
+  String get settingsAppliedOnComputer =>
+      'Son los ajustes del ordenador: los cambios se aplican a Minerva allí.';
+
+  @override
+  String get voice => 'Voz';
+
+  @override
+  String voiceFemale(int n) {
+    return 'Femenina $n';
+  }
+
+  @override
+  String voiceMale(int n) {
+    return 'Masculina $n';
+  }
 }

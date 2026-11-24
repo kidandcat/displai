@@ -18,7 +18,7 @@ class Speech {
 /// Supertonic speaks 31 languages but does not detect them: each sentence is read as [language]
 /// (an ISO 639-1 code, see `speechLanguages` in l10n.dart) unless [say] is given another one.
 class Speaker {
-  Speaker._(this._isolate, this._send, this.sampleRate, this.speech, this.language);
+  Speaker._(this._isolate, this._send, this.sampleRate, this.speech, this.language, this.voice);
 
   final Isolate _isolate;
   final SendPort _send;
@@ -27,6 +27,10 @@ class Speaker {
 
   /// The language [say] reads sentences in by default; it can change while the voice runs.
   String language;
+
+  /// The speaker id [say] reads with: 0–4 are female voices (F1–F5), 5–9 male (M1–M5). It can
+  /// change while the voice runs.
+  int voice;
 
   static Future<Speaker> start({
     required String modelDir,
@@ -49,14 +53,14 @@ class Speaker {
       }
     });
     final (port, rate) = await ready.future;
-    return Speaker._(isolate, port, rate, ctrl.stream, language);
+    return Speaker._(isolate, port, rate, ctrl.stream, language, voice);
   }
 
-  /// Queue a sentence, read as [lang] (default [language]). [generation] lets the caller drop
-  /// audio from an interrupted turn.
+  /// Queue a sentence, read as [lang] (default [language]) in [voice]. [generation] lets the
+  /// caller drop audio from an interrupted turn.
   void say(int generation, String text, {String? lang}) {
     final clean = cleanForSpeech(text);
-    if (clean.isNotEmpty) _send.send([generation, clean, lang ?? language]);
+    if (clean.isNotEmpty) _send.send([generation, clean, lang ?? language, voice]);
   }
 
   void dispose() => _isolate.kill(priority: Isolate.immediate);
@@ -92,15 +96,15 @@ class Speaker {
         ),
       ));
       final configs = <String, so.OfflineTtsGenerationConfig>{};
-      so.OfflineTtsGenerationConfig config(String lang) => configs[lang] ??=
-          so.OfflineTtsGenerationConfig(sid: voice, speed: speed, numSteps: 5, extra: {'lang': lang});
-      tts.generateWithConfig(text: 'OK.', config: config(language)); // warm-up
+      so.OfflineTtsGenerationConfig config(String lang, int sid) => configs['$lang/$sid'] ??=
+          so.OfflineTtsGenerationConfig(sid: sid, speed: speed, numSteps: 5, extra: {'lang': lang});
+      tts.generateWithConfig(text: 'OK.', config: config(language, voice)); // warm-up
       final rx = ReceivePort();
       out.send([rx.sendPort, tts.sampleRate]);
       rx.listen((m) {
         final gen = (m as List)[0] as int;
         final text = m[1] as String;
-        final audio = tts.generateWithConfig(text: text, config: config(m[2] as String));
+        final audio = tts.generateWithConfig(text: text, config: config(m[2] as String, m[3] as int));
         out.send([gen, text, TransferableTypedData.fromList([audio.samples])]);
       });
     } catch (e) {

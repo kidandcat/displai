@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -99,5 +100,16 @@ void main() {
     const ModelChoice(model: 'haiku', effort: 'high', fast: true).save(store, 'brain');
     final again = ModelChoice.load(store, 'brain', defaults);
     expect((again.model, again.effort, again.fast), ('haiku', 'high', true));
+  });
+
+  test('catalog and choices travel as JSON between the desktop and the phone', () {
+    final back = ClaudeCatalog.fromJson(jsonDecode(jsonEncode(catalog.toJson())))!;
+    expect([for (final m in back.all) m.value], [for (final m in catalog.all) m.value]);
+    expect(back.find('opus')!.fast, isTrue);
+    expect(ClaudeCatalog.fromJson(null), isNull);
+
+    const c = ModelChoice(model: 'sonnet', effort: 'max', fast: true);
+    expect(ModelChoice.fromJson(jsonDecode(jsonEncode(c.toJson()))), c);
+    expect(ModelChoice.fromJson({'model': 'opus'}), isNull);
   });
 }
