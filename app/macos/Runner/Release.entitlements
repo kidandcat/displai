@@ -5,6 +5,9 @@
 	<!-- Not sandboxed: the app spawns the user's `claude` CLI, which needs its own config and network. -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
+	<!-- Hardened runtime: lets the scripts Minerva and its workers run send Apple Events. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.device.audio-input</key>

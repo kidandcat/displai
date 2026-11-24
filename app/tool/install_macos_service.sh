@@ -30,12 +30,35 @@ if [[ "${1:-}" == "--uninstall" ]]; then
   exit 0
 fi
 
-src="${1:-$(cd "$(dirname "$0")/.." && pwd)/build/macos/Build/Products/Release/Minerva.app}"
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+src="${1:-$repo/build/macos/Build/Products/Release/Minerva.app}"
 [[ -d "$src/Contents/MacOS" ]] || { echo "No app at $src (run: flutter build macos --release)" >&2; exit 1; }
+
+# TCC keys Screen Recording and Accessibility on the designated requirement. An ad-hoc signature's
+# requirement is its cdhash, so every rebuild lost both grants. Sign with an Apple Development
+# identity of the team instead, under a requirement that names the team and not the certificate,
+# so it stays the same across builds and across certificate renewals.
+team=5M4PZM9Z6T
+identity="${MINERVA_SIGN_IDENTITY:-}"
+if [[ -z "$identity" ]]; then
+  security find-identity -v -p codesigning | grep '"Apple Development:' | while read -r _ hash name; do
+    security find-certificate -c "${${name#\"}%\"}" -p | openssl x509 -noout -subject | grep -q "OU=$team," && echo "$hash"
+  done | head -1 | read -r identity || true
+fi
+[[ -n "$identity" ]] || { echo "No Apple Development identity of team $team in the keychain" >&2; exit 1; }
+requirement="designated => identifier \"$label\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.1] exists and certificate leaf[subject.OU] = \"$team\""
+
+sign() { codesign --force --timestamp=none --options runtime --sign "$identity" "$@"; }
 
 stop_service
 rm -rf "$dest"
 ditto "$src" "$dest"
+
+# Inside out: nested code first, then the app with its entitlements.
+for f in "$dest"/Contents/Frameworks/*(N); do sign "$f"; done
+[[ -f "$dest/Contents/MacOS/minerva-webhooks" ]] && sign --identifier "$label.webhooks" "$dest/Contents/MacOS/minerva-webhooks"
+sign --entitlements "$repo/macos/Runner/Release.entitlements" -r="$requirement" "$dest"
+codesign --verify --deep --strict "$dest"
 
 mkdir -p "$(dirname "$plist")"
 cat > "$plist" <<EOF

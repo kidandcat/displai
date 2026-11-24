@@ -25,6 +25,8 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Minerva controls other apps when you ask it to.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Minerva listens to your voice. Audio is processed locally on this Mac.</string>
 	<key>LSMinimumSystemVersion</key>
