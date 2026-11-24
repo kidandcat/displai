@@ -2,7 +2,7 @@
 ///
 /// The rest of the display layer talks to genui only through this class, so
 /// genui (alpha, 0.x) can be upgraded or swapped without touching the tool
-/// layer. Each view of the timeline is one A2UI surface; the components are
+/// layer. Each view of the display is one A2UI surface; the components are
 /// diffed so only changed ones are sent with `updateComponents`.
 library;
 

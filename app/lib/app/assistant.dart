@@ -147,7 +147,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     'minerva_window',
     'Minerva\'s own window on the Mac. It shrinks to the corner orb on its own when you act on '
         'other apps; meanwhile show and html pop up as a widget over them (at: where) and the '
-        'window stays the orb, while form, video and back bring it back. orb: shrink it now; '
+        'window stays the orb, while form and video bring it back. orb: shrink it now; '
         'full: bring it back without showing anything.',
     {
       'type': 'object',
@@ -179,7 +179,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   /// Display tools that put something in front of the user: the window comes back for them,
   /// but for [_widgetTools] while Minerva works in other apps.
-  static const _showingTools = {'show', 'html', 'form', 'video', 'back'};
+  static const _showingTools = {'show', 'html', 'form', 'video'};
 
   /// Views that pop up as a widget over the other apps while the window is the orb.
   static const _widgetTools = {'show', 'html'};
@@ -984,7 +984,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     if (on && (onPhone || !window.open)) return;
     _usingMac = on;
     if (on) {
-      _widgetFrom = display.timeline.fold(0, (m, e) => e.seq > m ? e.seq : m) + 1;
+      _widgetFrom = display.lastSeq + 1;
       _widgetClosed = null;
     }
     debugPrint('window: ${on ? 'orb while using the Mac' : 'back from using the Mac'}');

@@ -1,5 +1,5 @@
 /// The display's tool layer: implements the MCP display tools on top of the
-/// genui adapter, keeps the timeline, ordinals and user events.
+/// genui adapter, keeps the current view, ordinals and user events.
 library;
 
 import 'dart:async';
@@ -18,7 +18,8 @@ import 'tool_specs.dart';
 import 'video_widgets.dart';
 import 'view_model.dart';
 
-/// One view of the timeline (a `show`, `form`, `video` or `html`).
+/// One view of the display (a `show`, `form`, `video` or `html`). Each new one replaces the
+/// one on screen.
 class DisplayViewEntry {
   DisplayViewEntry._(this.seq, this.kind) : surfaceId = 'v$seq';
 
@@ -88,16 +89,14 @@ class _Action {
 class DisplayController extends ChangeNotifier implements DisplayRuntime {
   DisplayController();
 
-  /// Maximum number of views kept in the timeline.
-  static const int maxTimeline = 20;
-
   static List<DisplayToolSpec> get toolSpecs => displayToolSpecs;
 
   final GenuiSurfaceAdapter _adapter = GenuiSurfaceAdapter();
-  final List<DisplayViewEntry> _entries = [];
-  int _cursor = -1;
-  int _lastCursor = -1;
+  DisplayViewEntry? _current;
   int _seq = 0;
+
+  /// The last view replaced, whose surface stays until the next replacement so it can fade out.
+  DisplayViewEntry? _outgoing;
 
   final StreamController<String> _events = StreamController.broadcast();
   final StreamController<VaultSubmission> _vault = StreamController.broadcast();
@@ -110,7 +109,9 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
 
   // Progressive rendering state.
   DisplayViewEntry? _partial;
-  int _partialPrevCursor = -1;
+
+  /// The view the streaming one replaces, back on screen if the stream is cancelled.
+  DisplayViewEntry? _beforePartial;
   String? _pendingTool;
   String? _pendingJson;
   Timer? _partialTimer;
@@ -122,13 +123,12 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
   // -------------------------------------------------------------------------
   // Read API for the view.
 
-  bool get isEmpty => _cursor < 0;
+  bool get isEmpty => _current == null;
 
-  DisplayViewEntry? get current => isEmpty ? null : _entries[_cursor];
+  DisplayViewEntry? get current => _current;
 
-  List<DisplayViewEntry> get timeline => List.unmodifiable(_entries);
-
-  int get currentIndex => _cursor;
+  /// The [DisplayViewEntry.seq] of the newest view so far (0 before the first).
+  int get lastSeq => _seq;
 
   /// How many logical pixels of the current view do not fit on screen (the display never
   /// scrolls: what does not fit is cut). Reported by the view after layout.
@@ -213,41 +213,6 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
       s.length <= max ? s : '${s.substring(0, max - 1)}…';
 
   // -------------------------------------------------------------------------
-  // Navigation.
-
-  void back() => _back(1);
-
-  /// Shows timeline entry [index] (strip click).
-  void goTo(int index) {
-    if (index < 0 || index >= _entries.length) return;
-    _dropPartial();
-    _cursor = index;
-    _notify();
-  }
-
-  /// Keyboard navigation: previous / next view in the timeline.
-  void previous() => goTo(isEmpty ? _entries.length - 1 : _cursor - 1);
-
-  void next() => goTo(_cursor + 1);
-
-  String _back(int steps) {
-    _dropPartial();
-    if (_entries.isEmpty) return 'error: the timeline is empty';
-    if (isEmpty) {
-      final int target = (_lastCursor >= 0 ? _lastCursor : _entries.length)
-          .clamp(0, _entries.length - 1);
-      _cursor = (target - (steps - 1)).clamp(0, _entries.length - 1);
-    } else {
-      if (_cursor == 0) return 'error: already at the first view';
-      _cursor = (_cursor - steps).clamp(0, _entries.length - 1);
-    }
-    _notify();
-    final DisplayViewEntry e = _entries[_cursor];
-    return 'ok: showing view ${_cursor + 1}/${_entries.length} '
-        '${quote(e.title)}';
-  }
-
-  // -------------------------------------------------------------------------
   // Tools.
 
   String callTool(String name, Map<String, dynamic> args) {
@@ -266,9 +231,6 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
           return _html(args);
         case 'clear':
           return _clear();
-        case 'back':
-          final int steps = numOf(args['steps'])?.toInt() ?? 1;
-          return _back(steps < 1 ? 1 : steps);
         case 'get_state':
           return getState();
       }
@@ -286,35 +248,39 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
   DisplayViewEntry _takeEntry(String kind) {
     _cancelPendingPartial();
     final DisplayViewEntry? p = _partial;
-    _partial = null;
     if (p != null && p.kind == kind) {
+      _partial = null;
       p.partial = false;
+      final DisplayViewEntry? before = _beforePartial;
+      _beforePartial = null;
+      if (before != null) _retire(before);
       return p;
     }
-    if (p != null) _removeEntry(p, _partialPrevCursor);
+    _unwindPartial();
     return _newEntry(kind);
   }
 
+  /// A new view, on screen in place of the current one.
   DisplayViewEntry _newEntry(String kind) {
     final entry = DisplayViewEntry._(++_seq, kind);
     _adapter.createSurface(entry.surfaceId);
-    _entries.add(entry);
-    while (_entries.length > maxTimeline) {
-      final DisplayViewEntry old = _entries.removeAt(0);
-      _adapter.deleteSurface(old.surfaceId);
-      if (_lastCursor > 0) _lastCursor--;
-      if (_partialPrevCursor > 0) _partialPrevCursor--;
-    }
-    _cursor = _entries.length - 1;
+    _replace(entry);
     return entry;
   }
 
-  void _removeEntry(DisplayViewEntry e, int restoreCursor) {
-    final int idx = _entries.indexOf(e);
-    if (idx < 0) return;
-    _entries.removeAt(idx);
-    _adapter.deleteSurface(e.surfaceId);
-    _cursor = restoreCursor < _entries.length ? restoreCursor : -1;
+  /// Puts [entry] on screen (null: nothing) and drops the view it replaces, unless that one
+  /// waits behind a streaming view.
+  void _replace(DisplayViewEntry? entry) {
+    final DisplayViewEntry? old = _current;
+    _current = entry;
+    if (old != null && old != entry && old != _beforePartial) _retire(old);
+  }
+
+  /// Deletes [e]'s surface one replacement later, so the view can still fade out.
+  void _retire(DisplayViewEntry e) {
+    final DisplayViewEntry? prev = _outgoing;
+    _outgoing = e;
+    if (prev != null && prev != e) _adapter.deleteSurface(prev.surfaceId);
   }
 
   String _show(Map<String, dynamic> args) {
@@ -336,7 +302,7 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
     final String warn = parser.warnings.isEmpty
         ? ''
         : ' warnings: ${parser.warnings.toSet().join('; ')}.';
-    return 'ok: shown view ${_cursor + 1} ${quote(e.title)}. '
+    return 'ok: shown ${quote(e.title)}. '
         'components: ${_componentSummary(e)}.$warn';
   }
 
@@ -353,8 +319,7 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
     final String names = [
       for (final f in listOf(form.props['fields'])) (f as Map)['name'],
     ].join(', ');
-    return 'ok: form "${form.id}" shown as view ${_cursor + 1} '
-        '(fields: $names). The submission will arrive as a '
+    return 'ok: form "${form.id}" shown (fields: $names). The submission will arrive as a '
         '"[display] form ..." message; read live values with get_state.';
   }
 
@@ -433,8 +398,7 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
       );
     _render(e);
     _notify();
-    return 'ok: playing ${quote(title)} full-window as view ${_cursor + 1} '
-        '(id video1)';
+    return 'ok: playing ${quote(title)} full-window (id video1)';
   }
 
   String _html(Map<String, dynamic> args) {
@@ -464,20 +428,14 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
       ..shownAt = DateTime.now();
     _render(e);
     _notify();
-    return 'ok: page "${page.id}" shown as view ${_cursor + 1}'
-        '${full ? ' (edge to edge)' : ''}.';
+    return 'ok: page "${page.id}" shown${full ? ' (edge to edge)' : ''}.';
   }
 
-  /// Wipes the display and its timeline (before a replay of the display calls, when the
-  /// display moves between the desktop and the phone remote).
+  /// Wipes the display (before a replay of the display calls, when the display moves between
+  /// the desktop and the phone remote).
   void reset() {
     _dropPartial();
-    for (final e in _entries) {
-      _adapter.deleteSurface(e.surfaceId);
-    }
-    _entries.clear();
-    _cursor = -1;
-    _lastCursor = -1;
+    _replace(null);
     _overflow = 0;
     _notify();
   }
@@ -485,10 +443,9 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
   String _clear() {
     _dropPartial();
     if (isEmpty) return 'ok: already empty';
-    _lastCursor = _cursor;
-    _cursor = -1;
+    _replace(null);
     _notify();
-    return 'ok: cleared (the view stays in the timeline; back restores it)';
+    return 'ok: cleared';
   }
 
   String _update(Map<String, dynamic> args) {
@@ -685,8 +642,8 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
     try {
       DisplayViewEntry? e = _partial;
       if (e == null || e.kind != kind) {
-        if (e != null) _removeEntry(e, _partialPrevCursor);
-        _partialPrevCursor = _cursor;
+        if (e != null) _unwindPartial();
+        _beforePartial = _current;
         e = _newEntry(kind)..partial = true;
         _partial = e;
       }
@@ -712,12 +669,21 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
   }
 
   void _dropPartial() {
+    if (_unwindPartial()) _notify();
+  }
+
+  /// Takes the streaming view off the screen and puts back the view it was replacing. False
+  /// when there was none.
+  bool _unwindPartial() {
     _cancelPendingPartial();
     final DisplayViewEntry? p = _partial;
-    if (p == null) return;
+    if (p == null) return false;
     _partial = null;
-    _removeEntry(p, _partialPrevCursor);
-    _notify();
+    final DisplayViewEntry? before = _beforePartial;
+    _beforePartial = null;
+    _current = before;
+    _retire(p);
+    return true;
   }
 
   // -------------------------------------------------------------------------
@@ -730,10 +696,8 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
     String action,
     Map<String, Object?> context,
   ) {
-    final DisplayViewEntry? e = _entries
-        .where((x) => x.surfaceId == surfaceId)
-        .firstOrNull;
-    if (e == null) return;
+    final DisplayViewEntry? e = _current;
+    if (e == null || e.surfaceId != surfaceId) return;
     final DisplayNode? node = findNode(e.root, componentId)?.$1;
     if (node == null) return;
     final int index = numOf(context['index'])?.toInt() ?? 0;
@@ -837,27 +801,19 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
       buf.writeln('display empty (idle animation)');
     } else {
       buf.writeln(
-        '${e.kind} ${_cursor + 1}/${_entries.length} ${quote(e.title)} '
+        '${e.kind} ${quote(e.title)} '
         '(shown ${_ago(e.shownAt)}${e.partial ? ', still rendering' : ''})',
       );
       if (e.subtitle != null) buf.writeln('  subtitle ${quote(e.subtitle!)}');
       if (_overflow > 0) {
         buf.writeln(
           '  OVERFLOW: ~${_overflow.round()} px at the bottom are cut off (the display '
-          'never scrolls). Show less or split it into several views.',
+          'never scrolls). Show less.',
         );
       }
       for (final DisplayNode n in e.root.children) {
         _describe(buf, e, n, 1);
       }
-    }
-    if (_entries.isNotEmpty) {
-      final String items = [
-        for (var i = 0; i < _entries.length; i++)
-          '${i + 1} ${quote(_entries[i].title, 40)}'
-              '${i == _cursor ? ' (current)' : ''}',
-      ].join(', ');
-      buf.writeln('timeline: $items');
     }
     if (_actions.isNotEmpty) {
       buf.writeln('recent user actions:');

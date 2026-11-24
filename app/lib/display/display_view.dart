@@ -1,5 +1,5 @@
-/// The display widget: current view (a genui surface) with header,
-/// transitions and the timeline strip.
+/// The display widget: current view (a genui surface) with header and
+/// transitions.
 library;
 
 import 'dart:math' as math;
@@ -12,13 +12,12 @@ import 'theme.dart';
 
 /// Fills its parent with the current display view. Transparent while the
 /// controller [DisplayController.isEmpty] (so an idle animation behind it
-/// shows through), except for the timeline strip.
+/// shows through).
 class DisplayView extends StatelessWidget {
   const DisplayView({
     super.key,
     required this.controller,
     this.cornerReserve = Size.zero,
-    this.strip = true,
     this.scale,
   });
 
@@ -27,9 +26,6 @@ class DisplayView extends StatelessWidget {
   /// Area in the top-right corner, from the edges, covered by something on top of the
   /// display (the orb). The view's header leaves it free.
   final Size cornerReserve;
-
-  /// Shows the timeline strip (not in a widget over other apps).
-  final bool strip;
 
   /// The display's scale ([DisplayScale]); null: from the width.
   final double? scale;
@@ -67,9 +63,6 @@ class DisplayView extends StatelessWidget {
 
   Widget _build(BuildContext context, double s) {
     final DisplayViewEntry? entry = controller.current;
-    final List<DisplayViewEntry> timeline = controller.timeline;
-    final bool showStrip =
-        strip && (timeline.length > 1 || (entry == null && timeline.isNotEmpty));
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       decoration: entry == null
@@ -82,40 +75,28 @@ class DisplayView extends StatelessWidget {
                 colors: [Color(0xFF150F1F), DisplayColors.background],
               ),
             ),
-      child: Column(
-        children: [
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 320),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.025),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              ),
-              child: entry == null
-                  ? const SizedBox.expand(key: ValueKey('display-empty'))
-                  : _ViewPage(
-                      key: ValueKey('view-${entry.seq}'),
-                      entry: entry,
-                      controller: controller,
-                      cornerReserve: cornerReserve,
-                    ),
-            ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.025),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
           ),
-          if (showStrip)
-            _TimelineStrip(
-              entries: timeline,
-              current: controller.currentIndex,
-              onSelect: controller.goTo,
-            ),
-        ],
+        ),
+        child: entry == null
+            ? const SizedBox.expand(key: ValueKey('display-empty'))
+            : _ViewPage(
+                key: ValueKey('view-${entry.seq}'),
+                entry: entry,
+                controller: controller,
+                cornerReserve: cornerReserve,
+              ),
       ),
     );
   }
@@ -318,135 +299,6 @@ class _Header extends StatelessWidget {
           RichDisplayText(entry.subtitle!, style: t.subtitle),
         ],
       ],
-    );
-  }
-}
-
-class _TimelineStrip extends StatefulWidget {
-  const _TimelineStrip({
-    required this.entries,
-    required this.current,
-    required this.onSelect,
-  });
-
-  final List<DisplayViewEntry> entries;
-  final int current;
-  final ValueChanged<int> onSelect;
-
-  @override
-  State<_TimelineStrip> createState() => _TimelineStripState();
-}
-
-class _TimelineStripState extends State<_TimelineStrip> {
-  final ScrollController _scroll = ScrollController();
-
-  @override
-  void didUpdateWidget(_TimelineStrip oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.entries.length != widget.entries.length ||
-        oldWidget.current != widget.current) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
-    }
-  }
-
-  void _reveal() {
-    if (!mounted || !_scroll.hasClients) return;
-    final ScrollPosition p = _scroll.position;
-    // Keep the newest entries in sight; the strip is short anyway.
-    if (widget.current < 0 || widget.current >= widget.entries.length - 3) {
-      _scroll.animateTo(
-        p.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  static IconData _icon(String kind) => switch (kind) {
-    'form' => Icons.edit_note_rounded,
-    'video' => Icons.play_circle_outline_rounded,
-    'html' => Icons.code_rounded,
-    _ => Icons.dashboard_outlined,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final double s = DisplayScale.of(context);
-    return Container(
-      height: 62 * s,
-      decoration: const BoxDecoration(
-        color: Color(0xE6060409),
-        border: Border(top: BorderSide(color: DisplayColors.border)),
-      ),
-      child: ListView.separated(
-        controller: _scroll,
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.symmetric(horizontal: 24 * s, vertical: 11 * s),
-        itemCount: widget.entries.length,
-        separatorBuilder: (_, _) => SizedBox(width: 10 * s),
-        itemBuilder: (context, i) {
-          final DisplayViewEntry e = widget.entries[i];
-          final bool active = i == widget.current;
-          return Selectable(
-            key: ValueKey('timeline-$i'),
-            onTap: () => widget.onSelect(i),
-            builder: (context, hover) => AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              constraints: BoxConstraints(maxWidth: 260 * s),
-              padding: EdgeInsets.symmetric(horizontal: 14 * s),
-              decoration: BoxDecoration(
-                color: active
-                    ? const Color(0x26A78BFA)
-                    : hover
-                    ? DisplayColors.surfaceHigh
-                    : DisplayColors.surface,
-                borderRadius: BorderRadius.circular(20 * s),
-                border: Border.all(
-                  color: active
-                      ? DisplayColors.accent
-                      : hover
-                      ? DisplayColors.borderStrong
-                      : DisplayColors.border,
-                  width: active ? 1.5 : 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _icon(e.kind),
-                    size: 17 * s,
-                    color: active
-                        ? DisplayColors.accent
-                        : DisplayColors.textMuted,
-                  ),
-                  SizedBox(width: 8 * s),
-                  Flexible(
-                    child: Text(
-                      e.title.isEmpty ? '…' : e.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15 * s,
-                        fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                        color: active
-                            ? DisplayColors.text
-                            : DisplayColors.textMuted,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 }

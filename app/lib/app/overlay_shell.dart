@@ -511,7 +511,6 @@ class _Widget extends StatelessWidget {
                     key: assistant.screenKey,
                     child: DisplayView(
                       controller: assistant.display,
-                      strip: false,
                       scale: (box.maxWidth / 900).clamp(0.55, 0.8).toDouble(),
                     ),
                   ),

@@ -137,7 +137,7 @@ void main() {
     }
 
     final String state = c.getState();
-    expect(state, contains('view 1/1 "Recetas"'));
+    expect(state, contains('view "Recetas"'));
     expect(state, contains('[1] "Tortilla de patatas'));
     expect(state, contains('[2] "Pizza margarita'));
     expect(state, contains('[3] "Gazpacho'));
@@ -372,7 +372,7 @@ void main() {
     );
     await settle(tester);
     expect(result, contains('cards1 [1-3]'));
-    expect(c.timeline, hasLength(1));
+    expect(c.lastSeq, 1);
     expect(find.text('Sintra'), findsOneWidget);
     expect(c.getState(), isNot(contains('still rendering')));
 
@@ -385,7 +385,7 @@ void main() {
     await settle(tester);
     expect(find.text('Borrador'), findsNothing);
     expect(find.text('Viaje a Lisboa'), findsOneWidget);
-    expect(c.timeline, hasLength(1));
+    expect(c.current?.title, 'Viaje a Lisboa');
 
     expect(c.rendererErrors, isEmpty);
     await tearDownDisplay(tester, c);
@@ -433,7 +433,7 @@ void main() {
     await tearDownDisplay(tester, c);
   });
 
-  testWidgets('timeline: clear, back, strip navigation and cap', (
+  testWidgets('each view replaces the one on screen; clear drops it', (
     tester,
   ) async {
     final c = await pumpDisplay(tester);
@@ -451,28 +451,23 @@ void main() {
     });
     await settle(tester);
     expect(find.text('Dos'), findsOneWidget);
-    // Strip shows both entries.
-    expect(find.byKey(const ValueKey('timeline-0')), findsOneWidget);
-    expect(find.byKey(const ValueKey('timeline-1')), findsOneWidget);
+    expect(find.text('Uno'), findsNothing);
+    final String state = c.getState();
+    expect(state, contains('view "Segunda"'));
+    expect(state, isNot(contains('Primera')));
 
-    c.back();
-    await settle(tester);
-    expect(find.text('Uno'), findsOneWidget);
-    expect(c.getState(), contains('view 1/2 "Primera"'));
+    // There is no history to go back to.
+    expect(
+      DisplayController.toolSpecs.map((t) => t.name),
+      isNot(contains('back')),
+    );
+    expect(c.callTool('back', {}), startsWith('error:'));
 
-    await tester.tap(find.byKey(const ValueKey('timeline-1')));
-    await settle(tester);
-    expect(find.text('Dos'), findsOneWidget);
-
-    expect(c.callTool('clear', {}), startsWith('ok:'));
+    expect(c.callTool('clear', {}), 'ok: cleared');
     await settle(tester);
     expect(c.isEmpty, isTrue);
     expect(find.text('Dos'), findsNothing);
     expect(c.getState(), contains('display empty'));
-
-    expect(c.callTool('back', {}), contains('"Segunda"'));
-    await settle(tester);
-    expect(find.text('Dos'), findsOneWidget);
 
     expect(c.callTool('no_existe', {}), startsWith('error:'));
 
@@ -485,8 +480,8 @@ void main() {
       });
     }
     await settle(tester);
-    expect(c.timeline, hasLength(DisplayController.maxTimeline));
     expect(find.text('Texto 24'), findsOneWidget);
+    expect(find.text('Texto 23'), findsNothing);
     expect(c.rendererErrors, isEmpty);
     await tearDownDisplay(tester, c);
   });

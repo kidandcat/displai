@@ -113,8 +113,8 @@ final List<DisplayToolSpec> displayToolSpecs = [
   DisplayToolSpec(
     name: 'show',
     description:
-        'Replace the display with a new view (the old one goes to the '
-        'timeline). body = list of nodes {type, id?, ...}. $_nodeTypesDoc '
+        'Replace the display with a new view (the old one is gone). '
+        'body = list of nodes {type, id?, ...}. $_nodeTypesDoc '
         'Cards, table rows, chips and buttons get visible ordinals 1..N in '
         'order, so the user can say "la segunda"; taps and button presses '
         'reach you as "[display] ..." user messages. Image/video urls: https '
@@ -258,22 +258,10 @@ final List<DisplayToolSpec> displayToolSpecs = [
     inputSchema: {'type': 'object', 'properties': {}},
   ),
   const DisplayToolSpec(
-    name: 'back',
-    description:
-        'Go back to an earlier view of the timeline (steps: 1 = previous).',
-    inputSchema: {
-      'type': 'object',
-      'properties': {
-        'steps': {'type': 'integer'},
-      },
-    },
-  ),
-  const DisplayToolSpec(
     name: 'get_state',
     description:
         'What is on screen now: compact tree with component ids, ordinals '
-        '[n] of selectable items, form values, the timeline and recent user '
-        'actions.',
+        '[n] of selectable items, form values and recent user actions.',
     inputSchema: {'type': 'object', 'properties': {}},
   ),
 ];

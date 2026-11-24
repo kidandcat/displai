@@ -13,14 +13,14 @@ import 'html_widgets.dart' show capturePages;
 /// the desktop and on the phone remote.
 class DisplayRunner {
   /// The display tools whose call changes what is shown (replayed when the display moves).
-  static const mutating = {'show', 'update', 'form', 'video', 'html', 'clear', 'back'};
+  static const mutating = {'show', 'update', 'form', 'video', 'html', 'clear'};
 
   /// Runs [name] and, for calls that change the view, waits for it to lay out and adds a
   /// warning when it does not fit. Returns the result text (starting with "error:" on failure).
   static Future<String> run(DisplayController display, String name, Map<String, dynamic> args) async {
     final text = display.callTool(name, args);
     if (text.startsWith('error:')) return text;
-    if (const {'show', 'update', 'form', 'back', 'html'}.contains(name)) {
+    if (const {'show', 'update', 'form', 'html'}.contains(name)) {
       // Bounded: a hidden or minimised window produces no frames.
       await frame();
       await frame();
@@ -28,8 +28,7 @@ class DisplayRunner {
       final cut = display.overflow;
       if (cut > 0) {
         out = '$out\nwarning: the view does not fit the screen; about ${cut.round()} px '
-            'at the bottom are cut off (the display never scrolls). Update it to show less or split '
-            'it into several views.';
+            'at the bottom are cut off (the display never scrolls). Update it to show less.';
       }
       // Custom pages: wait for them to load and report their JS errors.
       final pages = await display.settleHtml();
@@ -99,25 +98,18 @@ class DisplayRunner {
 class DisplayLog {
   final List<(String, Map<String, dynamic>)> _calls = [];
 
-  /// As many views as the display's timeline keeps.
-  static const maxViews = DisplayController.maxTimeline;
-
-  /// Notes a display call that succeeded.
+  /// Notes a display call that succeeded. Only the current view's calls are kept: a new view
+  /// or a clear drops the ones before it.
   void record(String name, Map<String, dynamic> args) {
     if (!DisplayRunner.mutating.contains(name)) return;
-    _calls.add((name, args));
-    var views = _calls.where((e) => _opensView(e.$1)).length;
-    while (views > maxViews) {
-      final first = _calls.removeAt(0);
-      if (_opensView(first.$1)) views--;
-      // Drop the calls that changed the view that just went away.
-      while (_calls.isNotEmpty && !_opensView(_calls.first.$1)) {
-        _calls.removeAt(0);
-      }
-    }
+    if (name == 'clear' || _opensView(name, args)) _calls.clear();
+    if (name != 'clear') _calls.add((name, args));
   }
 
-  static bool _opensView(String name) => const {'show', 'form', 'video', 'html'}.contains(name);
+  /// A video call without a url controls the video on screen instead.
+  static bool _opensView(String name, Map<String, dynamic> args) =>
+      const {'show', 'form', 'html'}.contains(name) ||
+      (name == 'video' && '${args['url'] ?? ''}'.trim().isNotEmpty);
 
   /// Replays the logged calls through [run] (after a reset of that display).
   void replay(void Function(String name, Map<String, dynamic> args) run) {

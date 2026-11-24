@@ -38,7 +38,7 @@ flowchart LR
     Brain[Session manager]
     Speaker[Sentence splitter + TTS]
     MCP[Embedded MCP server - HTTP on localhost]
-    Surface[Display - A2UI surface + timeline]
+    Surface[Display - A2UI surface]
   end
   Brain <-->|stream-json stdin/stdout| CC[claude -p headless]
   CC <-->|tools: show, update, form, video, html, clear, get_state| MCP
@@ -197,20 +197,18 @@ at it. Tools (v0):
 
 | Tool | Purpose |
 |---|---|
-| `show` | Replace the main surface with a new view (high-level catalog items). Pushes the old view to the timeline. |
+| `show` | Replace the main surface with a new view (high-level catalog items). The old view is gone: there is no history. |
 | `update` | Patch components or data model of the current view (e.g. mark step done, fill a field). |
 | `form` | Show a form and **wait** for submit (by click or voice), return the values. Fields of type `secret` are never returned (see 3.9). |
 | `video` | Play a video URL, with controls the agent can also drive (pause, seek). |
 | `html` | A page the brain programs itself (HTML/CSS/JS in a WebView) when no catalog item fits: games, simulations, custom charts. Theme CSS variables and a `minerva` bridge (`data`, `onData`, `send`, `state`) are injected; the call returns once loaded, with JS errors. Also an inline `html` node inside `show`. |
 | `clear` | Clear the surface. |
-| `back` | Return to the previous view. |
 | `get_state` | Compact widget tree of what is on screen, ordinals, form values, last user actions. |
 | `snapshot` | PNG capture of Minerva's own window (display and orb), longest side ≤ 1280 px, so the brain can check how a view looks. |
 
 **The display never scrolls.** A view that does not fit is cut at the bottom (with a fade). The view
-measures how much is hidden after layout; `show` / `update` / `form` / `back` then return a warning
-with the hidden pixels, and `get_state` adds an `OVERFLOW` line, so the brain shows less or splits
-the content into several views.
+measures how much is hidden after layout; `show` / `update` / `form` / `html` then return a warning
+with the hidden pixels, and `get_state` adds an `OVERFLOW` line, so the brain shows less.
 
 `get_state` output is a compact indented tree, not raw JSON, e.g.:
 
@@ -370,8 +368,8 @@ quit). One window, three states (`MainFlutterWindow.swift`, `lib/app/desktop_win
 - **Using the Mac**: with the window open, the first computer-use action on the screen (`click`,
   `type_text`, `press_key`, `scroll`, `open`, `activate`, `screen` of the whole display) turns the
   window into the orb, so it neither covers the app nor takes its keyboard; the Mac keeps listening
-  and speaking. It comes back when the brain shows something (`show`, `html`, `form`, `video`,
-  `back`), when the brain calls `minerva_window full` (the user asks for it), or when the user opens
+  and speaking. It comes back when the brain shows something (`show`, `html`, `form`, `video`),
+  when the brain calls `minerva_window full` (the user asks for it), or when the user opens
   it from the menu bar, Spotlight or Finder. `screen` leaves Minerva's own windows out.
 - The Flutter engine starts headless, before any window is shown. A second launch asks the running
   instance to show its window and exits. App Nap is disabled so routines and the relay keep their timers.
@@ -467,7 +465,7 @@ barge-in.
     mic. Resample to 16 kHz for VAD/STT.
 - **Voice barge-in.** The mic is always listening. If the VAD sees 0.3 s of continuous speech while
   the assistant is thinking or speaking: stop playback, drop queued sentences, send the stream-json
-  `interrupt`. The new utterance becomes the next turn. Partial answers stay on the timeline.
+  `interrupt`. The new utterance becomes the next turn. Partial answers stay on the display.
 - **Mid-sentence pauses (continuation merge).** End of turn is 0.4 s of silence, which sometimes
   splits a sentence at a natural pause. If the user resumes talking before the answer is audible,
   or within 2 s after it started, the barge-in is treated as a continuation: the previous transcript
@@ -554,10 +552,9 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
 ## 7. UX
 
 - Full-window display, no chat. Bottom: mic state, thinking strip, last transcript (fades).
-- **Timeline**: every `show` pushes the previous view to a horizontal history strip; "vuelve a la
-  anterior" works by voice, and the **left / right arrow keys** move between views (not while typing
-  in a field).
-- **No scrolling**: one view = one screen; long content is split into several views.
+- **One view at a time**: every `show`, `form`, `video` or `html` replaces what is on screen; there
+  is no history of previous views.
+- **No scrolling**: one view = one screen; views are kept short.
 - **Ordinals**: every selectable item gets a visible number; `get_state` reports them so the agent can
   resolve "la segunda", "el último", "ese".
 - Settings: model alias, voice, input device, hotkey, "use my Claude Code settings" toggle. The voice
@@ -602,11 +599,11 @@ In:
 - Claude Code session manager (spawn, warm, stream-json, interrupt, restart on crash).
 - Local VAD + Parakeet v3 STT + Supertonic 3 TTS, sentence streaming.
 - Native macOS audio plugin (voice processing: echo-cancelled capture + playback).
-- Full-duplex with voice barge-in and continuation merge; Space mute toggle; arrow-key navigation; earcon; thinking strip.
-- Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `back`, `get_state`, `snapshot`, plus the host
+- Full-duplex with voice barge-in and continuation merge; Space mute toggle; earcon; thinking strip.
+- Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `get_state`, `snapshot`, plus the host
   tools (§3.5), which run without confirmations (the prompts carry the safety rules).
 - A2UI rendering via genui with high-level catalog items; progressive rendering of `show`.
-- Timeline of shown views; ordinals for voice selection.
+- One view at a time (each replaces the last); ordinals for voice selection.
 - Presence animation (fragment shader) reacting to mic and TTS audio, with the shrink-to-orb
   transition when a view is shown.
 - First-run model download with progress.

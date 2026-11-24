@@ -44,7 +44,7 @@ void main() {
         'html': '<p>hola</p>',
         'data': {'level': 1},
       });
-      expect(r, contains('page "page1" shown as view 1'));
+      expect(r, contains('page "page1" shown'));
       expect(c.current!.kind, 'html');
       expect(c.getState(), contains('page page1: not rendered yet'));
 

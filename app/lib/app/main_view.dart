@@ -60,8 +60,7 @@ class MainView extends StatelessWidget {
     return Column(
       children: [
         Expanded(
-          // The display is transparent while empty, so the presence animation shows through
-          // (with the timeline strip still on top).
+          // The display is transparent while empty, so the presence animation shows through.
           child: RepaintBoundary(
             key: showDisplay ? a.screenKey : null,
             child: ColoredBox(

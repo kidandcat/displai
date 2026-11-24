@@ -67,9 +67,8 @@ class _MinervaAppState extends State<MinervaApp> {
     await a.start();
   }
 
-  /// While the window has focus (and the user is not typing in a field): Space toggles the mic,
-  /// the left and right arrows move between the views in the timeline. (In other apps the
-  /// native side takes the space bar: [DesktopWindow.onSpace].)
+  /// While the window has focus (and the user is not typing in a field): Space toggles the mic.
+  /// (In other apps the native side takes the space bar: [DesktopWindow.onSpace].)
   bool _onKey(KeyEvent e) {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return false;
     final a = _assistant.value;
@@ -77,11 +76,6 @@ class _MinervaAppState extends State<MinervaApp> {
     final key = e.logicalKey;
     if (key == LogicalKeyboardKey.space && e is KeyDownEvent) {
       a.toggleMute();
-      return true;
-    }
-    if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowRight) {
-      if (a.display.timeline.isEmpty) return false;
-      key == LogicalKeyboardKey.arrowLeft ? a.display.previous() : a.display.next();
       return true;
     }
     return false;
