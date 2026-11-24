@@ -1,0 +1,4 @@
+# Minerva roadmap
+
+- [x] **Animated orb transition**: going from full window to the corner orb (and back) should be a smooth, nice animation (window frame + orb morphing/flying to the corner), not disappear/reappear.
+- [x] **Full-screen transparent overlay mode**: while Minerva runs it "owns" the computer. Even in orb mode the app window keeps covering the whole screen as an always-on-top, fully transparent, click-through overlay (orb drawn top-right). Minerva drives mouse/keyboard on the apps underneath. Space bar still toggles mute globally. Minerva can still pop widgets (show/html views) anywhere on screen in this mode: transparent background everywhere except each widget's own area, which gets a dark/legible panel. Only the widgets (and orb) accept user clicks; everything else passes through.
