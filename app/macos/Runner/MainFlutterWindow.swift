@@ -15,6 +15,7 @@ import webview_flutter_wkwebview
 ///
 /// Method channel `minerva/window`:
 ///   Dart → native  state() -> {open, overlay}   setOverlay({on, reason})   show()
+///                  setLanguage({code, save})   systemLanguages() -> [String]
 ///   native → Dart  state({open, overlay})       tap()   (the overlay orb was clicked)
 ///                  openRequested()   (the user asked for the window while it is the orb)
 class MainFlutterWindow: NSWindow, NSWindowDelegate {
@@ -120,6 +121,12 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     case "show":
       showNormal()
       result(nil)
+    case "setLanguage":
+      let args = call.arguments as? [String: Any]
+      AppDelegate.setLanguage(args?["code"] as? String, save: args?["save"] as? Bool ?? false)
+      result(nil)
+    case "systemLanguages":
+      result(AppDelegate.systemLanguages)
     default:
       result(FlutterMethodNotImplemented)
     }

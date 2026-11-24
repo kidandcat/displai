@@ -81,5 +81,7 @@
   "delete": "Borrar",
   "vaultDeleteConfirm": "¿Borrar la credencial «{name}»?",
   "vaultFields": "Campos: {names}",
-  "vaultUnavailable": "La caja fuerte no está disponible: {error}"
+  "vaultUnavailable": "La caja fuerte no está disponible: {error}",
+  "language": "Idioma",
+  "languageSystem": "Idioma del sistema"
 }

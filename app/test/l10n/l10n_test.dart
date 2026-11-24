@@ -28,10 +28,11 @@ void main() {
 
   test('the brain is told the language and the reminder phrase', () {
     final es = languagePromptSection('es', lookupAppLocalizations(const Locale('es')));
-    expect(es, contains('system language is Spanish. Reply in Spanish'));
+    expect(es, contains('language is Spanish: the voice reads your replies as Spanish. Reply in Spanish'));
+    expect(es, contains('set_language'));
     expect(es, contains('"Te recuerdo"'));
     final en = languagePromptSection('en', lookupAppLocalizations(const Locale('en')));
-    expect(en, contains('system language is English'));
+    expect(en, contains("Minerva's language is English"));
     expect(en, contains('"Just a reminder"'));
     expect(systemPrompt, isNot(contains('Spanish')));
   });
@@ -63,5 +64,32 @@ void main() {
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
     expect(find.text('2 trabajos en segundo plano'), findsOneWidget);
+  });
+
+  test('the language setting overrides the OS language, and null follows it again', () {
+    addTearDown(() {
+      debugOsLocales = null;
+      languageSetting.value = null;
+    });
+    debugOsLocales = const [Locale('en', 'US'), Locale('es', 'ES')];
+    expect(appLocale, const Locale('en'));
+    expect(speechLanguage, 'en');
+    languageSetting.value = 'es';
+    expect(appLocale, const Locale('es'));
+    expect(speechLanguage, 'es');
+    expect(strings.cancel, 'Cancelar');
+    languageSetting.value = null;
+    expect(appLocale, const Locale('en'));
+    expect(strings.cancel, 'Cancel');
+  });
+
+  test('only languages the UI has are accepted', () {
+    expect(languageChoices, containsAll(['en', 'es']));
+    expect(validLanguage('es'), 'es');
+    expect(validLanguage('fr'), isNull);
+    expect(validLanguage(null), isNull);
+    for (final c in languageChoices) {
+      expect(languageNames[c], isNotNull, reason: c);
+    }
   });
 }

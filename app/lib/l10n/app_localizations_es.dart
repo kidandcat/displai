@@ -296,4 +296,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String vaultUnavailable(String error) {
     return 'La caja fuerte no está disponible: $error';
   }
+
+  @override
+  String get language => 'Idioma';
+
+  @override
+  String get languageSystem => 'Idioma del sistema';
 }

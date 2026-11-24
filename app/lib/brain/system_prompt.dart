@@ -55,13 +55,15 @@ Context:
 - If the user interrupts you, stop and attend to the new request.
 ''';
 
-/// The language to reply in: [language] is the ISO 639-1 code the voice reads replies as (the OS
-/// language, see `speechLanguage` in l10n.dart); [l] gives the app's own phrases.
+/// The language to reply in: [language] is the ISO 639-1 code the voice reads replies as
+/// (Minerva's language setting or the OS language, see `speechLanguage` in l10n.dart); [l] gives
+/// the app's own phrases.
 String languagePromptSection(String language, AppLocalizations l) {
   final name = speechLanguages[language] ?? 'English';
   return '''
 Language:
-- The user's system language is $name. Reply in $name unless the user speaks to you in another language.
+- Minerva's language is $name: the voice reads your replies as $name. Reply in $name unless the user speaks to you in another language.
+- When the user asks you to switch to another language for good ("speak English from now on"), call set_language.
 - Reminder phrase: "${l.reminderLead}" (or the same in the language of the reply).'''
       .trim();
 }

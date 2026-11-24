@@ -295,4 +295,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String vaultUnavailable(String error) {
     return 'The vault is not available: $error';
   }
+
+  @override
+  String get language => 'Language';
+
+  @override
+  String get languageSystem => 'System language';
 }

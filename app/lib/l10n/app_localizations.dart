@@ -589,6 +589,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The vault is not available: {error}'**
   String vaultUnavailable(String error);
+
+  /// Tooltip of the language button in the bottom bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get language;
+
+  /// Language menu item: follow the operating system's language.
+  ///
+  /// In en, this message translates to:
+  /// **'System language'**
+  String get languageSystem;
 }
 
 class _AppLocalizationsDelegate

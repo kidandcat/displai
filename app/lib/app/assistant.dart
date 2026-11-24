@@ -132,6 +132,22 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     },
   );
 
+  static final _languageTool = McpTool(
+    'set_language',
+    'Minerva\'s language: the screen texts and the voice that reads your replies. system follows '
+        'the Mac\'s language. Only when the user asks to change it for good.',
+    {
+      'type': 'object',
+      'properties': {
+        'language': {
+          'type': 'string',
+          'enum': ['system', ...languageChoices],
+        },
+      },
+      'required': ['language'],
+    },
+  );
+
   /// Display tools that put something in front of the user: the window comes back for them.
   static const _showingTools = {'show', 'html', 'form', 'video', 'back'};
 
@@ -191,6 +207,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       final dataDir = Platform.environment['MINERVA_DATA_DIR'] ??
           (await getApplicationSupportDirectory()).path;
       store = await Store.open(dataDir);
+      languageSetting.value = validLanguage(store.get('language'));
       vault = await Vault.open('${store.dir}/vault');
       workers = Workers(
         store: store,
@@ -227,6 +244,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
           for (final t in DisplayController.toolSpecs) McpTool(t.name, t.description, t.inputSchema),
           _snapshotTool,
           _windowTool,
+          _languageTool,
           VaultTools.requestTool,
           for (final p in providers) ...p.tools,
         ],
@@ -281,6 +299,25 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       debugPrint('assistant start failed: $e\n$st');
     }
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------------- language
+
+  /// Changes Minerva's language ([code] one of [languageChoices], or null to follow the OS): the
+  /// UI, the voice and the native menus at once, and the brain (told now, and in its prompt from
+  /// the next start). Returns the brain's new language section. [tell]: notify the brain (not
+  /// needed when it asked for the change itself).
+  Future<String> setLanguage(String? code, {bool tell = true}) async {
+    code = validLanguage(code);
+    store.set('language', code);
+    // The native side first: it refreshes the system languages that null resolves to.
+    await window.setLanguage(code);
+    languageSetting.value = code;
+    _speaker.language = speechLanguage;
+    final section = languagePromptSection(speechLanguage, strings);
+    if (tell) notify('[settings] The user changed Minerva\'s language.\n$section');
+    notifyListeners();
+    return section;
   }
 
   // ---------------------------------------------------------------- phone remote
@@ -623,6 +660,13 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       }
     }
     if (name == VaultTools.requestTool.name) return _requestCredential(args);
+    if (name == _languageTool.name) {
+      final code = args['language'] as String?;
+      if (code != 'system' && validLanguage(code) == null) {
+        return ToolResult.error('error: language must be one of system, ${languageChoices.join(', ')}');
+      }
+      return ToolResult('ok. ${await setLanguage(code == 'system' ? null : code, tell: false)}');
+    }
     if (name == _windowTool.name) {
       final orb = args['mode'] == 'orb';
       if (onPhone) return const ToolResult('ok: the phone is connected, the Mac window stays the orb.');

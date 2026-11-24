@@ -4,8 +4,8 @@ import FlutterMacOS
 /// Minerva runs as a background service: closing the window hides it (the Mac stops listening)
 /// but the app keeps running, so the phone remote, workers and routines keep working. A menu bar
 /// item opens the window again or quits. Started with `--background` (the login LaunchAgent), it
-/// starts hidden. Its texts are in en.lproj / es.lproj (Localizable.strings), picked by the
-/// macOS preferred languages like the Flutter UI's.
+/// starts hidden. Its texts are in en.lproj / es.lproj (Localizable.strings), in Minerva's
+/// language setting (see [setLanguage]), else the macOS preferred languages, like the Flutter UI's.
 @main
 class AppDelegate: FlutterAppDelegate, NSMenuDelegate {
   private var statusItem: NSStatusItem?
@@ -14,6 +14,43 @@ class AppDelegate: FlutterAppDelegate, NSMenuDelegate {
   static let showNotification = Notification.Name("com.kidandcat.minerva.show")
 
   private var window: MainFlutterWindow? { mainFlutterWindow as? MainFlutterWindow }
+
+  /// The lproj of Minerva's language setting; nil follows the macOS preferred languages.
+  private static var languageBundle: Bundle?
+
+  /// Applies Minerva's language setting (an lproj code such as "es", or nil for the system's) to
+  /// the menus now. [save] (the user changed it): also to the menu bar and the system dialogs from
+  /// the next launch, as the app's own language (they read it at launch).
+  static func setLanguage(_ code: String?, save: Bool) {
+    languageBundle = code.flatMap { Bundle.main.path(forResource: $0, ofType: "lproj") }.flatMap(Bundle.init(path:))
+    if !save {
+      (NSApp.delegate as? AppDelegate)?.rebuildMenus()
+      return
+    }
+    if let code {
+      UserDefaults.standard.set([code], forKey: "AppleLanguages")
+    } else {
+      UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+    }
+    (NSApp.delegate as? AppDelegate)?.rebuildMenus()
+  }
+
+  /// The user's languages for all apps, most preferred first. Unlike Locale.preferredLanguages,
+  /// it ignores this app's own setting, so "follow the system" works without a restart.
+  static var systemLanguages: [String] {
+    CFPreferencesCopyValue(
+      "AppleLanguages" as CFString, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser,
+      kCFPreferencesAnyHost) as? [String] ?? Locale.preferredLanguages
+  }
+
+  private static func localized(_ key: String) -> String {
+    (languageBundle ?? Bundle.main).localizedString(forKey: key, value: nil, table: nil)
+  }
+
+  private func rebuildMenus() {
+    statusItem?.menu = makeMenu()
+    window?.contextMenu = makeMenu()
+  }
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     // Hidden, the app would otherwise be napped: its timers (routines, relay keepalive) slowed down.
@@ -75,12 +112,12 @@ class AppDelegate: FlutterAppDelegate, NSMenuDelegate {
     menu.addItem(state)
     menu.addItem(.separator())
     let open = NSMenuItem(
-      title: NSLocalizedString("Open Minerva", comment: "Menu item"), action: #selector(openWindow), keyEquivalent: "")
+      title: Self.localized("Open Minerva"), action: #selector(openWindow), keyEquivalent: "")
     open.target = self
     menu.addItem(open)
     menu.addItem(.separator())
     menu.addItem(NSMenuItem(
-      title: NSLocalizedString("Quit Minerva", comment: "Menu item"),
+      title: Self.localized("Quit Minerva"),
       action: #selector(NSApplication.terminate(_:)), keyEquivalent: ""))
     menu.delegate = self
     return menu
@@ -92,7 +129,7 @@ class AppDelegate: FlutterAppDelegate, NSMenuDelegate {
       w.overlay
       ? (w.overlayReason == "computer" ? "Using the Mac · Open Minerva to come back" : "Phone connected")
       : w.userOpen ? "Listening on this Mac" : "In the background · the Mac is not listening"
-    menu.item(withTag: 1)?.title = Bundle.main.localizedString(forKey: state, value: nil, table: nil)
+    menu.item(withTag: 1)?.title = Self.localized(state)
   }
 
   @objc private func openWindow() {

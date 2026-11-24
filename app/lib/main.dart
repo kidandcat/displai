@@ -31,14 +31,18 @@ class MinervaApp extends StatelessWidget {
   const MinervaApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'Minerva',
-        debugShowCheckedModeBanner: false,
-        theme: minervaTheme(),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        localeListResolutionCallback: (locales, _) => resolveLocale(locales),
-        home: const HomePage(),
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        valueListenable: languageSetting,
+        builder: (context, language, _) => MaterialApp(
+          title: 'Minerva',
+          debugShowCheckedModeBanner: false,
+          theme: minervaTheme(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: language == null ? null : Locale(language),
+          localeListResolutionCallback: (_, _) => appLocale,
+          home: const HomePage(),
+        ),
       );
 }
 
@@ -115,7 +119,11 @@ class _HomePageState extends State<HomePage> {
     }
     return ListenableBuilder(
       listenable: Listenable.merge([a, a.display, a.window]),
-      builder: (context, _) => a.window.overlay
+      // Closed (or never shown, as the login service starts), nothing animates: the orb's shader
+      // would otherwise keep drawing every frame for a window nobody sees.
+      builder: (context, _) => TickerMode(
+        enabled: a.window.open || a.window.overlay,
+        child: a.window.overlay
           // A phone is connected: the window is just the orb on a dark disc, the rest transparent.
           ? Scaffold(
               backgroundColor: Colors.transparent,
@@ -140,10 +148,12 @@ class _HomePageState extends State<HomePage> {
                 actions: [
                   if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),
                   if (a.ready) _VaultButton(vault: a.vault),
+                  if (a.ready) _LanguageButton(assistant: a),
                   if (a.ready) _PhoneButton(assistant: a),
                 ],
               ),
             ),
+      ),
     );
   }
 }
@@ -336,6 +346,30 @@ class _WebhookDialog extends StatelessWidget {
   }
 }
 
+/// Minerva's language: the system's, or one the app has.
+class _LanguageButton extends StatelessWidget {
+  const _LanguageButton({required this.assistant});
+
+  final Assistant assistant;
+  static const _system = 'system';
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final current = languageSetting.value;
+    return PopupMenuButton<String>(
+      tooltip: l.language,
+      icon: const Icon(Icons.translate, color: Colors.white54),
+      onSelected: (v) => unawaited(assistant.setLanguage(v == _system ? null : v)),
+      itemBuilder: (_) => [
+        CheckedPopupMenuItem(value: _system, checked: current == null, child: Text(l.languageSystem)),
+        for (final c in languageChoices)
+          CheckedPopupMenuItem(value: c, checked: current == c, child: Text(languageNames[c] ?? c)),
+      ],
+    );
+  }
+}
+
 class _VaultButton extends StatelessWidget {
   const _VaultButton({required this.vault});
 
@@ -345,7 +379,7 @@ class _VaultButton extends StatelessWidget {
   Widget build(BuildContext context) => IconButton(
         tooltip: AppLocalizations.of(context).vaultCredentials,
         onPressed: () => showDialog<void>(context: context, builder: (_) => _VaultDialog(vault: vault)),
-        icon: const Icon(Icons.key, color: Colors.white54),
+        icon: const Icon(Icons.vpn_key, color: Colors.white54),
       );
 }
 

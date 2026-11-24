@@ -387,5 +387,13 @@
         "type": "String"
       }
     }
+  },
+  "language": "Language",
+  "@language": {
+    "description": "Tooltip of the language button in the bottom bar."
+  },
+  "languageSystem": "System language",
+  "@languageSystem": {
+    "description": "Language menu item: follow the operating system's language."
   }
 }

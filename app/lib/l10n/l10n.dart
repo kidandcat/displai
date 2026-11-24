@@ -1,4 +1,5 @@
-/// The app's language: the OS language when the app has it (English or Spanish), else English.
+/// The app's language: the one chosen in Minerva's settings ([languageSetting]), else the OS
+/// language when the app has it (English or Spanish), else English.
 ///
 /// Widgets use `AppLocalizations.of(context)`; code outside widgets (status lines the voice
 /// speaks, errors, the brain's prompt) uses [strings], which resolves the same locale.
@@ -6,7 +7,7 @@ library;
 
 import 'dart:ui' show Locale, PlatformDispatcher;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
 
 import 'app_localizations.dart';
 
@@ -24,14 +25,33 @@ Locale resolveLocale(Iterable<Locale>? preferred) {
 }
 
 /// The OS languages, most preferred first (macOS: the preferred languages; Android: the locales).
-List<Locale> get osLocales => debugOsLocales ?? PlatformDispatcher.instance.locales;
+List<Locale> get osLocales => debugOsLocales ?? systemLocales ?? PlatformDispatcher.instance.locales;
+
+/// The user's languages for all apps, when the platform tells them apart from the app's own
+/// (macOS, where the language setting is also the app's; see DesktopWindow).
+List<Locale>? systemLocales;
 
 /// Replaces [osLocales] in tests.
 @visibleForTesting
 List<Locale>? debugOsLocales;
 
-/// The locale of the UI and of the status lines, from the OS languages.
-Locale get appLocale => resolveLocale(osLocales);
+/// Minerva's language setting: one of [languageChoices], or null to follow the OS.
+final languageSetting = ValueNotifier<String?>(null);
+
+/// The languages the setting offers: those the UI has.
+List<String> get languageChoices => [for (final l in AppLocalizations.supportedLocales) l.languageCode];
+
+/// [languageChoices] by their own names, as a language menu shows them.
+const languageNames = {'en': 'English', 'es': 'Español'};
+
+/// [code] if the setting accepts it, else null (follow the OS).
+String? validLanguage(String? code) => languageChoices.contains(code) ? code : null;
+
+/// The locale of the UI and of the status lines: the setting's, else from the OS languages.
+Locale get appLocale {
+  final chosen = languageSetting.value;
+  return chosen != null ? Locale(chosen) : resolveLocale(osLocales);
+}
 
 /// The UI strings in [appLocale], for code that has no BuildContext.
 AppLocalizations get strings => lookupAppLocalizations(appLocale);
@@ -54,5 +74,6 @@ String speechLanguageOf(Iterable<Locale>? preferred) {
   return speechLanguages.containsKey(first) ? first! : 'en';
 }
 
-/// [speechLanguageOf] the OS languages.
-String get speechLanguage => speechLanguageOf(osLocales);
+/// The language the voice speaks the brain's replies in: the setting's, else [speechLanguageOf]
+/// the OS languages.
+String get speechLanguage => languageSetting.value ?? speechLanguageOf(osLocales);

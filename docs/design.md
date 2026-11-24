@@ -194,6 +194,7 @@ brain's built-ins), so any MCP-capable brain gets the same capabilities.
 | `click`, `type_text`, `press_key`, `scroll` | CGEvent / AX actions, by `[n]` target or coordinates. |
 | `open`, `activate`, `apps`, `windows` | Apps, URLs and files. |
 | `minerva_window` | Minerva's own window: `orb` or `full` (see 3.8, it also switches on its own). |
+| `set_language` | Minerva's language (UI and voice): `system`, `en` or `es` (see 7.1). |
 | `vault_list`, `vault_request`, `vault_delete` | Saved credentials, used through `{{vault:name.field}}` placeholders (see 3.9). |
 
 The native side is `macos/Runner/ComputerControl.swift` (method channel `minerva/computer`); it needs
@@ -463,10 +464,18 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
 
 ### 7.1 Language
 
-Minerva follows the OS language; there is no language setting.
+Minerva follows the OS language unless the user picks one: the language button in the bottom bar
+(System / English / Español), or by voice through the brain's `set_language` tool. The choice is
+stored in `kv.language` (absent = follow the OS) and applies at once to the UI, the voice, the
+native menus and the brain (told with a `[settings]` notice; its prompt has it from the next start).
+When the user changes it on macOS, it is also saved as the app's own `AppleLanguages` (the per-app
+language of System Settings), so the menu bar and the system dialogs follow from the next launch;
+"System" then reads the user's languages for all apps (`systemLanguages` over the `minerva/window`
+channel), not the app's own. Startup never writes it, so a per-app language set in System Settings
+stays.
 
 - **UI**: Flutter gen-l10n, `app/lib/l10n/app_en.arb` (template) and `app_es.arb`. The locale is
-  the first OS language the app has (macOS: the preferred languages; Android: the phone's locales),
+  the setting's, else the first OS language the app has (macOS: the preferred languages; Android: the phone's locales),
   else English (`resolveLocale` in `lib/l10n/l10n.dart`). Code without a `BuildContext` (the status
   lines the voice speaks, webhook and pairing notes, errors, display chrome, the vault's credential
   form) uses `strings`, which resolves the same locale. The phone UI follows the phone; the status lines it shows and hears
@@ -475,12 +484,13 @@ Minerva follows the OS language; there is no language setting.
   (`Localizable.strings`, `MainMenu.strings`), the microphone prompt in `InfoPlist.strings`
   (`CFBundleLocalizations` = en, es). Android has no texts of its own besides the name.
 - **Voice**: Parakeet v3 detects the spoken language itself (no setting). Supertonic 3 does not: each
-  sentence is synthesised with a language code. Replies use the OS language when Supertonic has it
+  sentence is synthesised with a language code. Replies use the setting's language, else the OS
+  language when Supertonic has it
   (31 languages, `speechLanguages`), else English; the app's own lines (status, errors) use the UI
   language. `Speaker.cleanForSpeech` only strips markdown and emoji, so nothing in it is
   language-specific; numbers and symbols are written out by the brain ("write numbers the way they
   are said").
-- **Brain**: the system prompt stays in English; a "Language" section tells it the OS language to
+- **Brain**: the system prompt stays in English; a "Language" section tells it Minerva's language to
   reply in (unless the user speaks another one) and the reminder phrase ("Te recuerdo" / "Just a
   reminder"). Workers write their reports in the same language.
 

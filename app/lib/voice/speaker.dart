@@ -24,7 +24,9 @@ class Speaker {
   final SendPort _send;
   final int sampleRate;
   final Stream<Speech> speech;
-  final String language;
+
+  /// The language [say] reads sentences in by default; it can change while the voice runs.
+  String language;
 
   static Future<Speaker> start({
     required String modelDir,

@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import '../l10n/l10n.dart';
 
 /// Dart side of the desktop window's states (macos/Runner/MainFlutterWindow.swift).
 ///
@@ -43,6 +46,7 @@ class DesktopWindow extends ChangeNotifier {
     try {
       final state = await _channel.invokeMethod<Map<Object?, Object?>>('state');
       if (state != null) _apply(state);
+      await setLanguage(languageSetting.value, save: false);
     } on MissingPluginException {
       // Not the macOS runner (e.g. a test): behave as an always open window.
     }
@@ -69,6 +73,26 @@ class DesktopWindow extends ChangeNotifier {
     } on MissingPluginException {
       return;
     }
+  }
+
+  /// Gives the native menus Minerva's language setting (null: the system's). [save] (the user
+  /// changed it): also make it the app's own macOS language, for the menu bar and the system
+  /// dialogs from the next launch, and read the user's languages for all apps (see
+  /// [systemLocales]), which the app's own no longer tell.
+  Future<void> setLanguage(String? code, {bool save = true}) async {
+    try {
+      await _channel.invokeMethod('setLanguage', {'code': code, 'save': save});
+      if (!save) return;
+      final langs = await _channel.invokeListMethod<String>('systemLanguages');
+      if (langs != null && langs.isNotEmpty) systemLocales = [for (final l in langs) _parseLocale(l)];
+    } on MissingPluginException {
+      return;
+    }
+  }
+
+  static Locale _parseLocale(String tag) {
+    final parts = tag.split(RegExp('[-_]'));
+    return Locale(parts.first, parts.length > 1 && parts[1].length == 2 ? parts[1] : null);
   }
 
   /// Opens the normal window.
