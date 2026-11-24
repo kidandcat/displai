@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../l10n/l10n.dart';
 
 /// Webhooks from third parties (GitHub, Stripe, home automation…) at this Mac's own address,
-/// `https://<id>.minerva.kidandcat.com/…`, through the relay.
+/// `https://<id>.minerva.kidandcat.com/<key>/…`, through the relay (see docs/design.md §3.7).
 ///
 /// The work is done by the bundled minerva-webhooks helper (relay/cmd/minerva-webhooks, built
 /// into Minerva.app/Contents/MacOS by an Xcode build phase): it keeps a tunnel open to the relay,

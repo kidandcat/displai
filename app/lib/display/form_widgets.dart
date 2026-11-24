@@ -9,8 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:genui/genui.dart';
 
+import '../vault/vault_strings.dart';
 import 'theme.dart';
 import 'view_model.dart';
+
+/// While above zero, secret fields are drawn obscured even if the user revealed them (the
+/// display is being captured for the brain).
+final ValueNotifier<int> secretsHidden = ValueNotifier(0);
 
 /// Returns the names of required fields that have no value.
 List<String> missingRequired(List<Map> fields, Map values) => [
@@ -39,12 +44,16 @@ class DisplayForm extends StatefulWidget {
     required this.data,
     required this.dataContext,
     required this.onSubmit,
+    this.onCancel,
   });
 
   final String formId;
   final Map<String, Object?> data;
   final DataContext dataContext;
   final VoidCallback onSubmit;
+
+  /// Shown as a second button when the form has a `cancel` label.
+  final VoidCallback? onCancel;
 
   @override
   State<DisplayForm> createState() => _DisplayFormState();
@@ -116,6 +125,10 @@ class _DisplayFormState extends State<DisplayForm> {
     final bool submitted = widget.data['submitted'] == true;
     final String submitLabel =
         (widget.data['submit'] as String?) ?? DisplayStrings.submit;
+    final String? cancelLabel = widget.data['cancel'] as String?;
+    final String submittedLabel = widget.data['vault'] != null
+        ? VaultStrings.saved
+        : DisplayStrings.submitted;
 
     final List<Map<String, Object?>> fields = _fields;
     final double pad = 28 * s;
@@ -206,11 +219,23 @@ class _DisplayFormState extends State<DisplayForm> {
                     Flexible(
                       child: _SubmitButton(
                         label: submitted
-                            ? '$submitLabel  ·  ${DisplayStrings.submitted} ✓'
+                            ? '$submitLabel  ·  $submittedLabel ✓'
                             : submitLabel,
                         onTap: _submit,
                       ),
                     ),
+                    if (cancelLabel != null && widget.onCancel != null && !submitted) ...[
+                      SizedBox(width: 16 * s),
+                      Flexible(
+                        child: _CancelButton(
+                          label: cancelLabel,
+                          onTap: () {
+                            FocusScope.of(context).unfocus();
+                            widget.onCancel!();
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -261,6 +286,16 @@ class _DisplayFormState extends State<DisplayForm> {
             }
           },
           onSubmitted: (_) => _submit(),
+        );
+      case 'secret':
+        return _SecretField(
+          key: ValueKey('field-$name'),
+          name: name,
+          controller: _controllerFor(name, formatFieldValue(value)),
+          focusNode: _focus[name]!,
+          decoration: _inputDecoration(s, f['placeholder'] as String?),
+          onChanged: (text) => _set(name, text),
+          onSubmitted: _submit,
         );
       case 'date':
         final String? v = value as String?;
@@ -557,6 +592,106 @@ class _DateField extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A text field drawn obscured, with a show/hide toggle. Never revealed while the display is
+/// captured ([secretsHidden]).
+class _SecretField extends StatefulWidget {
+  const _SecretField({
+    super.key,
+    required this.name,
+    required this.controller,
+    required this.focusNode,
+    required this.decoration,
+    required this.onChanged,
+    required this.onSubmitted,
+  });
+
+  final String name;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final InputDecoration decoration;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onSubmitted;
+
+  @override
+  State<_SecretField> createState() => _SecretFieldState();
+}
+
+class _SecretFieldState extends State<_SecretField> {
+  bool _revealed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = DisplayText.of(context);
+    final double s = t.s;
+    return ValueListenableBuilder<int>(
+      valueListenable: secretsHidden,
+      builder: (context, hidden, _) {
+        final bool show = _revealed && hidden == 0;
+        return TextField(
+          controller: widget.controller,
+          focusNode: widget.focusNode,
+          style: t.body,
+          cursorColor: DisplayColors.accent,
+          obscureText: !show,
+          obscuringCharacter: '•',
+          autocorrect: false,
+          enableSuggestions: false,
+          enableIMEPersonalizedLearning: false,
+          keyboardType: TextInputType.visiblePassword,
+          decoration: widget.decoration.copyWith(
+            suffixIcon: Padding(
+              padding: EdgeInsets.only(right: 6 * s),
+              child: IconButton(
+                key: ValueKey('reveal-${widget.name}'),
+                tooltip: show ? VaultStrings.hide : VaultStrings.show,
+                iconSize: 24 * s,
+                color: DisplayColors.textMuted,
+                icon: Icon(show ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                onPressed: () => setState(() => _revealed = !_revealed),
+              ),
+            ),
+          ),
+          onChanged: widget.onChanged,
+          onSubmitted: (_) => widget.onSubmitted(),
+        );
+      },
+    );
+  }
+}
+
+class _CancelButton extends StatelessWidget {
+  const _CancelButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final double s = DisplayScale.of(context);
+    return Selectable(
+      onTap: onTap,
+      builder: (context, hover) => AnimatedContainer(
+        key: const ValueKey('form-cancel'),
+        duration: const Duration(milliseconds: 140),
+        padding: EdgeInsets.symmetric(horizontal: 30 * s, vertical: 16 * s),
+        decoration: BoxDecoration(
+          color: hover ? DisplayColors.border : Colors.transparent,
+          borderRadius: BorderRadius.circular(14 * s),
+          border: Border.all(color: DisplayColors.border, width: 1.2),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 21 * s,
+            fontWeight: FontWeight.w600,
+            color: DisplayColors.textMuted,
           ),
         ),
       ),

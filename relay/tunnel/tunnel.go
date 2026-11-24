@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -43,6 +44,14 @@ var b32 = base32.StdEncoding.WithPadding(base32.NoPadding)
 func ID(secret string) string {
 	sum := sha256.Sum256([]byte("minerva tunnel id v1\x00" + secret))
 	return strings.ToLower(b32.EncodeToString(sum[:16]))
+}
+
+// PathKey is the secret first path segment of the desktop's webhook URL. The [ID] cannot stay
+// private: it is the host name of a public certificate, so it shows up in Certificate
+// Transparency logs and scanners probe it within seconds. Only requests under this key count.
+func PathKey(secret string) string {
+	sum := sha256.Sum256([]byte("minerva webhook path v1\x00" + secret))
+	return strings.ToLower(b32.EncodeToString(sum[:15]))
 }
 
 // ValidID reports whether s looks like an [ID].
@@ -156,6 +165,7 @@ func (l *Listener) run() {
 		if time.Since(start) > time.Minute {
 			backoff = time.Second
 		}
+		log.Printf("tunnel: %v (retrying in %s)", err, backoff)
 		select {
 		case <-time.After(backoff):
 		case <-l.ctx.Done():

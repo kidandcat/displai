@@ -26,6 +26,8 @@ import '../tools/history_tools.dart';
 import '../tools/memory_tools.dart';
 import '../tools/skill_tools.dart';
 import '../tools/tool_provider.dart';
+import '../vault/vault.dart';
+import '../vault/vault_tools.dart';
 import '../workers/workers.dart';
 import '../voice/listener.dart';
 import '../voice/model_store.dart';
@@ -88,6 +90,9 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   late final List<ToolProvider> providers;
   late final Workers workers;
   late final Routines routines;
+
+  /// Credentials the brain uses by placeholder without seeing them (design §3.9).
+  late final Vault vault;
 
   String get _skillsDir => '${store.dir}/skills';
 
@@ -186,15 +191,24 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       final dataDir = Platform.environment['MINERVA_DATA_DIR'] ??
           (await getApplicationSupportDirectory()).path;
       store = await Store.open(dataDir);
+      vault = await Vault.open('${store.dir}/vault');
       workers = Workers(
         store: store,
-        hostTools: [CommandTools(), MemoryTools(store, readOnly: true), HistoryTools(store), SkillTools(_skillsDir, readOnly: true)],
+        hostTools: [
+          CommandTools(vault: vault),
+          MemoryTools(store, readOnly: true),
+          HistoryTools(store),
+          SkillTools(_skillsDir, readOnly: true),
+          VaultTools(vault, readOnly: true),
+        ],
+        scrub: vault.scrubResult,
         notify: notify,
       )..addListener(notifyListeners);
       routines = Routines(store: store, notify: notify);
       providers = [
-        CommandTools(),
-        ComputerTools(),
+        CommandTools(vault: vault),
+        ComputerTools(vault: vault),
+        VaultTools(vault),
         MemoryTools(store),
         HistoryTools(store),
         SkillTools(_skillsDir),
@@ -213,9 +227,11 @@ class Assistant extends ChangeNotifier implements AssistantUi {
           for (final t in DisplayController.toolSpecs) McpTool(t.name, t.description, t.inputSchema),
           _snapshotTool,
           _windowTool,
+          VaultTools.requestTool,
           for (final p in providers) ...p.tools,
         ],
-        handler: _handleTool,
+        // Nothing the brain gets back carries a stored secret.
+        handler: (name, args) async => vault.scrubResult(await _handleTool(name, args)),
         onCall: (name) => _setActivity(''),
       );
       await _mcp.start();
@@ -254,7 +270,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         ..add(_listener.events.listen(_onHeard))
         ..add(_speaker.speech.listen(_onSpeech))
         ..add(_claude.events.listen(_onBrain))
-        ..add(display.userEvents.listen(_onDisplayEvent));
+        ..add(display.userEvents.listen(_onDisplayEvent))
+        ..add(display.vaultSubmissions.listen(_onVaultSubmission));
       ready = true;
       _updatePresence();
       routines.start();
@@ -301,6 +318,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     final p = phone = PhoneHost(relay: _relay, key: store.get('remote_key')!, playRate: _speaker.sampleRate, log: _displayLog)
       ..onMic = _onPhoneMic
       ..onEvent = _onDisplayEvent
+      ..onVault = _onVaultSubmission
       ..onMute = ((on) => muted = on)
       ..onIdle = _onAudioIdle
       ..onJoin = _phoneJoined
@@ -440,6 +458,20 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     }
     _turnSpeechEnd = null;
     _ask(event);
+  }
+
+  /// A credential typed in a vault form (here or on the phone): its values go to the vault, and
+  /// the brain only hears that it was saved.
+  Future<void> _onVaultSubmission(VaultSubmission s) async {
+    String event;
+    try {
+      await vault.save(s.name, s.description, [for (final (n, v, secret) in s.fields) VaultField(n, v, secret: secret)]);
+      event = '[display] saved credential ${s.name} (fields ${s.fieldNames.join(', ')})';
+    } catch (e) {
+      // The error never contains a value; scrubbed anyway.
+      event = vault.scrub('[display] could not save credential ${s.name}: $e');
+    }
+    _onDisplayEvent(event);
   }
 
   /// The user talked over the assistant: stop the voice and the brain at once.
@@ -590,6 +622,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         return p.call(name, args);
       }
     }
+    if (name == VaultTools.requestTool.name) return _requestCredential(args);
     if (name == _windowTool.name) {
       final orb = args['mode'] == 'orb';
       if (onPhone) return const ToolResult('ok: the phone is connected, the Mac window stays the orb.');
@@ -608,6 +641,20 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     if (text.startsWith('error:')) return ToolResult.error(text);
     _displayLog.record(name, args);
     return ToolResult(text);
+  }
+
+  /// vault_request: a form whose submission goes to the vault ([_onVaultSubmission]).
+  Future<ToolResult> _requestCredential(Map<String, dynamic> args) async {
+    if (vault.loadError != null) return ToolResult.error('error: ${vault.loadError}');
+    final form = VaultTools.requestForm(args);
+    if (form is String) return ToolResult.error(form);
+    final r = await _handleTool('form', form as Map<String, dynamic>);
+    if (r.isError) return r;
+    final name = form['vault'];
+    final fields = [for (final f in form['fields'] as List) (f as Map)['name']].join(', ');
+    return ToolResult('ok: asking the user for credential $name on the display (fields $fields). You will '
+        'get "[display] saved credential $name" or "[display] credential request $name cancelled"; you '
+        'never see the values. Use {{vault:$name.<field>}} once it is saved.');
   }
 
   /// Shrinks the window to the corner orb while Minerva works in other apps of the Mac (the

@@ -13,12 +13,12 @@ import (
 
 func newTestHandler(t *testing.T) (*handler, *bytes.Buffer) {
 	var buf bytes.Buffer
-	return &handler{dir: t.TempDir(), maxBody: 64, out: &emitter{enc: json.NewEncoder(&buf)}}, &buf
+	return &handler{key: "k3y", dir: t.TempDir(), maxBody: 64, out: &emitter{enc: json.NewEncoder(&buf)}}, &buf
 }
 
 func TestWebhookEvent(t *testing.T) {
 	h, out := newTestHandler(t)
-	req := httptest.NewRequest("POST", "/github?x=1", strings.NewReader(`{"action":"opened"}`))
+	req := httptest.NewRequest("POST", "/k3y/github?x=1", strings.NewReader(`{"action":"opened"}`))
 	req.Header.Set("X-GitHub-Event", "issues")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -45,7 +45,7 @@ func TestWebhookEvent(t *testing.T) {
 
 func TestBinaryBodyAndLimits(t *testing.T) {
 	h, out := newTestHandler(t)
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/", bytes.NewReader([]byte{0xff, 0xfe})))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/k3y", bytes.NewReader([]byte{0xff, 0xfe})))
 	var ev struct {
 		Body   string
 		Base64 bool
@@ -57,22 +57,32 @@ func TestBinaryBodyAndLimits(t *testing.T) {
 
 	out.Reset()
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("POST", "/", strings.NewReader(strings.Repeat("x", 65))))
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/k3y/", strings.NewReader(strings.Repeat("x", 65))))
 	if w.Code != http.StatusRequestEntityTooLarge || out.Len() != 0 {
 		t.Fatalf("too large: %d, %q", w.Code, out)
 	}
 
-	w = httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("GET", "/favicon.ico", nil))
-	if w.Code != http.StatusNotFound || out.Len() != 0 {
-		t.Fatalf("favicon: %d", w.Code)
+}
+
+// The host name is public (Certificate Transparency); scanners must not reach the assistant.
+func TestRequestsWithoutThePathKeyAreIgnored(t *testing.T) {
+	h, out := newTestHandler(t)
+	for _, p := range []string{"/", "/.env", "/github", "/k3yx/github", "/K3Y/github", "/x/k3y/github"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("POST", p, strings.NewReader("{}")))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("%s: status %d", p, w.Code)
+		}
+	}
+	if files, _ := os.ReadDir(h.dir); out.Len() != 0 || len(files) != 0 {
+		t.Fatalf("reported %q, saved %d files", out, len(files))
 	}
 }
 
 func TestEchoesSubscriptionChallenge(t *testing.T) {
 	h, _ := newTestHandler(t)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("GET", "/meta?hub.mode=subscribe&hub.challenge=1234", nil))
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/k3y/meta?hub.mode=subscribe&hub.challenge=1234", nil))
 	if w.Body.String() != "1234" {
 		t.Fatalf("challenge: %q", w.Body)
 	}

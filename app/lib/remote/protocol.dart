@@ -24,6 +24,10 @@ import 'dart:typed_data';
 ///                     idle {n}                        voice queue drained after n voice frames
 ///                     event {text}                    a display action ("[display] ...")
 ///                     mute {on}                       the user muted or unmuted the phone mic
+///                     vault {name, description, fields: [{name, value, secret}]}
+///                                                     a credential typed in a vault form; the
+///                                                     host saves it in its vault, never in the
+///                                                     brain's conversation
 class RemoteProtocol {
   static const kindMic = 1;
   static const kindVoice = 2;

@@ -45,6 +45,40 @@ class DisplayViewEntry {
   final Set<String> _defaultsApplied = {};
 }
 
+/// A credential typed into a vault form (from vault_request). It goes to the vault, never to
+/// the brain: [DisplayController.userEvents] gets nothing for it.
+class VaultSubmission {
+  const VaultSubmission(this.name, this.description, this.fields);
+
+  final String name;
+  final String description;
+
+  /// (field name, value, secret).
+  final List<(String, String, bool)> fields;
+
+  List<String> get fieldNames => [for (final f in fields) f.$1];
+
+  /// For the phone remote's encrypted link.
+  Map<String, Object?> toJson() => {
+    'name': name,
+    'description': description,
+    'fields': [
+      for (final (n, v, secret) in fields)
+        {'name': n, 'value': v, 'secret': secret},
+    ],
+  };
+
+  static VaultSubmission? fromJson(Map<String, dynamic> j) {
+    final Object? name = j['name'];
+    final Object? fields = j['fields'];
+    if (name is! String || fields is! List) return null;
+    return VaultSubmission(name, '${j['description'] ?? ''}', [
+      for (final Object? f in fields)
+        if (f is Map) ('${f['name']}', '${f['value'] ?? ''}', f['secret'] != false),
+    ]);
+  }
+}
+
 class _Action {
   _Action(this.text) : at = DateTime.now();
   final String text;
@@ -66,6 +100,7 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
   int _seq = 0;
 
   final StreamController<String> _events = StreamController.broadcast();
+  final StreamController<VaultSubmission> _vault = StreamController.broadcast();
   final List<_Action> _actions = [];
 
   final ValueNotifier<VideoCommand?> _videoCommands = ValueNotifier(null);
@@ -103,6 +138,9 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
   void reportOverflow(double px) => _overflow = px;
 
   Stream<String> get userEvents => _events.stream;
+
+  /// Credentials submitted in vault forms (their values must go to the vault only).
+  Stream<VaultSubmission> get vaultSubmissions => _vault.stream;
 
   /// genui error reports (schema validation, runtime); for diagnostics.
   List<String> get rendererErrors => List.unmodifiable(_adapter.errors);
@@ -475,6 +513,11 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
       return 'ok: removed $id';
     }
 
+    // A credential form stays as vault_request made it (so its values keep going to the vault).
+    if (str(node.props['vault']) != null && (args['set'] ?? args['props'] ?? args['values'] ?? args['append']) != null) {
+      return 'error: "$id" is a credential form; it cannot be changed (call vault_request again)';
+    }
+
     final parser = NodeParser()..reserve(e.root);
     final Object? set = args['set'] ?? args['props'];
     if (set is Map) {
@@ -716,6 +759,14 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
         text =
             'page ${quote(e.title.isEmpty ? node.id : e.title)} '
             '(${node.id}) sent: ${_clipText(said, 2000)}';
+      case DisplayActions.submit when str(node.props['vault']) != null:
+        _submitVault(e, node);
+        return;
+      case DisplayActions.cancel:
+        final String? vault = str(node.props['vault']);
+        text = vault != null
+            ? 'credential request $vault cancelled'
+            : 'form ${quote(e.title.isEmpty ? node.id : e.title)} cancelled';
       case DisplayActions.submit:
         final Map<String, Object?> values = _formValues(e, node);
         text =
@@ -731,12 +782,45 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
     if (!_events.isClosed) _events.add('[display] $text');
   }
 
+  /// Hands a vault form's values to [vaultSubmissions] and wipes them from the form.
+  void _submitVault(DisplayViewEntry e, DisplayNode form) {
+    final Object? raw = _adapter.getData(e.surfaceId, formPath(form.id));
+    final Map values = raw is Map ? raw : const {};
+    final fields = <(String, String, bool)>[];
+    for (final Object? f in listOf(form.props['fields'])) {
+      if (f is! Map) continue;
+      final String name = '${f['name']}';
+      final Object? v = values[name];
+      if (v != null && '$v'.isNotEmpty) {
+        fields.add((name, '$v', f['type'] == 'secret'));
+      }
+      _adapter.setData(e.surfaceId, '${formPath(form.id)}/$name', null);
+    }
+    final submission = VaultSubmission(
+      str(form.props['vault'])!,
+      str(form.props['vaultDescription']) ?? '',
+      fields,
+    );
+    form.props = {...form.props, 'submitted': true};
+    _render(e);
+    _notify();
+    _actions.add(
+      _Action(
+        'credential form ${submission.name} submitted '
+        '(fields ${submission.fieldNames.join(', ')}; the values went to the vault)',
+      ),
+    );
+    if (_actions.length > 5) _actions.removeAt(0);
+    if (!_vault.isClosed) _vault.add(submission);
+  }
+
+  /// A form's values for the brain. Secret fields are left out: only vault forms have them.
   Map<String, Object?> _formValues(DisplayViewEntry e, DisplayNode form) {
     final Object? raw = _adapter.getData(e.surfaceId, formPath(form.id));
     final Map values = raw is Map ? raw : const {};
     final out = <String, Object?>{};
     for (final Object? f in listOf(form.props['fields'])) {
-      if (f is! Map) continue;
+      if (f is! Map || f['type'] == 'secret') continue;
       final Object? v = values[f['name']];
       if (v != null) out[f['name'] as String] = v;
     }
@@ -874,14 +958,17 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
         final Object? raw = _adapter.getData(e.surfaceId, formPath(n.id));
         final Map values = raw is Map ? raw : const {};
         buf.writeln(
-          '${pad}form ${n.id} '
+          '${pad}form ${n.id}'
+          '${p['vault'] != null ? ' (credential ${p['vault']} for the vault; you never see its values)' : ''} '
           '(${p['submitted'] == true ? 'submitted' : 'not submitted yet'})',
         );
         for (final Object? f in listOf(p['fields'])) {
           if (f is! Map) continue;
           final Object? v = values[f['name']];
-          final String value = v == null
+          final String value = v == null || v == ''
               ? 'empty'
+              : f['type'] == 'secret' || p['vault'] != null
+              ? '= ••• (typed, hidden)'
               : v is String
               ? '= "$v"'
               : '= ${formatFieldValue(v)}';
@@ -939,6 +1026,7 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
     _disposed = true;
     _partialTimer?.cancel();
     _events.close();
+    _vault.close();
     _videoCommands.dispose();
     _adapter.dispose();
     super.dispose();

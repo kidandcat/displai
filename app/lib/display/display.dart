@@ -9,7 +9,7 @@
 ///   model.
 library;
 
-export 'display_controller.dart' show DisplayController, DisplayViewEntry;
+export 'display_controller.dart' show DisplayController, DisplayViewEntry, VaultSubmission;
 export 'display_view.dart' show DisplayView;
 export 'theme.dart' show DisplayColors, DisplayStrings;
 export 'tool_specs.dart' show DisplayToolSpec;

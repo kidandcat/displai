@@ -365,6 +365,11 @@ class NodeParser {
         copyStr('title', []);
         copyStr('intro', ['text']);
         copyStr('submit', ['submitLabel']);
+        // Credential forms (vault_request): with `vault` set, the values go to the vault on
+        // submit, never to the brain.
+        copyStr('cancel', []);
+        copyStr('vault', []);
+        copyStr('vaultDescription', []);
         p['fields'] = [
           for (final Object? f in listOf(raw['fields'])) ?_field(f),
         ];
@@ -452,6 +457,9 @@ class NodeParser {
     'select',
     'checkbox',
     'slider',
+    // Obscured text with a show/hide toggle (vault_request forms). Its value never goes to
+    // the brain.
+    'secret',
   };
 
   static Map<String, dynamic>? _field(Object? f) {
