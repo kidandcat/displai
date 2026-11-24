@@ -116,6 +116,30 @@ void main() {
     expect(s.mode, PresenceMode.speaking);
   });
 
+  test('workers take free orbits, keep them, and count their ends', () {
+    final s = PresenceSignal();
+    var calls = 0;
+    s.addListener(() => calls++);
+    bool on(int i) => s.workerOn(i);
+    s.workers = [7, 8];
+    expect([on(0), on(1), on(2)], [true, true, false]);
+    s.workers = [7, 8];
+    expect(calls, 1);
+    // 7 ends: its orbit frees and flares; 8 keeps orbit 1.
+    s.workers = [8];
+    expect([on(0), on(1)], [false, true]);
+    expect([s.workerEnds(0), s.workerEnds(1)], [1, 0]);
+    // Four at once: the fourth waits for an orbit.
+    s.workers = [8, 9, 10, 11];
+    expect([on(0), on(1), on(2)], [true, true, true]);
+    s.workers = [8, 10, 11];
+    expect([on(0), on(1), on(2)], [true, true, true]);
+    expect(s.workerEnds(0), 2);
+    s.workers = [];
+    expect([on(0), on(1), on(2)], [false, false, false]);
+    s.dispose();
+  });
+
   test('activity bumps and decays', () {
     final clock = _FakeClock();
     final s = PresenceSignal(clock: clock.call);

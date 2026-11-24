@@ -237,7 +237,9 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         ],
         scrub: vault.scrubResult,
         notify: notify,
-      )..addListener(notifyListeners);
+      )
+        ..addListener(notifyListeners)
+        ..addListener(() => presence.workers = workers.runningIds);
       _applyWorkerModel();
       routines = Routines(store: store, notify: notify);
       providers = [

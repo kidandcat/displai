@@ -91,6 +91,42 @@ class PresenceSignal extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Orbits of the gyroscope that can show a background worker.
+  static const int maxWorkers = 3;
+
+  final List<int?> _workerIds = List.filled(maxWorkers, null);
+  final List<int> _workerEnds = List.filled(maxWorkers, 0);
+
+  /// Whether a running background worker is on orbit [ring].
+  bool workerOn(int ring) => _workerIds[ring] != null;
+
+  /// How many workers have ended on orbit [ring]; a view flares the orbit
+  /// when it grows.
+  int workerEnds(int ring) => _workerEnds[ring];
+
+  /// Ids of the running background workers, oldest first. Each takes a free
+  /// orbit and keeps it while it runs; past [maxWorkers], newer ones wait for
+  /// an orbit to free up.
+  set workers(Iterable<int> running) {
+    final ids = running.toSet();
+    var changed = false;
+    for (var i = 0; i < maxWorkers; i++) {
+      final id = _workerIds[i];
+      if (id == null || ids.contains(id)) continue;
+      _workerIds[i] = null;
+      _workerEnds[i]++;
+      changed = true;
+    }
+    for (final id in ids) {
+      if (_workerIds.contains(id)) continue;
+      final free = _workerIds.indexOf(null);
+      if (free < 0) break;
+      _workerIds[free] = id;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
   /// Smoothed loudness, 0..1.
   double get level => _level;
 

@@ -20,6 +20,9 @@
 //   speaking   the nucleus and the plasma flare with Minerva's voice, ripples travel outward and a
 //              voice contour blooms around the shell
 //   muted      the app fades both accents to red
+//   workers    each running background worker (up to three) takes an orbit of the gyroscope: the
+//              orbit breathes brighter and a small moon travels along it with a short wake; when
+//              the worker ends, the orbit flares once and fades back
 //
 // Uniform layout (float indices for FragmentShader.setFloat):
 //   0      uTime        seconds, wrapped by the app at 2000*pi
@@ -38,6 +41,8 @@
 //   27..35 uRotX/Y/Z    rows of the shell's rotation matrix (view -> object)
 //   36..53 uRing0..2    per orbit: inverse 2x2 projection (vec4) and depth coefficients (vec2)
 //   54..57 uHud         inverse 2x2 projection of the HUD plane
+//   58..60 uWork        per orbit: how much a running background worker is on it, 0..1 (eased)
+//   61..63 uDone        per orbit: the flare of a worker that just ended, 1 fading to 0
 //
 // uTime and uSpin wrap so they keep float precision for days. A wrap is seamless as long as every
 // multiplier applied to them inside a sin/cos (or to uSpin / TAU inside a fract, times an integer)
@@ -79,6 +84,8 @@ uniform vec2 uRing1Z;
 uniform vec4 uRing2;
 uniform vec2 uRing2Z;
 uniform vec4 uHud;
+uniform vec3 uWork;
+uniform vec3 uDone;
 
 out vec4 fragColor;
 
@@ -249,6 +256,8 @@ void main() {
     for (int i = 0; i < 3; i++) {
       vec4 m = i == 0 ? uRing0 : (i == 1 ? uRing1 : uRing2);
       vec2 zc = i == 0 ? uRing0Z : (i == 1 ? uRing1Z : uRing2Z);
+      float wk = i == 0 ? uWork.x : (i == 1 ? uWork.y : uWork.z);
+      float wd = i == 0 ? uDone.x : (i == 1 ? uDone.y : uDone.z);
       float rad = gyroR + gyroStep * float(i);
       // Screen point -> point of the orbit's plane (orthographic view, so this is linear).
       vec2 ab = vec2(dot(m.xy, q), dot(m.zw, q));
@@ -283,6 +292,22 @@ void main() {
         float vis = depth >= 0.0 ? 1.0 : mix(0.5, 0.13, 1.0 - smoothstep(shellR - 0.02, shellR + 0.02, r));
         vec3 rc = mix(A, B, i == 1 ? 0.85 : 0.12);
         col += (rc * lum + hot * head * 1.3) * vis * (0.8 + 0.4 * wThink + 0.35 * lvl * react);
+        // A background worker on this orbit: the orbit breathes brighter and a small moon travels
+        // along it with a short wake, the way the comets go. When the worker ends, the orbit
+        // flares and fades back.
+        if (wk + wd > 0.002) {
+          float sgn = i == 1 ? -1.0 : 1.0;
+          float ma = sgn * uTime * (0.2 + 0.05 * float(i)) + float(i) * 2.1;
+          float dm = length(ab - rad * vec2(cos(ma), sin(ma)));
+          float wake = exp(-fract(sgn * (ma / TAU + 0.5 - turn)) * 9.0);
+          float breathe = 0.75 + 0.25 * sin(uTime * 2.2 + float(i) * 2.1);
+          vec3 wc = mix(rc, hot, 0.25);
+          float glow = line(ds, lw * 1.4, pxW) * (0.35 * breathe + 0.9 * wake)
+              + exp(-abs(ds) * 26.0) * (0.06 * breathe + 0.2 * wake);
+          float moon = exp(-dm * dm * mix(1800.0, 500.0, compact));
+          col += (wc * glow + hot * moon * 1.4 + B * exp(-dm * 40.0) * 0.12) * wk * vis;
+          col += (hot * line(ds, lw * 2.0, pxW) * 0.9 + wc * exp(-abs(ds) * 20.0) * 0.45) * wd * vis;
+        }
       }
     }
   }

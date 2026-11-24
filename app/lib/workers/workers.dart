@@ -48,6 +48,9 @@ class Workers extends ToolProvider with ChangeNotifier {
 
   int get runningCount => _running.length;
 
+  /// Ids of the running workers, oldest first.
+  Iterable<int> get runningIds => _running.keys;
+
   static const _builtins = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'];
 
   static const _progressTool = McpTool(

@@ -69,6 +69,12 @@ class PresenceFrame extends ChangeNotifier {
   /// The same inverse projection for the HUD plane.
   final Float64List hudInverse = Float64List(4);
 
+  /// Per orbit, how much a running background worker is on it (0..1, eased).
+  final Float64List work = Float64List(ringCount);
+
+  /// Per orbit, the flare of a worker that just ended (1, fading to 0).
+  final Float64List done = Float64List(ringCount);
+
   /// [accent] blended toward [kPresenceMutedAccent] by [muted].
   Color tint(Color accent) =>
       muted <= 0 ? accent : Color.lerp(accent, kPresenceMutedAccent, muted)!;
@@ -230,6 +236,12 @@ class _PresenceViewState extends State<PresenceView> {
   // Seconds for the muted color fade to get ~63% of the way.
   static const double _muteTau = 0.3;
 
+  // Seconds (~63%) for an orbit to light up for a worker, to let it go, and
+  // for the flare of a worker that ended to fade.
+  static const double _workRiseTau = 0.5;
+  static const double _workFallTau = 1.0;
+  static const double _doneTau = 0.5;
+
   // The timer that asks for the next frame fires this long before the frame
   // is due, so the request lands before that display refresh, not after it.
   static const int _leadMicros = 4000;
@@ -247,6 +259,9 @@ class _PresenceViewState extends State<PresenceView> {
   int? _frameCallback;
   Duration? _lastStamp;
 
+  // The signal's per-orbit count of ended workers, as last seen.
+  final List<int> _workerEnds = List.filled(PresenceFrame.ringCount, 0);
+
   @override
   void initState() {
     super.initState();
@@ -254,6 +269,10 @@ class _PresenceViewState extends State<PresenceView> {
       ..fillRange(0, 4, 0)
       ..[widget.signal.mode.index] = 1;
     _frame.muted = widget.signal.muted ? 1 : 0;
+    for (var i = 0; i < PresenceFrame.ringCount; i++) {
+      _frame.work[i] = widget.signal.workerOn(i) ? 1 : 0;
+      _workerEnds[i] = widget.signal.workerEnds(i);
+    }
     _frame.advance(0, 0);
     _load();
   }
@@ -376,13 +395,32 @@ class _PresenceViewState extends State<PresenceView> {
       );
     _frame.bands.setAll(0, signal.bands);
 
+    // Background workers: each one lights an orbit; one that ends flares it.
+    var settling = false;
+    for (var i = 0; i < PresenceFrame.ringCount; i++) {
+      final on = signal.workerOn(i) ? 1.0 : 0.0;
+      final tau = on > _frame.work[i] ? _workRiseTau : _workFallTau;
+      _frame.work[i] += (on - _frame.work[i]) * (1 - math.exp(-dt / tau));
+      if ((_frame.work[i] - on).abs() < 1e-3) _frame.work[i] = on;
+      final ends = signal.workerEnds(i);
+      if (ends != _workerEnds[i]) {
+        _workerEnds[i] = ends;
+        _frame.done[i] = 1;
+      } else if (_frame.done[i] > 0) {
+        _frame.done[i] *= math.exp(-dt / _doneTau);
+        if (_frame.done[i] < 1e-3) _frame.done[i] = 0;
+      }
+      settling = settling || _frame.work[i] != on || _frame.done[i] > 0;
+    }
+
     // Calm = settled in idle or listening, in silence. Anything else moves
     // fast enough to deserve the higher frame rate.
     _busy =
         w[target] < 0.985 ||
         target >= PresenceMode.thinking.index ||
         signal.level > 0.02 ||
-        _frame.muted != mutedTarget;
+        _frame.muted != mutedTarget ||
+        settling;
     _frame.markDirty();
   }
 
@@ -431,7 +469,7 @@ class _ShaderPainter extends CustomPainter {
   }) : super(repaint: frame);
 
   /// Number of float uniforms in shaders/presence.frag.
-  static const int floatCount = 58;
+  static const int floatCount = 64;
 
   final PresenceFrame frame;
   final ui.FragmentShader shader;
@@ -489,6 +527,12 @@ class _ShaderPainter extends CustomPainter {
     }
     for (var n = 0; n < 4; n++) {
       put(frame.hudInverse[n]);
+    }
+    for (var n = 0; n < PresenceFrame.ringCount; n++) {
+      put(frame.work[n]);
+    }
+    for (var n = 0; n < PresenceFrame.ringCount; n++) {
+      put(frame.done[n]);
     }
     assert(i == floatCount);
     canvas.drawRect(rect, _paint..shader = shader);
