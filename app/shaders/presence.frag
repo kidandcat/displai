@@ -53,7 +53,10 @@
 // skipped outside its own radius, and pixels outside the orb return at once. The app paints only a
 // square around the orb (not the window), at 20-30 fps while calm and 60 fps while busy. All
 // per-frame trigonometry (rotations, orbit planes) is done once in Dart, not per pixel.
-// The output is light only (premultiplied, alpha 0 = additive), so it sits on any backdrop.
+// The output is premultiplied light. The full orb's alpha is 0 (additive), so it sits on any
+// backdrop. The small orb's alpha follows its light (a little over it, a faint shade that keeps it
+// readable over light apps), so it also shows on a transparent window, where pixels of alpha 0 are
+// dropped, with nothing around it.
 
 #version 460 core
 
@@ -400,5 +403,7 @@ void main() {
   col = 1.0 - exp(-col * 1.35);
   col *= 1.0 - smoothstep(0.92 * rMax, rMax, r);
   col += (hash12(frag * uPx) - 0.5) * (1.5 / 255.0) * step(1e-4, col.r + col.g + col.b);
-  fragColor = vec4(max(col, 0.0), 0.0);
+  col = max(col, 0.0);
+  float alpha = uCompact > 0.5 ? min(1.0, 1.5 * max(col.r, max(col.g, col.b))) : 0.0;
+  fragColor = vec4(col, alpha);
 }
