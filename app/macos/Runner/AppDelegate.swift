@@ -4,7 +4,8 @@ import FlutterMacOS
 /// Minerva runs as a background service: closing the window hides it (the Mac stops listening)
 /// but the app keeps running, so the phone remote, workers and routines keep working. A menu bar
 /// item opens the window again or quits. Started with `--background` (the login LaunchAgent), it
-/// starts hidden.
+/// starts hidden. Its texts are in en.lproj / es.lproj (Localizable.strings), picked by the
+/// macOS preferred languages like the Flutter UI's.
 @main
 class AppDelegate: FlutterAppDelegate, NSMenuDelegate {
   private var statusItem: NSStatusItem?
@@ -73,21 +74,25 @@ class AppDelegate: FlutterAppDelegate, NSMenuDelegate {
     state.tag = 1
     menu.addItem(state)
     menu.addItem(.separator())
-    let open = NSMenuItem(title: "Abrir Minerva", action: #selector(openWindow), keyEquivalent: "")
+    let open = NSMenuItem(
+      title: NSLocalizedString("Open Minerva", comment: "Menu item"), action: #selector(openWindow), keyEquivalent: "")
     open.target = self
     menu.addItem(open)
     menu.addItem(.separator())
-    menu.addItem(NSMenuItem(title: "Salir de Minerva", action: #selector(NSApplication.terminate(_:)), keyEquivalent: ""))
+    menu.addItem(NSMenuItem(
+      title: NSLocalizedString("Quit Minerva", comment: "Menu item"),
+      action: #selector(NSApplication.terminate(_:)), keyEquivalent: ""))
     menu.delegate = self
     return menu
   }
 
   func menuWillOpen(_ menu: NSMenu) {
     guard let w = window else { return }
-    menu.item(withTag: 1)?.title =
+    let state =
       w.overlay
-      ? (w.overlayReason == "computer" ? "Usando el Mac · Abrir Minerva para volver" : "Móvil conectado")
-      : w.userOpen ? "Escuchando en este Mac" : "En segundo plano · el Mac no escucha"
+      ? (w.overlayReason == "computer" ? "Using the Mac · Open Minerva to come back" : "Phone connected")
+      : w.userOpen ? "Listening on this Mac" : "In the background · the Mac is not listening"
+    menu.item(withTag: 1)?.title = Bundle.main.localizedString(forKey: state, value: nil, table: nil)
   }
 
   @objc private func openWindow() {

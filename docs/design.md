@@ -326,7 +326,7 @@ Other numbers:
 
 1. **Earcon** at VAD end (< 50 ms) so the user knows they were heard.
 2. **Thinking strip**: a small live line showing what Claude Code is doing, from stream events
-   ("buscando en la web…", tool names mapped to Spanish labels).
+   ("Searching the web…", tool names mapped to labels in the UI language, see 7.1).
 3. **Progressive display**: render the `show` call from `input_json_delta` while it streams
    (partial-JSON parse), instead of waiting ~2–3 s for the complete call. This targets the biggest gap.
 4. **Speak first**: system prompt rule plus a one-shot example; measure the hit rate. The app cannot
@@ -407,6 +407,29 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
 - **Ordinals**: every selectable item gets a visible number; `get_state` reports them so the agent can
   resolve "la segunda", "el último", "ese".
 - Settings: model alias, voice, input device, hotkey, "use my Claude Code settings" toggle.
+
+### 7.1 Language
+
+Minerva follows the OS language; there is no language setting.
+
+- **UI**: Flutter gen-l10n, `app/lib/l10n/app_en.arb` (template) and `app_es.arb`. The locale is
+  the first OS language the app has (macOS: the preferred languages; Android: the phone's locales),
+  else English (`resolveLocale` in `lib/l10n/l10n.dart`). Code without a `BuildContext` (the status
+  lines the voice speaks, webhook and pairing notes, errors, display chrome) uses `strings`, which
+  resolves the same locale. The phone UI follows the phone; the status lines it shows and hears
+  come from the Mac, in the Mac's language.
+- **Native**: macOS menu bar item and main menu in `macos/Runner/{en,es}.lproj`
+  (`Localizable.strings`, `MainMenu.strings`), the microphone prompt in `InfoPlist.strings`
+  (`CFBundleLocalizations` = en, es). Android has no texts of its own besides the name.
+- **Voice**: Parakeet v3 detects the spoken language itself (no setting). Supertonic 3 does not: each
+  sentence is synthesised with a language code. Replies use the OS language when Supertonic has it
+  (31 languages, `speechLanguages`), else English; the app's own lines (status, errors) use the UI
+  language. `Speaker.cleanForSpeech` only strips markdown and emoji, so nothing in it is
+  language-specific; numbers and symbols are written out by the brain ("write numbers the way they
+  are said").
+- **Brain**: the system prompt stays in English; a "Language" section tells it the OS language to
+  reply in (unless the user speaks another one) and the reminder phrase ("Te recuerdo" / "Just a
+  reminder"). Workers write their reports in the same language.
 
 ## 8. v0 scope
 

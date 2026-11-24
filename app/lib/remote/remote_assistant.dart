@@ -9,6 +9,7 @@ import '../app/assistant_ui.dart';
 import '../audio/native_audio.dart';
 import '../display/display.dart';
 import '../display/display_runner.dart';
+import '../l10n/l10n.dart';
 import '../presence/presence.dart';
 import 'protocol.dart';
 import 'remote_link.dart';
@@ -58,9 +59,10 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
   @override
   String get linkNote {
     if (_hostReady) return '';
-    if (link.lastError == 'replaced') return 'Otro móvil está conectado a este ordenador';
-    if (!link.online) return 'Conectando…';
-    return 'Esperando al ordenador… (abre Minerva en él)';
+    final l = strings;
+    if (link.lastError == 'replaced') return l.remoteReplaced;
+    if (!link.online) return l.remoteConnecting;
+    return l.remoteWaitingHost;
   }
 
   void start() {
@@ -145,7 +147,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
       error = null;
       debugPrint('remote audio: $format');
     } catch (e) {
-      error = 'No se pudo usar el micrófono: $e';
+      error = strings.micFailed('$e');
       debugPrint('remote audio start failed: $e');
     } finally {
       _audioStarting = false;

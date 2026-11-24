@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../display/display.dart';
+import '../l10n/l10n.dart';
 import '../presence/presence.dart';
 import 'assistant_ui.dart';
 
@@ -46,7 +47,8 @@ class MainView extends StatelessWidget {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text('No se pudo arrancar: ${a.error}', style: const TextStyle(color: Colors.white70)),
+          child: Text(AppLocalizations.of(context).startFailed('${a.error}'),
+              style: const TextStyle(color: Colors.white70)),
         ),
       );
     }
@@ -114,6 +116,7 @@ class StatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final a = assistant;
     final t = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context);
     final narrow = MediaQuery.sizeOf(context).width < 600;
     return Container(
       height: 52,
@@ -122,7 +125,7 @@ class StatusBar extends StatelessWidget {
         children: [
           const Spacer(),
           if (!a.ready) ...[
-            Text(a.linkNote.isNotEmpty ? a.linkNote : 'Cargando la voz…',
+            Text(a.linkNote.isNotEmpty ? a.linkNote : l.loadingVoice,
                 style: t.bodySmall?.copyWith(color: kAccent, fontStyle: FontStyle.italic)),
             const SizedBox(width: 16),
           ],
@@ -134,17 +137,13 @@ class StatusBar extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              narrow
-                  ? '${a.backgroundJobs}'
-                  : a.backgroundJobs == 1
-                      ? '1 trabajo en segundo plano'
-                      : '${a.backgroundJobs} trabajos en segundo plano',
+              narrow ? '${a.backgroundJobs}' : l.backgroundJobs(a.backgroundJobs),
               style: t.bodySmall?.copyWith(color: kAccent),
             ),
             const SizedBox(width: 16),
           ],
           if (a.muted && !narrow)
-            Text('Micrófono silenciado · espacio para activar',
+            Text(l.micMuted,
                 style: t.bodySmall?.copyWith(color: Colors.redAccent.withValues(alpha: 0.8))),
           if (a.ready && a.linkNote.isNotEmpty && !narrow) ...[
             const SizedBox(width: 16),

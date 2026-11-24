@@ -1,0 +1,315 @@
+{
+  "@@locale": "en",
+  "modelsDownloadFailed": "Could not download the voice models.",
+  "@modelsDownloadFailed": {
+    "description": "First run: the voice models failed to download."
+  },
+  "modelsPreparing": "Preparing…",
+  "@modelsPreparing": {
+    "description": "First run: before the first download starts."
+  },
+  "modelsFirstRunNote": "Only the first time. Everything is processed on this Mac.",
+  "@modelsFirstRunNote": {
+    "description": "First run: under the download progress."
+  },
+  "modelDownloading": "Downloading {model}…",
+  "@modelDownloading": {
+    "description": "First run: a voice model is downloading.",
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "modelInstalling": "Installing {model}…",
+  "@modelInstalling": {
+    "description": "First run: a downloaded voice model is unpacking.",
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "modelVad": "Voice detector",
+  "@modelVad": {
+    "description": "Name of the voice activity detection model."
+  },
+  "modelStt": "Speech recognition (Parakeet v3)",
+  "@modelStt": {
+    "description": "Name of the speech recognition model."
+  },
+  "modelVoice": "Voice (Supertonic 3)",
+  "@modelVoice": {
+    "description": "Name of the text-to-speech model."
+  },
+  "startFailed": "Could not start: {error}",
+  "@startFailed": {
+    "description": "The assistant failed to start.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "loadingVoice": "Loading the voice…",
+  "@loadingVoice": {
+    "description": "Status bar while the assistant starts."
+  },
+  "backgroundJobs": "{count, plural, =1{1 background job} other{{count} background jobs}}",
+  "@backgroundJobs": {
+    "description": "Status bar: workers running in the background.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "micMuted": "Microphone muted · space to unmute",
+  "@micMuted": {
+    "description": "Status bar while the mic is muted."
+  },
+  "linkNoteOnPhone": "Phone connected · the Mac is silent",
+  "@linkNoteOnPhone": {
+    "description": "Status bar on the Mac while the phone remote is connected."
+  },
+  "phoneConnected": "Phone connected",
+  "@phoneConnected": {
+    "description": "Tooltip of the phone button while a phone is connected."
+  },
+  "phoneConnect": "Connect the phone",
+  "@phoneConnect": {
+    "description": "Tooltip of the phone button and title of the pairing dialog."
+  },
+  "pairingConnected": "Phone connected. While it is, the Mac neither listens nor speaks.",
+  "@pairingConnected": {
+    "description": "Pairing dialog status."
+  },
+  "pairingWaiting": "Waiting for the phone…",
+  "@pairingWaiting": {
+    "description": "Pairing dialog status."
+  },
+  "connectingToRelay": "Connecting to the relay…",
+  "@connectingToRelay": {
+    "description": "Pairing and webhooks status: reaching the relay server."
+  },
+  "pairingInstructions": "Scan it with the Minerva app on the phone. The phone will be the microphone, the speaker and the screen; everything is still processed on this Mac.",
+  "@pairingInstructions": {
+    "description": "Pairing dialog, under the QR code."
+  },
+  "pairingNewCode": "New code",
+  "@pairingNewCode": {
+    "description": "Pairing dialog button: forget the old pairing and make a new QR code."
+  },
+  "close": "Close",
+  "@close": {
+    "description": "Dialog button."
+  },
+  "copy": "Copy",
+  "@copy": {
+    "description": "Dialog button."
+  },
+  "webhooks": "Webhooks",
+  "@webhooks": {
+    "description": "Webhooks button tooltip and dialog title."
+  },
+  "webhooksActive": "Webhooks active",
+  "@webhooksActive": {
+    "description": "Webhooks button tooltip while they can be received."
+  },
+  "webhooksExplanation": "Other services can notify Minerva by calling this address (with any path after it). The encryption ends on this Mac: the relay does not see what arrives. Keep it private: whoever has it can write to Minerva.",
+  "@webhooksExplanation": {
+    "description": "Webhooks dialog."
+  },
+  "addressCopied": "Address copied",
+  "@addressCopied": {
+    "description": "Snack bar after copying the webhook address."
+  },
+  "webhooksHelperMissing": "The minerva-webhooks helper is missing from the app.",
+  "@webhooksHelperMissing": {
+    "description": "Webhooks status."
+  },
+  "webhooksHelperCrashes": "The webhooks helper quits at startup (code {code}).",
+  "@webhooksHelperCrashes": {
+    "description": "Webhooks status.",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "webhooksHelperFailed": "Could not start minerva-webhooks: {error}",
+  "@webhooksHelperFailed": {
+    "description": "Webhooks status.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webhooksStarting": "Starting…",
+  "@webhooksStarting": {
+    "description": "Webhooks status."
+  },
+  "webhooksRequestingCert": "Requesting the certificate…",
+  "@webhooksRequestingCert": {
+    "description": "Webhooks status."
+  },
+  "webhooksNoCert": "No certificate yet: {error}",
+  "@webhooksNoCert": {
+    "description": "Webhooks status.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "webhooksOn": "Active",
+  "@webhooksOn": {
+    "description": "Webhooks status."
+  },
+  "activityThinking": "Thinking…",
+  "@activityThinking": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityCompacting": "Summarizing the conversation…",
+  "@activityCompacting": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityWebSearch": "Searching the web…",
+  "@activityWebSearch": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityWebFetch": "Reading a page…",
+  "@activityWebFetch": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityLookingAtScreen": "Looking at the screen…",
+  "@activityLookingAtScreen": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityPreparingDisplay": "Preparing the display…",
+  "@activityPreparingDisplay": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityRemembering": "Remembering…",
+  "@activityRemembering": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activitySearchingHistory": "Searching the history…",
+  "@activitySearchingHistory": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityReadingSkill": "Going over how it's done…",
+  "@activityReadingSkill": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityStartingWorker": "Starting a background job…",
+  "@activityStartingWorker": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityCheckingWorkers": "Checking the running jobs…",
+  "@activityCheckingWorkers": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityScheduling": "Scheduling…",
+  "@activityScheduling": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityRunningCommand": "Running a command…",
+  "@activityRunningCommand": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityReadingFiles": "Reading files…",
+  "@activityReadingFiles": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityWritingFile": "Writing a file…",
+  "@activityWritingFile": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityReadingUi": "Reading the interface…",
+  "@activityReadingUi": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityUsingComputer": "Using the computer…",
+  "@activityUsingComputer": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "brainError": "Something went wrong with the brain. Please try again.",
+  "@brainError": {
+    "description": "Spoken when the brain's turn fails."
+  },
+  "reminderLead": "Just a reminder",
+  "@reminderLead": {
+    "description": "How the assistant starts a reminder said aloud (the brain is told to use it)."
+  },
+  "unpair": "Unpair from the computer",
+  "@unpair": {
+    "description": "Phone menu item."
+  },
+  "notMinervaCode": "That code is not from Minerva.",
+  "@notMinervaCode": {
+    "description": "Phone pairing screen: the scanned QR is not a pairing code."
+  },
+  "pairScreenInstructions": "On the computer, press the phone button in the bottom bar and scan the code.",
+  "@pairScreenInstructions": {
+    "description": "Phone pairing screen."
+  },
+  "pairScreenNote": "The phone will be the microphone, the speaker and the screen; everything is processed on the computer.",
+  "@pairScreenNote": {
+    "description": "Phone pairing screen."
+  },
+  "scanCode": "Scan the code",
+  "@scanCode": {
+    "description": "Phone pairing screen button."
+  },
+  "remoteReplaced": "Another phone is connected to this computer",
+  "@remoteReplaced": {
+    "description": "Phone status."
+  },
+  "remoteConnecting": "Connecting…",
+  "@remoteConnecting": {
+    "description": "Phone status."
+  },
+  "remoteWaitingHost": "Waiting for the computer… (open Minerva on it)",
+  "@remoteWaitingHost": {
+    "description": "Phone status."
+  },
+  "micFailed": "Could not use the microphone: {error}",
+  "@micFailed": {
+    "description": "Phone error.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "displaySubmit": "Send",
+  "@displaySubmit": {
+    "description": "Display form: default submit button."
+  },
+  "displaySubmitted": "Sent",
+  "@displaySubmitted": {
+    "description": "Display form: after submitting."
+  },
+  "displayRequired": "Required",
+  "@displayRequired": {
+    "description": "Display form: required field."
+  },
+  "displayPickDate": "Pick a date",
+  "@displayPickDate": {
+    "description": "Display form: empty date field."
+  },
+  "displayVideoError": "Can't play the video",
+  "@displayVideoError": {
+    "description": "Display: video failed."
+  },
+  "displayYes": "Yes",
+  "@displayYes": {
+    "description": "Display form: switch on."
+  },
+  "displayNo": "No",
+  "@displayNo": {
+    "description": "Display form: switch off."
+  }
+}

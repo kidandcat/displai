@@ -6,6 +6,8 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
+
 /// Palette: near-black, violet/fuchsia accent.
 abstract final class DisplayColors {
   static const Color background = Color(0xFF06040A);
@@ -23,15 +25,15 @@ abstract final class DisplayColors {
   static const Color negative = Color(0xFFF87171);
 }
 
-/// UI strings of the display chrome (content strings come from the model).
+/// UI strings of the display chrome (content strings come from the model), in the UI language.
 abstract final class DisplayStrings {
-  static String submit = 'Enviar';
-  static String submitted = 'Enviado';
-  static String required = 'Obligatorio';
-  static String pickDate = 'Elegir fecha';
-  static String videoError = 'No se puede reproducir el vídeo';
-  static String yes = 'Sí';
-  static String no = 'No';
+  static String get submit => strings.displaySubmit;
+  static String get submitted => strings.displaySubmitted;
+  static String get required => strings.displayRequired;
+  static String get pickDate => strings.displayPickDate;
+  static String get videoError => strings.displayVideoError;
+  static String get yes => strings.displayYes;
+  static String get no => strings.displayNo;
 }
 
 /// Scale factor for a screen seen from a distance: 1.0 at 1440 px wide,

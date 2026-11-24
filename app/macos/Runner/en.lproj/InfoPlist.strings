@@ -1,0 +1,2 @@
+/* Permission prompts (Info.plist). */
+"NSMicrophoneUsageDescription" = "Minerva listens to your voice. Audio is processed locally on this Mac.";

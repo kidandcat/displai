@@ -1,0 +1,184 @@
+/* Spanish titles of the main menu (Base.lproj/MainMenu.xib), by object id. */
+
+/* "About APP_NAME" */
+"5kV-Vb-QxS.title" = "Acerca de APP_NAME";
+
+/* "Preferences…" */
+"BOF-NM-1cW.title" = "Ajustes…";
+
+/* "Services" */
+"NMo-om-nkz.title" = "Servicios";
+
+/* "Services" */
+"hz9-B4-Xy5.title" = "Servicios";
+
+/* "Hide APP_NAME" */
+"Olw-nP-bQN.title" = "Ocultar APP_NAME";
+
+/* "Hide Others" */
+"Vdr-fp-XzO.title" = "Ocultar otros";
+
+/* "Show All" */
+"Kd2-mp-pUS.title" = "Mostrar todo";
+
+/* "Quit APP_NAME" */
+"4sb-4s-VLi.title" = "Salir de APP_NAME";
+
+/* "Edit" */
+"5QF-Oa-p0T.title" = "Edición";
+
+/* "Edit" */
+"W48-6f-4Dl.title" = "Edición";
+
+/* "Undo" */
+"dRJ-4n-Yzg.title" = "Deshacer";
+
+/* "Redo" */
+"6dh-zS-Vam.title" = "Rehacer";
+
+/* "Cut" */
+"uRl-iY-unG.title" = "Cortar";
+
+/* "Copy" */
+"x3v-GG-iWU.title" = "Copiar";
+
+/* "Paste" */
+"gVA-U4-sdL.title" = "Pegar";
+
+/* "Paste and Match Style" */
+"WeT-3V-zwk.title" = "Pegar y adaptar estilo";
+
+/* "Delete" */
+"pa3-QI-u2k.title" = "Eliminar";
+
+/* "Select All" */
+"Ruw-6m-B2m.title" = "Seleccionar todo";
+
+/* "Find" */
+"4EN-yA-p0u.title" = "Buscar";
+
+/* "Find" */
+"1b7-l0-nxx.title" = "Buscar";
+
+/* "Find…" */
+"Xz5-n4-O0W.title" = "Buscar…";
+
+/* "Find and Replace…" */
+"YEy-JH-Tfz.title" = "Buscar y reemplazar…";
+
+/* "Find Next" */
+"q09-fT-Sye.title" = "Buscar siguiente";
+
+/* "Find Previous" */
+"OwM-mh-QMV.title" = "Buscar anterior";
+
+/* "Use Selection for Find" */
+"buJ-ug-pKt.title" = "Usar selección para buscar";
+
+/* "Jump to Selection" */
+"S0p-oC-mLd.title" = "Ir a la selección";
+
+/* "Spelling and Grammar" */
+"Dv1-io-Yv7.title" = "Ortografía y gramática";
+
+/* "Spelling" */
+"3IN-sU-3Bg.title" = "Ortografía";
+
+/* "Show Spelling and Grammar" */
+"HFo-cy-zxI.title" = "Mostrar ortografía y gramática";
+
+/* "Check Document Now" */
+"hz2-CU-CR7.title" = "Comprobar documento ahora";
+
+/* "Check Spelling While Typing" */
+"rbD-Rh-wIN.title" = "Comprobar ortografía mientras se escribe";
+
+/* "Check Grammar With Spelling" */
+"mK6-2p-4JG.title" = "Comprobar gramática con ortografía";
+
+/* "Correct Spelling Automatically" */
+"78Y-hA-62v.title" = "Corregir ortografía automáticamente";
+
+/* "Substitutions" */
+"9ic-FL-obx.title" = "Sustituciones";
+
+/* "Substitutions" */
+"FeM-D8-WVr.title" = "Sustituciones";
+
+/* "Show Substitutions" */
+"z6F-FW-3nz.title" = "Mostrar sustituciones";
+
+/* "Smart Copy/Paste" */
+"9yt-4B-nSM.title" = "Copiar/pegar inteligente";
+
+/* "Smart Quotes" */
+"hQb-2v-fYv.title" = "Comillas tipográficas";
+
+/* "Smart Dashes" */
+"rgM-f4-ycn.title" = "Guiones inteligentes";
+
+/* "Smart Links" */
+"cwL-P1-jid.title" = "Enlaces inteligentes";
+
+/* "Data Detectors" */
+"tRr-pd-1PS.title" = "Detectores de datos";
+
+/* "Text Replacement" */
+"HFQ-gK-NFA.title" = "Sustitución de texto";
+
+/* "Transformations" */
+"2oI-Rn-ZJC.title" = "Transformaciones";
+
+/* "Transformations" */
+"c8a-y6-VQd.title" = "Transformaciones";
+
+/* "Make Upper Case" */
+"vmV-6d-7jI.title" = "Convertir a mayúsculas";
+
+/* "Make Lower Case" */
+"d9M-CD-aMd.title" = "Convertir a minúsculas";
+
+/* "Capitalize" */
+"UEZ-Bs-lqG.title" = "Poner en mayúscula inicial";
+
+/* "Speech" */
+"xrE-MZ-jX0.title" = "Voz";
+
+/* "Speech" */
+"3rS-ZA-NoH.title" = "Voz";
+
+/* "Start Speaking" */
+"Ynk-f8-cLZ.title" = "Iniciar locución";
+
+/* "Stop Speaking" */
+"Oyz-dy-DGm.title" = "Detener locución";
+
+/* "View" */
+"H8h-7b-M4v.title" = "Visualización";
+
+/* "View" */
+"HyV-fh-RgO.title" = "Visualización";
+
+/* "Enter Full Screen" */
+"4J7-dP-txa.title" = "Pantalla completa";
+
+/* "Window" */
+"aUF-d1-5bR.title" = "Ventana";
+
+/* "Window" */
+"Td7-aD-5lo.title" = "Ventana";
+
+/* "Minimize" */
+"OY7-WF-poV.title" = "Minimizar";
+
+/* "Zoom" */
+"R4o-n2-Eq4.title" = "Zoom";
+
+/* "Bring All to Front" */
+"LE2-aR-0XJ.title" = "Traer todo al frente";
+
+/* "Help" */
+"EPT-qC-fAb.title" = "Ayuda";
+
+/* "Help" */
+"rJ0-wn-3NY.title" = "Ayuda";

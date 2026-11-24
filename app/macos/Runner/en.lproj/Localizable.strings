@@ -1,0 +1,7 @@
+/* Menu bar item and window context menu (AppDelegate.swift). */
+"Open Minerva" = "Open Minerva";
+"Quit Minerva" = "Quit Minerva";
+"Using the Mac · Open Minerva to come back" = "Using the Mac · Open Minerva to come back";
+"Phone connected" = "Phone connected";
+"Listening on this Mac" = "Listening on this Mac";
+"In the background · the Mac is not listening" = "In the background · the Mac is not listening";

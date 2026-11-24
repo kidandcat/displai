@@ -14,17 +14,26 @@ class Speech {
 }
 
 /// Supertonic 3 text-to-speech in a background isolate. Sentences come back in order.
+///
+/// Supertonic speaks 31 languages but does not detect them: each sentence is read as [language]
+/// (an ISO 639-1 code, see `speechLanguages` in l10n.dart) unless [say] is given another one.
 class Speaker {
-  Speaker._(this._isolate, this._send, this.sampleRate, this.speech);
+  Speaker._(this._isolate, this._send, this.sampleRate, this.speech, this.language);
 
   final Isolate _isolate;
   final SendPort _send;
   final int sampleRate;
   final Stream<Speech> speech;
+  final String language;
 
-  static Future<Speaker> start({required String modelDir, int voice = 6, double speed = 1.2}) async {
+  static Future<Speaker> start({
+    required String modelDir,
+    int voice = 6,
+    double speed = 1.2,
+    String language = 'en',
+  }) async {
     final rx = ReceivePort();
-    final isolate = await Isolate.spawn(_main, [rx.sendPort, modelDir, voice, speed]);
+    final isolate = await Isolate.spawn(_main, [rx.sendPort, modelDir, voice, speed, language]);
     final ready = Completer<(SendPort, int)>();
     final ctrl = StreamController<Speech>.broadcast();
     rx.listen((m) {
@@ -38,13 +47,14 @@ class Speaker {
       }
     });
     final (port, rate) = await ready.future;
-    return Speaker._(isolate, port, rate, ctrl.stream);
+    return Speaker._(isolate, port, rate, ctrl.stream, language);
   }
 
-  /// Queue a sentence. [generation] lets the caller drop audio from an interrupted turn.
-  void say(int generation, String text) {
+  /// Queue a sentence, read as [lang] (default [language]). [generation] lets the caller drop
+  /// audio from an interrupted turn.
+  void say(int generation, String text, {String? lang}) {
     final clean = cleanForSpeech(text);
-    if (clean.isNotEmpty) _send.send([generation, clean]);
+    if (clean.isNotEmpty) _send.send([generation, clean, lang ?? language]);
   }
 
   void dispose() => _isolate.kill(priority: Isolate.immediate);
@@ -62,6 +72,7 @@ class Speaker {
     final d = args[1] as String;
     final voice = args[2] as int;
     final speed = args[3] as double;
+    final language = args[4] as String;
     try {
       so.initBindings();
       final tts = so.OfflineTts(so.OfflineTtsConfig(
@@ -78,14 +89,16 @@ class Speaker {
           numThreads: 4,
         ),
       ));
-      final config = so.OfflineTtsGenerationConfig(sid: voice, speed: speed, numSteps: 5, extra: const {'lang': 'es'});
-      tts.generateWithConfig(text: 'Hola.', config: config); // warm-up
+      final configs = <String, so.OfflineTtsGenerationConfig>{};
+      so.OfflineTtsGenerationConfig config(String lang) => configs[lang] ??=
+          so.OfflineTtsGenerationConfig(sid: voice, speed: speed, numSteps: 5, extra: {'lang': lang});
+      tts.generateWithConfig(text: 'OK.', config: config(language)); // warm-up
       final rx = ReceivePort();
       out.send([rx.sendPort, tts.sampleRate]);
       rx.listen((m) {
         final gen = (m as List)[0] as int;
         final text = m[1] as String;
-        final audio = tts.generateWithConfig(text: text, config: config);
+        final audio = tts.generateWithConfig(text: text, config: config(m[2] as String));
         out.send([gen, text, TransferableTypedData.fromList([audio.samples])]);
       });
     } catch (e) {

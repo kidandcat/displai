@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../l10n/l10n.dart';
+
 /// Webhooks from third parties (GitHub, Stripe, home automation…) at this Mac's own address,
 /// `https://<id>.minerva.kidandcat.com/…`, through the relay.
 ///
@@ -65,7 +67,7 @@ class Webhooks extends ChangeNotifier {
   Future<void> _spawn() async {
     final bin = helperPath();
     if (bin == null) {
-      error = 'Falta el ayudante minerva-webhooks en la app.';
+      error = strings.webhooksHelperMissing;
       _ready?.complete();
       notifyListeners();
       return;
@@ -83,12 +85,12 @@ class Webhooks extends ChangeNotifier {
         debugPrint('minerva-webhooks exited ($code)');
         if (_closed) return;
         _failures = DateTime.now().difference(started) > const Duration(minutes: 1) ? 0 : _failures + 1;
-        if (_failures >= 5) error = 'El ayudante de webhooks se cierra al arrancar (código $code).';
+        if (_failures >= 5) error = strings.webhooksHelperCrashes(code);
         notifyListeners();
         _restart = Timer(Duration(seconds: 2 << _failures.clamp(0, 6)), _spawn);
       }));
     } catch (e) {
-      error = 'No se pudo arrancar minerva-webhooks: $e';
+      error = strings.webhooksHelperFailed('$e');
       _ready?.complete();
       notifyListeners();
     }
@@ -124,10 +126,11 @@ class Webhooks extends ChangeNotifier {
   /// One line for the UI.
   String get status {
     if (error != null) return error!;
-    if (url == null) return 'Arrancando…';
-    if (!online) return 'Conectando con el intermediario…';
-    if (!certOk) return certError == null ? 'Pidiendo el certificado…' : 'Sin certificado todavía: $certError';
-    return 'Activo';
+    final l = strings;
+    if (url == null) return l.webhooksStarting;
+    if (!online) return l.connectingToRelay;
+    if (!certOk) return certError == null ? l.webhooksRequestingCert : l.webhooksNoCert(certError!);
+    return l.webhooksOn;
   }
 
   /// What the brain is told about its webhook address (empty when there is none).

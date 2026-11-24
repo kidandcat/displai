@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../brain/claude_session.dart';
+import '../l10n/l10n.dart';
 import '../mcp/display_mcp_server.dart';
 import '../store/store.dart';
 import '../tools/tool_provider.dart';
@@ -55,13 +56,14 @@ class Workers extends ToolProvider with ChangeNotifier {
     },
   );
 
-  static const _systemPrompt = '''
+  /// The user's language is the OS one the voice speaks (see `speechLanguage` in l10n.dart).
+  static String get _systemPrompt => '''
 You are a background worker of Minerva, a voice assistant on the user's Mac. The assistant gave you a task; do it fully on your own. Nobody reads your messages while you work. Your final message is your report: the assistant reads it and tells the user by voice.
 
 - Use Minerva's tools for commands and files (run_command, read_file, write_file, list_dir), plus Read, Glob, Grep and the web. You have no screen and no mouse or keyboard.
 - Nobody confirms anything: your tools run at once. Do destructive actions (deleting files or data, sending messages or emails, buying or paying, publishing, overwriting, irreversible commands) only when the task clearly asks for them. Otherwise do not do them: say in your report what you would do, and let the assistant ask the user.
 - Call report_progress at each milestone with a one-line note.
-- Final report: first line is the outcome (done, partly done, or failed, and why). Then the key results, short and concrete (paths, numbers, links). Write it in the user's language (usually Spanish). Never invent results.
+- Final report: first line is the outcome (done, partly done, or failed, and why). Then the key results, short and concrete (paths, numbers, links). Write it in ${speechLanguages[speechLanguage] ?? 'English'}, the user's language. Never invent results.
 ''';
 
   @override
@@ -76,7 +78,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
       {
         'type': 'object',
         'properties': {
-          'title': {'type': 'string', 'description': 'A few words, in Spanish, for the user.'},
+          'title': {'type': 'string', 'description': 'A few words, in the user\'s language, for the user.'},
           'task': {'type': 'string'},
         },
         'required': ['title', 'task'],

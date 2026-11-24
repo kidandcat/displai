@@ -1,0 +1,542 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/intl.dart' as intl;
+
+import 'app_localizations_en.dart';
+import 'app_localizations_es.dart';
+
+// ignore_for_file: type=lint
+
+/// Callers can lookup localized strings with an instance of AppLocalizations
+/// returned by `AppLocalizations.of(context)`.
+///
+/// Applications need to include `AppLocalizations.delegate()` in their app's
+/// `localizationDelegates` list, and the locales they support in the app's
+/// `supportedLocales` list. For example:
+///
+/// ```dart
+/// import 'l10n/app_localizations.dart';
+///
+/// return MaterialApp(
+///   localizationsDelegates: AppLocalizations.localizationsDelegates,
+///   supportedLocales: AppLocalizations.supportedLocales,
+///   home: MyApplicationHome(),
+/// );
+/// ```
+///
+/// ## Update pubspec.yaml
+///
+/// Please make sure to update your pubspec.yaml to include the following
+/// packages:
+///
+/// ```yaml
+/// dependencies:
+///   # Internationalization support.
+///   flutter_localizations:
+///     sdk: flutter
+///   intl: any # Use the pinned version from flutter_localizations
+///
+///   # Rest of dependencies
+/// ```
+///
+/// ## iOS Applications
+///
+/// iOS applications define key application metadata, including supported
+/// locales, in an Info.plist file that is built into the application bundle.
+/// To configure the locales supported by your app, you’ll need to edit this
+/// file.
+///
+/// First, open your project’s ios/Runner.xcworkspace Xcode workspace file.
+/// Then, in the Project Navigator, open the Info.plist file under the Runner
+/// project’s Runner folder.
+///
+/// Next, select the Information Property List item, select Add Item from the
+/// Editor menu, then select Localizations from the pop-up menu.
+///
+/// Select and expand the newly-created Localizations item then, for each
+/// locale your application supports, add a new item and select the locale
+/// you wish to add from the pop-up menu in the Value field. This list should
+/// be consistent with the languages listed in the AppLocalizations.supportedLocales
+/// property.
+abstract class AppLocalizations {
+  AppLocalizations(String locale)
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+
+  final String localeName;
+
+  static AppLocalizations of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
+  }
+
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
+
+  /// A list of this localizations delegate along with the default localizations
+  /// delegates.
+  ///
+  /// Returns a list of localizations delegates containing this delegate along with
+  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
+  /// and GlobalWidgetsLocalizations.delegate.
+  ///
+  /// Additional delegates can be added by appending to this list in
+  /// MaterialApp. This list does not have to be used at all if a custom list
+  /// of delegates is preferred or required.
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
+      <LocalizationsDelegate<dynamic>>[
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
+
+  /// A list of this localizations delegate's supported locales.
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('es'),
+  ];
+
+  /// First run: the voice models failed to download.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not download the voice models.'**
+  String get modelsDownloadFailed;
+
+  /// First run: before the first download starts.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing…'**
+  String get modelsPreparing;
+
+  /// First run: under the download progress.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the first time. Everything is processed on this Mac.'**
+  String get modelsFirstRunNote;
+
+  /// First run: a voice model is downloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading {model}…'**
+  String modelDownloading(String model);
+
+  /// First run: a downloaded voice model is unpacking.
+  ///
+  /// In en, this message translates to:
+  /// **'Installing {model}…'**
+  String modelInstalling(String model);
+
+  /// Name of the voice activity detection model.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice detector'**
+  String get modelVad;
+
+  /// Name of the speech recognition model.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech recognition (Parakeet v3)'**
+  String get modelStt;
+
+  /// Name of the text-to-speech model.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice (Supertonic 3)'**
+  String get modelVoice;
+
+  /// The assistant failed to start.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not start: {error}'**
+  String startFailed(String error);
+
+  /// Status bar while the assistant starts.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading the voice…'**
+  String get loadingVoice;
+
+  /// Status bar: workers running in the background.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 background job} other{{count} background jobs}}'**
+  String backgroundJobs(int count);
+
+  /// Status bar while the mic is muted.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone muted · space to unmute'**
+  String get micMuted;
+
+  /// Status bar on the Mac while the phone remote is connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone connected · the Mac is silent'**
+  String get linkNoteOnPhone;
+
+  /// Tooltip of the phone button while a phone is connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone connected'**
+  String get phoneConnected;
+
+  /// Tooltip of the phone button and title of the pairing dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect the phone'**
+  String get phoneConnect;
+
+  /// Pairing dialog status.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone connected. While it is, the Mac neither listens nor speaks.'**
+  String get pairingConnected;
+
+  /// Pairing dialog status.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the phone…'**
+  String get pairingWaiting;
+
+  /// Pairing and webhooks status: reaching the relay server.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting to the relay…'**
+  String get connectingToRelay;
+
+  /// Pairing dialog, under the QR code.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan it with the Minerva app on the phone. The phone will be the microphone, the speaker and the screen; everything is still processed on this Mac.'**
+  String get pairingInstructions;
+
+  /// Pairing dialog button: forget the old pairing and make a new QR code.
+  ///
+  /// In en, this message translates to:
+  /// **'New code'**
+  String get pairingNewCode;
+
+  /// Dialog button.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get close;
+
+  /// Dialog button.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get copy;
+
+  /// Webhooks button tooltip and dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Webhooks'**
+  String get webhooks;
+
+  /// Webhooks button tooltip while they can be received.
+  ///
+  /// In en, this message translates to:
+  /// **'Webhooks active'**
+  String get webhooksActive;
+
+  /// Webhooks dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Other services can notify Minerva by calling this address (with any path after it). The encryption ends on this Mac: the relay does not see what arrives. Keep it private: whoever has it can write to Minerva.'**
+  String get webhooksExplanation;
+
+  /// Snack bar after copying the webhook address.
+  ///
+  /// In en, this message translates to:
+  /// **'Address copied'**
+  String get addressCopied;
+
+  /// Webhooks status.
+  ///
+  /// In en, this message translates to:
+  /// **'The minerva-webhooks helper is missing from the app.'**
+  String get webhooksHelperMissing;
+
+  /// Webhooks status.
+  ///
+  /// In en, this message translates to:
+  /// **'The webhooks helper quits at startup (code {code}).'**
+  String webhooksHelperCrashes(int code);
+
+  /// Webhooks status.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not start minerva-webhooks: {error}'**
+  String webhooksHelperFailed(String error);
+
+  /// Webhooks status.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting…'**
+  String get webhooksStarting;
+
+  /// Webhooks status.
+  ///
+  /// In en, this message translates to:
+  /// **'Requesting the certificate…'**
+  String get webhooksRequestingCert;
+
+  /// Webhooks status.
+  ///
+  /// In en, this message translates to:
+  /// **'No certificate yet: {error}'**
+  String webhooksNoCert(String error);
+
+  /// Webhooks status.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get webhooksOn;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking…'**
+  String get activityThinking;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Summarizing the conversation…'**
+  String get activityCompacting;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Searching the web…'**
+  String get activityWebSearch;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Reading a page…'**
+  String get activityWebFetch;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Looking at the screen…'**
+  String get activityLookingAtScreen;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing the display…'**
+  String get activityPreparingDisplay;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Remembering…'**
+  String get activityRemembering;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Searching the history…'**
+  String get activitySearchingHistory;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Going over how it\'s done…'**
+  String get activityReadingSkill;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Starting a background job…'**
+  String get activityStartingWorker;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Checking the running jobs…'**
+  String get activityCheckingWorkers;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Scheduling…'**
+  String get activityScheduling;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Running a command…'**
+  String get activityRunningCommand;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Reading files…'**
+  String get activityReadingFiles;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Writing a file…'**
+  String get activityWritingFile;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the interface…'**
+  String get activityReadingUi;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Using the computer…'**
+  String get activityUsingComputer;
+
+  /// Spoken when the brain's turn fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong with the brain. Please try again.'**
+  String get brainError;
+
+  /// How the assistant starts a reminder said aloud (the brain is told to use it).
+  ///
+  /// In en, this message translates to:
+  /// **'Just a reminder'**
+  String get reminderLead;
+
+  /// Phone menu item.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpair from the computer'**
+  String get unpair;
+
+  /// Phone pairing screen: the scanned QR is not a pairing code.
+  ///
+  /// In en, this message translates to:
+  /// **'That code is not from Minerva.'**
+  String get notMinervaCode;
+
+  /// Phone pairing screen.
+  ///
+  /// In en, this message translates to:
+  /// **'On the computer, press the phone button in the bottom bar and scan the code.'**
+  String get pairScreenInstructions;
+
+  /// Phone pairing screen.
+  ///
+  /// In en, this message translates to:
+  /// **'The phone will be the microphone, the speaker and the screen; everything is processed on the computer.'**
+  String get pairScreenNote;
+
+  /// Phone pairing screen button.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan the code'**
+  String get scanCode;
+
+  /// Phone status.
+  ///
+  /// In en, this message translates to:
+  /// **'Another phone is connected to this computer'**
+  String get remoteReplaced;
+
+  /// Phone status.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get remoteConnecting;
+
+  /// Phone status.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the computer… (open Minerva on it)'**
+  String get remoteWaitingHost;
+
+  /// Phone error.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not use the microphone: {error}'**
+  String micFailed(String error);
+
+  /// Display form: default submit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get displaySubmit;
+
+  /// Display form: after submitting.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent'**
+  String get displaySubmitted;
+
+  /// Display form: required field.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get displayRequired;
+
+  /// Display form: empty date field.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a date'**
+  String get displayPickDate;
+
+  /// Display: video failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t play the video'**
+  String get displayVideoError;
+
+  /// Display form: switch on.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes'**
+  String get displayYes;
+
+  /// Display form: switch off.
+  ///
+  /// In en, this message translates to:
+  /// **'No'**
+  String get displayNo;
+}
+
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  Future<AppLocalizations> load(Locale locale) {
+    return SynchronousFuture<AppLocalizations>(lookupAppLocalizations(locale));
+  }
+
+  @override
+  bool isSupported(Locale locale) =>
+      <String>['en', 'es'].contains(locale.languageCode);
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
+}
+
+AppLocalizations lookupAppLocalizations(Locale locale) {
+  // Lookup logic when only language code is specified.
+  switch (locale.languageCode) {
+    case 'en':
+      return AppLocalizationsEn();
+    case 'es':
+      return AppLocalizationsEs();
+  }
+
+  throw FlutterError(
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
+}

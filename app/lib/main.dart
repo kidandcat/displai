@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'app/assistant.dart';
 import 'app/main_view.dart';
+import 'l10n/l10n.dart';
 import 'presence/presence.dart';
 import 'store/legacy_data.dart';
 import 'remote/remote_app.dart';
@@ -33,6 +34,9 @@ class MinervaApp extends StatelessWidget {
         title: 'Minerva',
         debugShowCheckedModeBanner: false,
         theme: minervaTheme(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localeListResolutionCallback: (locales, _) => resolveLocale(locales),
         home: const HomePage(),
       );
 }
@@ -151,6 +155,7 @@ class _ModelsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context);
     return Center(
       child: SizedBox(
         width: 420,
@@ -160,15 +165,15 @@ class _ModelsScreen extends StatelessWidget {
             Text('Minerva', style: t.headlineMedium?.copyWith(color: kAccent, letterSpacing: 4)),
             const SizedBox(height: 24),
             if (models.error != null) ...[
-              Text('No se pudieron descargar los modelos de voz.', style: t.bodyLarge),
+              Text(l.modelsDownloadFailed, style: t.bodyLarge),
               const SizedBox(height: 8),
               Text(models.error!, style: t.bodySmall?.copyWith(color: Colors.white54)),
             ] else ...[
-              Text(models.status.isEmpty ? 'Preparando…' : models.status, style: t.bodyMedium),
+              Text(models.status.isEmpty ? l.modelsPreparing : models.status, style: t.bodyMedium),
               const SizedBox(height: 12),
-              LinearProgressIndicator(value: models.status.startsWith('Instalando') ? null : models.progress),
+              LinearProgressIndicator(value: models.installing ? null : models.progress),
               const SizedBox(height: 8),
-              Text('Solo la primera vez. Todo se procesa en este Mac.',
+              Text(l.modelsFirstRunNote,
                   style: t.bodySmall?.copyWith(color: Colors.white38)),
             ],
           ],
@@ -187,8 +192,9 @@ class _PhoneButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final on = assistant.onPhone;
+    final l = AppLocalizations.of(context);
     return IconButton(
-      tooltip: on ? 'Móvil conectado' : 'Conectar el móvil',
+      tooltip: on ? l.phoneConnected : l.phoneConnect,
       onPressed: () => showDialog<void>(context: context, builder: (_) => _PairingDialog(assistant: assistant)),
       icon: Icon(on ? Icons.phone_android : Icons.phonelink_setup_outlined,
           color: on ? kAccent : Colors.white54),
@@ -212,17 +218,18 @@ class _PairingDialogState extends State<_PairingDialog> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context);
     return ListenableBuilder(
       listenable: widget.assistant,
       builder: (context, _) {
         final phone = widget.assistant.phone;
         final status = widget.assistant.onPhone
-            ? 'Móvil conectado. Mientras lo esté, el Mac no escucha ni habla.'
+            ? l.pairingConnected
             : phone != null && phone.link.online
-                ? 'Esperando al móvil…'
-                : 'Conectando con el intermediario…';
+                ? l.pairingWaiting
+                : l.connectingToRelay;
         return AlertDialog(
-          title: const Text('Conectar el móvil'),
+          title: Text(l.phoneConnect),
           content: SizedBox(
             width: 360,
             child: Column(
@@ -234,9 +241,7 @@ class _PairingDialogState extends State<_PairingDialog> {
                   child: QrImageView(data: _link, size: 260, backgroundColor: Colors.white),
                 ),
                 const SizedBox(height: 16),
-                Text('Escanéalo con la app Minerva del móvil. El móvil será el micrófono, el altavoz y '
-                    'la pantalla; todo se sigue procesando en este Mac.',
-                    style: t.bodyMedium, textAlign: TextAlign.center),
+                Text(l.pairingInstructions, style: t.bodyMedium, textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 Text(status, style: t.bodySmall?.copyWith(color: kAccent), textAlign: TextAlign.center),
               ],
@@ -248,9 +253,9 @@ class _PairingDialogState extends State<_PairingDialog> {
                 final link = await widget.assistant.newPairing();
                 if (mounted) setState(() => _link = link);
               },
-              child: const Text('Nuevo código'),
+              child: Text(l.pairingNewCode),
             ),
-            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+            FilledButton(onPressed: () => Navigator.pop(context), child: Text(l.close)),
           ],
         );
       },
@@ -269,8 +274,9 @@ class _WebhookButton extends StatelessWidget {
         listenable: webhooks,
         builder: (context, _) {
           final on = webhooks.online && webhooks.certOk;
+          final l = AppLocalizations.of(context);
           return IconButton(
-            tooltip: on ? 'Webhooks activos' : 'Webhooks',
+            tooltip: on ? l.webhooksActive : l.webhooks,
             onPressed: () => showDialog<void>(context: context, builder: (_) => _WebhookDialog(webhooks: webhooks)),
             icon: Icon(Icons.webhook, color: on ? kAccent : Colors.white54),
           );
@@ -287,22 +293,20 @@ class _WebhookDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context);
     return ListenableBuilder(
       listenable: webhooks,
       builder: (context, _) {
         final url = webhooks.url;
         return AlertDialog(
-          title: const Text('Webhooks'),
+          title: Text(l.webhooks),
           content: SizedBox(
             width: 460,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Otros servicios pueden avisar a Minerva llamando a esta dirección (con cualquier ruta '
-                    'detrás). El cifrado termina en este Mac: el intermediario no ve lo que llega. '
-                    'Mantenla en privado: quien la tenga puede escribir a Minerva.',
-                    style: t.bodyMedium),
+                Text(l.webhooksExplanation, style: t.bodyMedium),
                 const SizedBox(height: 16),
                 SelectableText(url ?? '—', style: t.titleSmall?.copyWith(fontFamily: 'Menlo')),
                 const SizedBox(height: 12),
@@ -317,12 +321,12 @@ class _WebhookDialog extends StatelessWidget {
                   : () async {
                       await Clipboard.setData(ClipboardData(text: url));
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dirección copiada')));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.addressCopied)));
                       }
                     },
-              child: const Text('Copiar'),
+              child: Text(l.copy),
             ),
-            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+            FilledButton(onPressed: () => Navigator.pop(context), child: Text(l.close)),
           ],
         );
       },

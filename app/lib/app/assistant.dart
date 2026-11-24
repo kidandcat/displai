@@ -13,6 +13,7 @@ import '../brain/claude_session.dart';
 import '../brain/system_prompt.dart';
 import '../display/display.dart';
 import '../display/display_runner.dart';
+import '../l10n/l10n.dart';
 import '../mcp/display_mcp_server.dart';
 import '../presence/presence.dart';
 import '../remote/phone_host.dart';
@@ -145,7 +146,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   @override
   String lastHeard = '';
 
-  /// What the brain is doing right now, e.g. "Buscando en la web…" (empty when nothing).
+  /// What the brain is doing right now, e.g. "Searching the web…" (empty when nothing), in the
+  /// UI language.
   @override
   String activity = '';
 
@@ -153,7 +155,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   int get backgroundJobs => ready ? workers.runningCount : 0;
 
   @override
-  String get linkNote => onPhone ? 'Móvil conectado · el Mac está en silencio' : '';
+  String get linkNote => onPhone ? strings.linkNoteOnPhone : '';
 
   // Turn state.
   int _generation = 0;
@@ -204,7 +206,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         sessionId = ClaudeSession.newSessionId();
         store.set('brain_session', sessionId);
       }
-      _speaker = await Speaker.start(modelDir: models.supertonic, voice: voice);
+      _speaker = await Speaker.start(modelDir: models.supertonic, voice: voice, language: speechLanguage);
       _listener = await Listener.start(vadModel: models.vad, parakeetDir: models.parakeet);
       _mcp = DisplayMcpServer(
         tools: [
@@ -226,6 +228,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         model: model,
         effort: effort,
         systemPrompt: buildSystemPrompt([
+          languagePromptSection(speechLanguage, strings),
           MemoryTools.promptSection(store),
           SkillTools.promptSection(_skillsDir),
           webhooks?.promptSection() ?? '',
@@ -470,7 +473,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     _pendingTts = 0;
     _sentence.clear();
     _firstAudioAt = null;
-    _setActivity('Pensando…');
+    _setActivity(strings.activityThinking);
     final p = phone;
     final where = p != null && p.active ? ' [phone ${p.width.round()}x${p.height.round()}]' : '';
     unawaited(_claude.send('[${formatStamp(DateTime.now())}]$where $text'));
@@ -492,11 +495,12 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       case ToolStart():
         if (_reply.isNotEmpty) _reply.write(' ');
         _flushSentences(final_: true);
+        final l = strings;
         _setActivity(switch (e.name) {
-          'WebSearch' || 'web_search' => 'Buscando en la web…',
-          'WebFetch' || 'web_fetch' => 'Leyendo una página…',
-          'get_state' => 'Mirando la pantalla…',
-          _ => 'Preparando la pantalla…',
+          'WebSearch' || 'web_search' => l.activityWebSearch,
+          'WebFetch' || 'web_fetch' => l.activityWebFetch,
+          'get_state' => l.activityLookingAtScreen,
+          _ => l.activityPreparingDisplay,
         });
       case ToolInput():
         presence.bumpActivity(0.1);
@@ -511,7 +515,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         break;
       case Compacting():
         // Takes a few seconds once the context is full; say why the answer is late.
-        _setActivity(e.active ? 'Resumiendo la conversación…' : 'Pensando…');
+        _setActivity(e.active ? strings.activityCompacting : strings.activityThinking);
       case TurnDone():
         _logReply(interrupted: e.interrupted);
         if (e.interrupted) {
@@ -523,7 +527,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         _setActivity('');
         if (e.error != null) {
           debugPrint('turn error: ${e.error}');
-          _say('Ha habido un error con el cerebro. Vuelve a intentarlo.');
+          _say(strings.brainError, lang: appLocale.languageCode);
         }
         _updatePresence();
         _drainNotices();
@@ -567,11 +571,12 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     }
   }
 
-  void _say(String text) {
+  /// Speaks [text] in the brain's language, or [lang] (for the app's own lines).
+  void _say(String text, {String? lang}) {
     if (Speaker.cleanForSpeech(text).isEmpty) return;
     _spokenStatus = '';
     _pendingTts++;
-    _speaker.say(_generation, text);
+    _speaker.say(_generation, text, lang: lang);
     _updatePresence();
   }
 
@@ -580,7 +585,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   Future<ToolResult> _handleTool(String name, Map<String, dynamic> args) async {
     for (final p in providers) {
       if (p.handles(name)) {
-        _setActivity(_activityFor(name));
+        _setActivity(_activityFor(name, strings));
         if (ComputerTools.needsScreen(name, args)) await _useMac(true);
         return p.call(name, args);
       }
@@ -637,19 +642,19 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     return ToolResult('Minerva display, ${size.width.round()}×${size.height.round()} logical px', png: png);
   }
 
-  static String _activityFor(String tool) => switch (tool) {
-        'remember' || 'search_memories' || 'forget_memory' => 'Recordando…',
-        'search_history' => 'Buscando en el historial…',
-        'read_skill' || 'save_skill' || 'delete_skill' => 'Repasando cómo se hace…',
-        'start_worker' || 'message_worker' => 'Lanzando trabajo en segundo plano…',
-        'list_workers' || 'worker_status' || 'stop_worker' => 'Mirando los trabajos en curso…',
-        'create_routine' || 'list_routines' || 'update_routine' || 'delete_routine' => 'Programando…',
-        'run_command' => 'Ejecutando un comando…',
-        'read_file' || 'list_dir' => 'Leyendo ficheros…',
-        'write_file' => 'Escribiendo un fichero…',
-        'screen' => 'Mirando la pantalla…',
-        'ui_tree' || 'apps' || 'windows' => 'Leyendo la interfaz…',
-        _ => 'Usando el ordenador…',
+  static String _activityFor(String tool, AppLocalizations l) => switch (tool) {
+        'remember' || 'search_memories' || 'forget_memory' => l.activityRemembering,
+        'search_history' => l.activitySearchingHistory,
+        'read_skill' || 'save_skill' || 'delete_skill' => l.activityReadingSkill,
+        'start_worker' || 'message_worker' => l.activityStartingWorker,
+        'list_workers' || 'worker_status' || 'stop_worker' => l.activityCheckingWorkers,
+        'create_routine' || 'list_routines' || 'update_routine' || 'delete_routine' => l.activityScheduling,
+        'run_command' => l.activityRunningCommand,
+        'read_file' || 'list_dir' => l.activityReadingFiles,
+        'write_file' => l.activityWritingFile,
+        'screen' => l.activityLookingAtScreen,
+        'ui_tree' || 'apps' || 'windows' => l.activityReadingUi,
+        _ => l.activityUsingComputer,
       };
 
   // ---------------------------------------------------------------- output
@@ -718,7 +723,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     final text = _statusSpeech(activity);
     if (text.isEmpty || text == _spokenStatus || !_statusQuiet) return;
     _spokenStatus = text;
-    _speaker.say(_statusGeneration, text);
+    _speaker.say(_statusGeneration, text, lang: appLocale.languageCode);
   }
 
   int get _statusGeneration => -_generation - 1;
@@ -726,7 +731,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   /// Nothing of the reply is queued or playing, and the user is not talking.
   bool get _statusQuiet => ready && _pendingTts == 0 && !_playing && !_userSpeaking;
 
-  /// "Pensando…" → "Pensando." (as [Speaker] cleans it, to match its audio).
+  /// "Thinking…" → "Thinking." (as [Speaker] cleans it, to match its audio).
   static String _statusSpeech(String status) {
     final s = status.replaceAll('…', '').trim();
     return s.isEmpty ? '' : Speaker.cleanForSpeech('$s.');

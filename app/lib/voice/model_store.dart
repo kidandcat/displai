@@ -4,11 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../l10n/l10n.dart';
+
 /// One downloadable model: a single file or a .tar.bz2 that unpacks into [dirName].
 class ModelSpec {
   const ModelSpec({required this.label, required this.url, required this.checkPath, this.archive = false});
 
-  final String label;
+  /// Its name for the user, in the UI language.
+  final String Function(AppLocalizations l) label;
   final String url;
 
   /// Path relative to the models dir that exists once the model is installed.
@@ -21,15 +24,19 @@ const vadFile = 'silero_vad_v5.onnx';
 const parakeetDir = 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8';
 const supertonicDir = 'sherpa-onnx-supertonic-3-tts-int8-2026-05-11';
 
+String _vadLabel(AppLocalizations l) => l.modelVad;
+String _sttLabel(AppLocalizations l) => l.modelStt;
+String _voiceLabel(AppLocalizations l) => l.modelVoice;
+
 const models = [
-  ModelSpec(label: 'Voice detector', url: '$_base/asr-models/$vadFile', checkPath: vadFile),
+  ModelSpec(label: _vadLabel, url: '$_base/asr-models/$vadFile', checkPath: vadFile),
   ModelSpec(
-      label: 'Speech recognition (Parakeet v3)',
+      label: _sttLabel,
       url: '$_base/asr-models/$parakeetDir.tar.bz2',
       checkPath: '$parakeetDir/tokens.txt',
       archive: true),
   ModelSpec(
-      label: 'Voice (Supertonic 3)',
+      label: _voiceLabel,
       url: '$_base/tts-models/$supertonicDir.tar.bz2',
       checkPath: '$supertonicDir/voice.bin',
       archive: true),
@@ -42,6 +49,9 @@ class ModelStore extends ChangeNotifier {
   late String dir;
   bool ready = false;
   String status = '';
+
+  /// The current model is unpacking (no progress to show).
+  bool installing = false;
   double progress = 0; // 0..1 of the current download
   String? error;
 
@@ -60,6 +70,7 @@ class ModelStore extends ChangeNotifier {
       }
       ready = true;
       status = '';
+      installing = false;
     } catch (e) {
       error = '$e';
     }
@@ -67,7 +78,8 @@ class ModelStore extends ChangeNotifier {
   }
 
   Future<void> _download(ModelSpec m) async {
-    status = 'Descargando ${m.label}…';
+    status = strings.modelDownloading(m.label(strings));
+    installing = false;
     progress = 0;
     notifyListeners();
     final name = m.url.split('/').last;
@@ -94,7 +106,8 @@ class ModelStore extends ChangeNotifier {
       client.close();
     }
     if (m.archive) {
-      status = 'Instalando ${m.label}…';
+      status = strings.modelInstalling(m.label(strings));
+      installing = true;
       notifyListeners();
       // macOS always ships bsdtar, which handles .tar.bz2 natively and streams to disk.
       final r = await Process.run('/usr/bin/tar', ['xjf', tmp.path, '-C', dir]);

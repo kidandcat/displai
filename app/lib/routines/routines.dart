@@ -54,7 +54,7 @@ class Routines extends ToolProvider {
       {
         'type': 'object',
         'properties': {
-          'name': {'type': 'string', 'description': 'A few words, in Spanish, for the user.'},
+          'name': {'type': 'string', 'description': 'A few words, in the user\'s language, for the user.'},
           'prompt': {'type': 'string'},
           'schedule': _scheduleSchema,
         },

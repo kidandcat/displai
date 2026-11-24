@@ -8,6 +8,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../app/main_view.dart';
+import '../l10n/l10n.dart';
 import 'protocol.dart';
 import 'remote_assistant.dart';
 
@@ -20,6 +21,9 @@ class RemoteApp extends StatelessWidget {
         title: 'Minerva',
         debugShowCheckedModeBanner: false,
         theme: minervaTheme(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        localeListResolutionCallback: (locales, _) => resolveLocale(locales),
         home: const RemoteHome(),
       );
 }
@@ -160,8 +164,8 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
                             onSelected: (v) {
                               if (v == 'unpair') _unpair();
                             },
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(value: 'unpair', child: Text('Desvincular del ordenador')),
+                            itemBuilder: (context) => [
+                              PopupMenuItem(value: 'unpair', child: Text(AppLocalizations.of(context).unpair)),
                             ],
                           ),
                         ],
@@ -196,7 +200,7 @@ class _PairScreenState extends State<_PairScreen> {
       _busy = true;
       final ok = await widget.onCode(v);
       _busy = false;
-      if (!ok && mounted) setState(() => _note = 'Ese código no es de Minerva.');
+      if (!ok && mounted) setState(() => _note = AppLocalizations.of(context).notMinervaCode);
       return;
     }
   }
@@ -204,6 +208,7 @@ class _PairScreenState extends State<_PairScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -213,10 +218,10 @@ class _PairScreenState extends State<_PairScreen> {
           Text('Minerva', textAlign: TextAlign.center,
               style: t.headlineMedium?.copyWith(color: kAccent, letterSpacing: 4)),
           const SizedBox(height: 16),
-          Text('En el ordenador, pulsa el botón del móvil en la barra de abajo y escanea el código.',
+          Text(l.pairScreenInstructions,
               textAlign: TextAlign.center, style: t.bodyLarge),
           const SizedBox(height: 8),
-          Text('El móvil será el micrófono, el altavoz y la pantalla; todo se procesa en el ordenador.',
+          Text(l.pairScreenNote,
               textAlign: TextAlign.center, style: t.bodySmall?.copyWith(color: Colors.white54)),
           const SizedBox(height: 24),
           Expanded(
@@ -229,7 +234,7 @@ class _PairScreenState extends State<_PairScreen> {
                     child: FilledButton.icon(
                       onPressed: () => setState(() => _scanning = true),
                       icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('Escanear el código'),
+                      label: Text(l.scanCode),
                     ),
                   ),
           ),
