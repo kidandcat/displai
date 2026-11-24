@@ -43,7 +43,8 @@ import 'assistant_ui.dart';
 /// Display tool calls arrive through the embedded MCP server; partial tool input streams into
 /// the [DisplayController] while Claude is still writing it.
 class Assistant extends ChangeNotifier implements AssistantUi {
-  Assistant({required this.models, this.voice = 1});
+  Assistant({required this.models, this.voice = 1, DesktopWindow? window})
+      : window = window ?? DesktopWindow();
 
   final ModelStore models;
 
@@ -72,8 +73,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   final audio = NativeAudio();
 
   /// The desktop window: the Mac listens only while it is open, and it becomes a corner orb
-  /// while a phone is connected.
-  final window = DesktopWindow();
+  /// while a phone is connected or Minerva works in other apps.
+  final DesktopWindow window;
   @override
   final display = DisplayController();
   @override
@@ -133,8 +134,9 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   static const _windowTool = McpTool(
     'minerva_window',
     'Minerva\'s own window on the Mac. It shrinks to the corner orb on its own when you act on '
-        'other apps, and comes back when you show something. orb: shrink it now; full: bring it '
-        'back without showing anything.',
+        'other apps; meanwhile show and html pop up as a widget over them (at: where) and the '
+        'window stays the orb, while form, video and back bring it back. orb: shrink it now; '
+        'full: bring it back without showing anything.',
     {
       'type': 'object',
       'properties': {
@@ -163,11 +165,40 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     },
   );
 
-  /// Display tools that put something in front of the user: the window comes back for them.
+  /// Display tools that put something in front of the user: the window comes back for them,
+  /// but for [_widgetTools] while Minerva works in other apps.
   static const _showingTools = {'show', 'html', 'form', 'video', 'back'};
+
+  /// Views that pop up as a widget over the other apps while the window is the orb.
+  static const _widgetTools = {'show', 'html'};
 
   /// The window is the corner orb because Minerva works in other apps of the Mac.
   bool _usingMac = false;
+
+  /// Views from this one on (by [DisplayViewEntry.seq]) pop up as a widget: the ones shown
+  /// since the window became the orb.
+  int _widgetFrom = 1 << 62;
+
+  /// The widget the user closed.
+  int? _widgetClosed;
+
+  /// Where the widget goes on the screen (the show and html tools' `at`).
+  String widgetAt = 'top-right';
+
+  static final _atPattern = RegExp(r'"at"\s*:\s*"([a-z-]+)"');
+
+  /// The view to show as a widget over the other apps, or null.
+  DisplayViewEntry? get widgetView {
+    final e = display.current;
+    if (!_usingMac || e == null || e.seq < _widgetFrom || e.seq == _widgetClosed) return null;
+    return e.kind == 'view' || e.kind == 'html' ? e : null;
+  }
+
+  /// The user closed the widget.
+  void closeWidget() {
+    _widgetClosed = display.current?.seq;
+    notifyListeners();
+  }
 
   @override
   bool ready = false;
@@ -297,7 +328,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         sessionId: sessionId,
       );
       await _claude.start();
-      window.onTap = toggleMute;
       window.onOpenRequested = () => unawaited(_useMac(false));
       await window.init();
       window.addListener(_syncAudio);
@@ -665,6 +695,13 @@ class Assistant extends ChangeNotifier implements AssistantUi {
           if (onPhone) {
             phone!.partial(e.name, e.partialJson);
           } else {
+            if (_usingMac && _widgetTools.contains(e.name)) {
+              final at = _atPattern.firstMatch(e.partialJson)?.group(1);
+              if (at != null && at != widgetAt) {
+                widgetAt = at;
+                notifyListeners();
+              }
+            }
             display.streamPartial(e.name, e.partialJson);
           }
         }
@@ -769,7 +806,11 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       await _useMac(orb);
       return ToolResult(orb ? 'ok: the window is the corner orb.' : 'ok: the window is back.');
     }
-    if (_showingTools.contains(name)) await _useMac(false);
+    if (_showingTools.contains(name) && !(_usingMac && _widgetTools.contains(name))) await _useMac(false);
+    if (_usingMac && _widgetTools.contains(name)) {
+      widgetAt = args['at'] is String ? args['at'] as String : 'top-right';
+      notifyListeners();
+    }
     if (onPhone) {
       final r = await _onPhoneTool(name, args);
       if (r != null) return r;
@@ -803,6 +844,10 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     if (on == _usingMac) return;
     if (on && (onPhone || !window.open)) return;
     _usingMac = on;
+    if (on) {
+      _widgetFrom = display.timeline.fold(0, (m, e) => e.seq > m ? e.seq : m) + 1;
+      _widgetClosed = null;
+    }
     debugPrint('window: ${on ? 'orb while using the Mac' : 'back from using the Mac'}');
     if (onPhone) return;
     await window.setOverlay(on, reason: 'computer');

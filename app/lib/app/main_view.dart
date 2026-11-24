@@ -24,6 +24,7 @@ class MainView extends StatelessWidget {
     required this.assistant,
     this.actions = const [],
     this.compactOrb = 180,
+    this.showDisplay = true,
   });
 
   final AssistantUi assistant;
@@ -33,6 +34,9 @@ class MainView extends StatelessWidget {
 
   /// Size of the corner orb while something is on screen.
   final double compactOrb;
+
+  /// Draws the display (false while it is shown elsewhere, as a widget over other apps).
+  final bool showDisplay;
 
   void _tapOrb() {
     if (!assistant.ready) return;
@@ -52,14 +56,14 @@ class MainView extends StatelessWidget {
         ),
       );
     }
-    final showing = !a.display.isEmpty;
+    final showing = showDisplay && !a.display.isEmpty;
     return Column(
       children: [
         Expanded(
           // The display is transparent while empty, so the presence animation shows through
           // (with the timeline strip still on top).
           child: RepaintBoundary(
-            key: a.screenKey,
+            key: showDisplay ? a.screenKey : null,
             child: ColoredBox(
               color: Theme.of(context).scaffoldBackgroundColor,
               child: Stack(
@@ -71,7 +75,7 @@ class MainView extends StatelessWidget {
                     child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence),
                   ),
                   // The header of each view leaves room for the corner orb.
-                  DisplayView(controller: a.display, cornerReserve: Size.square(12 + compactOrb)),
+                  if (showDisplay) DisplayView(controller: a.display, cornerReserve: Size.square(12 + compactOrb)),
                   // The full orb: the sphere and its inner rings, ~0.3 of the short side around the center.
                   // Tapping it (or the corner orb) mutes or unmutes the mic.
                   if (!showing)

@@ -570,8 +570,8 @@ final class ComputerControl: NSObject {
     return "scrolled dx=\(dx) dy=\(dy)" + (p.map { " at (\(Int($0.x)),\(Int($0.y)))" } ?? "")
   }
 
-  /// Marks the mouse events Minerva posts (eventSourceUserData), so its own windows can tell them
-  /// from the user's and never act on them.
+  /// Marks the mouse and key events Minerva posts (eventSourceUserData), so its own window (and
+  /// the space bar's mute toggle) can tell them from the user's and never act on them.
   static let syntheticEventTag: Int64 = 0x4D49_4E45_5256
 
   private static func post(_ e: CGEvent?) {
@@ -580,16 +580,20 @@ final class ComputerControl: NSObject {
     e.post(tap: .cghidEventTap)
   }
 
-  /// Runs [body] with Minerva's own windows (the corner orb) letting the mouse through, so the
-  /// synthetic clicks and scrolls reach the app below and never the orb. The user's real mouse
-  /// reaches the orb again right after.
+  /// Runs [body] with Minerva's own windows (the overlay with the orb and the widgets) letting
+  /// the mouse through, so the synthetic clicks and scrolls reach the app below and never
+  /// Minerva. The user's real mouse reaches them again right after.
   private func passingThroughOwnWindows(_ body: () throws -> Void) throws {
     let onMain = { (work: () -> [NSWindow]) -> [NSWindow] in
       Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
     }
     let own = onMain {
-      let shown = (NSApp?.windows ?? []).filter { $0.isVisible && !$0.ignoresMouseEvents }
-      shown.forEach { $0.ignoresMouseEvents = true }
+      let shown = (NSApp?.windows ?? []).filter { $0.isVisible && ($0 is MainFlutterWindow || !$0.ignoresMouseEvents) }
+      for w in shown {
+        // The overlay checks the cursor against its widgets on every frame: hold it open.
+        (w as? MainFlutterWindow)?.passThroughHolds += 1
+        w.ignoresMouseEvents = true
+      }
       return shown
     }
     if own.isEmpty { return try body() }
@@ -598,7 +602,14 @@ final class ComputerControl: NSObject {
       // The window server routes the posted events asynchronously: let the last ones land first.
       usleep(80_000)
       _ = onMain {
-        own.forEach { $0.ignoresMouseEvents = false }
+        for w in own {
+          if let main = w as? MainFlutterWindow {
+            main.passThroughHolds -= 1
+            main.updateMousePassThrough()
+          } else {
+            w.ignoresMouseEvents = false
+          }
+        }
         return own
       }
     }
@@ -631,7 +642,7 @@ final class ComputerControl: NSObject {
         let e = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: down)
         e?.flags = []
         chunk.withUnsafeBufferPointer { e?.keyboardSetUnicodeString(stringLength: $0.count, unicodeString: $0.baseAddress) }
-        e?.post(tap: .cghidEventTap)
+        Self.post(e)
       }
       chunk.removeAll()
       usleep(8_000)
@@ -685,7 +696,7 @@ final class ComputerControl: NSObject {
         throw ComputerError(code: "event", message: "Could not create a key event")
       }
       e.flags = flags
-      e.post(tap: .cghidEventTap)
+      Self.post(e)
       usleep(10_000)
     }
   }

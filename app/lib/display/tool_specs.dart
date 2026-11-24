@@ -92,6 +92,23 @@ final Map<String, dynamic> _nodeSchema = {
   'required': ['type'],
 };
 
+/// Where a view pops up as a widget while Minerva works in other apps (the window is the orb).
+const Map<String, dynamic> _atSchema = {
+  'type': 'string',
+  'enum': [
+    'top-right',
+    'top-left',
+    'bottom-right',
+    'bottom-left',
+    'left',
+    'right',
+    'center',
+  ],
+  'description':
+      'Where the widget goes while you work in other apps; default '
+      'top-right, under the orb. Keep clear of what you act on.',
+};
+
 final List<DisplayToolSpec> displayToolSpecs = [
   DisplayToolSpec(
     name: 'show',
@@ -105,6 +122,7 @@ final List<DisplayToolSpec> displayToolSpecs = [
     inputSchema: {
       'type': 'object',
       'properties': {
+        'at': _atSchema,
         'title': {'type': 'string', 'description': 'Short view title.'},
         'subtitle': {'type': 'string'},
         'body': {'type': 'array', 'items': _nodeSchema},
@@ -202,7 +220,7 @@ final List<DisplayToolSpec> displayToolSpecs = [
       },
     },
   ),
-  const DisplayToolSpec(
+  DisplayToolSpec(
     name: 'html',
     description:
         'Show a view you program yourself: an HTML page with its CSS and JS '
@@ -221,6 +239,7 @@ final List<DisplayToolSpec> displayToolSpecs = [
     inputSchema: {
       'type': 'object',
       'properties': {
+        'at': _atSchema,
         'title': {'type': 'string'},
         'html': {
           'type': 'string',

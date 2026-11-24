@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'app/assistant.dart';
+import 'app/desktop_window.dart';
 import 'app/main_view.dart';
 import 'app/model_picker.dart';
+import 'app/overlay_shell.dart';
 import 'l10n/l10n.dart';
-import 'presence/presence.dart';
 import 'store/legacy_data.dart';
 import 'remote/remote_app.dart';
 import 'vault/vault.dart';
@@ -28,40 +30,27 @@ void main() {
   }
 }
 
-class MinervaApp extends StatelessWidget {
+class MinervaApp extends StatefulWidget {
   const MinervaApp({super.key});
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder(
-        valueListenable: languageSetting,
-        builder: (context, language, _) => MaterialApp(
-          title: 'Minerva',
-          debugShowCheckedModeBanner: false,
-          theme: minervaTheme(),
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: language == null ? null : Locale(language),
-          localeListResolutionCallback: (_, _) => appLocale,
-          home: const HomePage(),
-        ),
-      );
+  State<MinervaApp> createState() => _MinervaAppState();
 }
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
-
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
+class _MinervaAppState extends State<MinervaApp> {
+  final _window = DesktopWindow();
   final _models = ModelStore();
-  Assistant? _assistant;
+  final _assistant = ValueNotifier<Assistant?>(null);
 
   @override
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_onKey);
+    _window.onSpace = () {
+      final a = _assistant.value;
+      if (a != null && a.ready) a.toggleMute();
+    };
+    unawaited(_window.init());
     _boot();
   }
 
@@ -72,16 +61,17 @@ class _HomePageState extends State<HomePage> {
     }
     await _models.ensure();
     if (!_models.ready) return;
-    final a = Assistant(models: _models);
-    setState(() => _assistant = a);
+    final a = Assistant(models: _models, window: _window);
+    _assistant.value = a;
     await a.start();
   }
 
   /// While the window has focus (and the user is not typing in a field): Space toggles the mic,
-  /// the left and right arrows move between the views in the timeline.
+  /// the left and right arrows move between the views in the timeline. (In other apps the
+  /// native side takes the space bar: [DesktopWindow.onSpace].)
   bool _onKey(KeyEvent e) {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return false;
-    final a = _assistant;
+    final a = _assistant.value;
     if (a == null || !a.ready || _typing()) return false;
     final key = e.logicalKey;
     if (key == LogicalKeyboardKey.space && e is KeyDownEvent) {
@@ -105,39 +95,54 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
-    _assistant?.dispose();
+    _assistant.value?.dispose();
     _models.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    final a = _assistant;
-    if (a == null) {
-      return Scaffold(
-        body: ListenableBuilder(listenable: _models, builder: (context, _) => _ModelsScreen(models: _models)),
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        valueListenable: languageSetting,
+        builder: (context, language, _) => MaterialApp(
+          title: 'Minerva',
+          debugShowCheckedModeBanner: false,
+          theme: minervaTheme(),
+          // The window covers the whole screen and is transparent: the app (its navigator, so
+          // dialogs too) lives in the full view's panel, next to the orb and the widgets.
+          color: Colors.transparent,
+          builder: (context, child) => OverlayShell(window: _window, assistant: _assistant, child: child!),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: language == null ? null : Locale(language),
+          localeListResolutionCallback: (_, _) => appLocale,
+          home: HomePage(models: _models, assistant: _assistant),
+        ),
       );
-    }
-    return ListenableBuilder(
-      listenable: Listenable.merge([a, a.display, a.window]),
-      // Closed (or never shown, as the login service starts), nothing animates: the orb's shader
-      // would otherwise keep drawing every frame for a window nobody sees.
-      builder: (context, _) => TickerMode(
-        enabled: a.window.open || a.window.overlay,
-        child: a.window.overlay
-          // A phone is connected or Minerva works in other apps: the window is just the orb, its
-          // glow drawn straight over the screen, everything else fully transparent.
-          ? Material(
-              type: MaterialType.transparency,
-              child: Center(
-                child: ClipOval(
-                  child: PresenceView(signal: a.presence, compact: true, compactSize: 122),
-                ),
-              ),
-            )
-          : Scaffold(
+}
+
+/// The full view's content: the first-run model download, then the main screen.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key, required this.models, required this.assistant});
+
+  final ModelStore models;
+  final ValueListenable<Assistant?> assistant;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        valueListenable: assistant,
+        builder: (context, a, _) {
+          if (a == null) {
+            return Scaffold(
+              body: ListenableBuilder(listenable: models, builder: (context, _) => _ModelsScreen(models: models)),
+            );
+          }
+          return ListenableBuilder(
+            listenable: Listenable.merge([a, a.display, a.window, a.window.panelShown]),
+            builder: (context, _) => Scaffold(
               body: MainView(
                 assistant: a,
+                // Once the panel has become the orb, the display shows as Minerva's widgets.
+                showDisplay: a.window.panelShown.value,
                 actions: [
                   if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),
                   if (a.ready) _VaultButton(vault: a.vault),
@@ -147,9 +152,9 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
-      ),
-    );
-  }
+          );
+        },
+      );
 }
 
 /// First run: downloading the local voice models.

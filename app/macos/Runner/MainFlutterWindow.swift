@@ -1,48 +1,54 @@
 import AVFoundation
+import Carbon.HIToolbox
 import Cocoa
 import FlutterMacOS
 import WebKit
 import webview_flutter_wkwebview
 
-/// Minerva's only window, in one of three states:
-///   open     the normal window; the Mac listens and speaks
-///   hidden   closed or minimized; the app keeps running in the background without the Mac's mic
-///   overlay  a small round orb, always on top in a corner of the screen, while a phone is
+/// Minerva's only window. While it is on screen it covers the whole main screen, always on top,
+/// fully transparent and click-through: Flutter draws on it what the user sees (the full view's
+/// panel, the orb, the widgets Minerva pops) and reports their rects, and only there does the
+/// window take the mouse ([hitRects]); everywhere else clicks reach the apps below. States:
+///   open     the full view, a panel the user moves and resizes; the Mac listens and speaks
+///   hidden   ordered out; the app keeps running in the background without the Mac's mic
+///   overlay  just the orb in the top-right corner (and Minerva's widgets), while a phone is
 ///            connected (reason "phone") or while Minerva works in other apps of the Mac (reason
-///            "computer"); drag it to move it, click it to mute. The orb never keeps the keyboard:
-///            the app the user (or Minerva) works in stays in front. It goes back to open or
-///            hidden afterwards.
+///            "computer"). It never keeps the keyboard: the app the user (or Minerva) works in
+///            stays in front. It goes back to open or hidden afterwards.
+/// While the window is on screen the space bar toggles the mic from any app ([SpaceKey]).
 ///
 /// Method channel `minerva/window`:
-///   Dart → native  state() -> {open, overlay}   setOverlay({on, reason})   show()
-///                  setLanguage({code, save})   systemLanguages() -> [String]
-///   native → Dart  state({open, overlay})       tap()   (the overlay orb was clicked)
-///                  openRequested()   (the user asked for the window while it is the orb)
+///   Dart → native  state() -> State   setOverlay({on, reason})   show()   hide()
+///                  setHitRects([[x, y, w, h]])   setPanel([x, y, w, h])   setOrb([x, y])
+///                  contextMenu()   setLanguage({code, save})   systemLanguages() -> [String]
+///   native → Dart  state(State)   openRequested()   (the user asked for the window while it is
+///                  the orb)   space()   (the space bar was pressed in another app)
+/// State: {open, overlay, reason, insets: [left, top, right, bottom] (the menu bar and the Dock),
+/// panel: [x, y, w, h], orb: [x, y] or nil}. Rects are in points from the window's top-left.
 class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var audio: VoiceAudio?
   private var computer: ComputerControl?
   private var channel: FlutterMethodChannel?
+  private let spaceKey = SpaceKey()
 
-  /// The user has the window open (not closed or minimized).
+  /// The user has the window open (not closed).
   private(set) var userOpen = false
   private(set) var overlay = false
   /// Why the window is the orb: "phone" or "computer".
   private(set) var overlayReason = "phone"
   /// The last other app in front, given the focus back while the window is the orb.
   private var lastOtherApp: NSRunningApplication?
-  private var normalFrame: NSRect?
-  /// Set while switching to or from the overlay: the frames the window goes through are not saved.
-  private var switching = false
-  private var dragStart: (mouse: NSPoint, origin: NSPoint)?
-  private var dragged = false
-  /// Views of the window frame (the title bar) hidden while the window is the orb.
-  private var hiddenFrameViews: [NSView] = []
+  /// Where the window takes the mouse, from its top-left.
+  private var hitRects: [NSRect] = []
+  private var hitTimer: Timer?
+  /// Set while Minerva posts its own clicks: the window lets the mouse through everywhere.
+  var passThroughHolds = 0
   var contextMenu: NSMenu?
 
-  static let overlaySize: CGFloat = 132
-  private static let overlayOriginKey = "overlayOrigin"
-  private static let frameName = "MinervaMain"
-  private static let minNormalSize = NSSize(width: 480, height: 360)
+  private static let panelKey = "panelFrame"
+  private static let orbKey = "orbOrigin"
+  /// Where the window was saved while it was a normal window (the panel starts there).
+  private static let legacyFrameKey = "NSWindow Frame MinervaMain"
 
   override func awakeFromNib() {
     if AppDelegate.handOffToRunningInstance() { exit(0) }
@@ -84,6 +90,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     let channel = FlutterMethodChannel(name: "minerva/window", binaryMessenger: engine.binaryMessenger)
     channel.setMethodCallHandler { [weak self] call, result in self?.handle(call, result) }
     self.channel = channel
+    spaceKey.onPress = { [weak self] in self?.channel?.invokeMethod("space", arguments: nil) }
     delegate = self
     NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -93,17 +100,29 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       else { return }
       self?.lastOtherApp = app
     }
-    isReleasedWhenClosed = false
-    // The normal frame is saved by us, never the overlay's (macOS restoration would bring back
-    // whatever the window last was).
-    isRestorable = false
-    let nibFrame = frame
-    setFrameUsingName(Self.frameName)
-    if !Self.isNormalSize(frame) {
-      setFrame(nibFrame, display: false)
-      center()
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self = self else { return }
+      self.setFrame(Self.screen.frame, display: true)
+      self.notify()
     }
-    minSize = Self.minNormalSize
+    isReleasedWhenClosed = false
+    isRestorable = false
+    // Stays a titled window with an invisible title bar: a borderless window swaps the window's
+    // frame view, and the Flutter view stops showing after that.
+    styleMask = [.titled, .closable, .fullSizeContentView]
+    titlebarAppearsTransparent = true
+    titleVisibility = .hidden
+    isOpaque = false
+    backgroundColor = .clear
+    hasShadow = false
+    isMovable = false
+    level = .floating
+    collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+    ignoresMouseEvents = true
+    setFrame(Self.screen.frame, display: false)
+    setTitleButtonsHidden()
     engine.run(withEntrypoint: nil)
 
     super.awakeFromNib()
@@ -123,6 +142,27 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     case "show":
       showNormal()
       result(nil)
+    case "hide":
+      hideWindow()
+      result(nil)
+    case "setHitRects":
+      hitRects = (call.arguments as? [[NSNumber]] ?? []).compactMap(Self.rect)
+      updateMousePassThrough()
+      result(nil)
+    case "setPanel":
+      if let r = (call.arguments as? [NSNumber]).flatMap(Self.rect) {
+        UserDefaults.standard.set(NSStringFromRect(r), forKey: Self.panelKey)
+      }
+      result(nil)
+    case "setOrb":
+      if let p = call.arguments as? [NSNumber], p.count == 2 {
+        UserDefaults.standard.set(
+          NSStringFromPoint(NSPoint(x: p[0].doubleValue, y: p[1].doubleValue)), forKey: Self.orbKey)
+      }
+      result(nil)
+    case "contextMenu":
+      contextMenu?.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+      result(nil)
     case "setLanguage":
       let args = call.arguments as? [String: Any]
       AppDelegate.setLanguage(args?["code"] as? String, save: args?["save"] as? Bool ?? false)
@@ -134,11 +174,50 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     }
   }
 
-  private var state: [String: Bool] { ["open": userOpen, "overlay": overlay] }
+  private static func rect(_ v: [NSNumber]) -> NSRect? {
+    v.count == 4 ? NSRect(x: v[0].doubleValue, y: v[1].doubleValue, width: v[2].doubleValue, height: v[3].doubleValue) : nil
+  }
+
+  /// The screen with the menu bar.
+  private static var screen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
+
+  private var state: [String: Any] {
+    let s = Self.screen, f = s.frame, v = s.visibleFrame
+    var out: [String: Any] = [
+      "open": userOpen, "overlay": overlay, "reason": overlayReason,
+      "insets": [v.minX - f.minX, f.maxY - v.maxY, f.maxX - v.maxX, v.minY - f.minY],
+      "panel": Self.rectList(panelFrame()),
+    ]
+    if let saved = UserDefaults.standard.string(forKey: Self.orbKey) {
+      let p = NSPointFromString(saved)
+      out["orb"] = [p.x, p.y]
+    }
+    return out
+  }
+
+  private static func rectList(_ r: NSRect) -> [CGFloat] { [r.minX, r.minY, r.width, r.height] }
+
+  /// The full view's panel, from the window's top-left: where the user left it, else where the
+  /// normal window was, else centered.
+  private func panelFrame() -> NSRect {
+    if let saved = UserDefaults.standard.string(forKey: Self.panelKey) { return NSRectFromString(saved) }
+    let s = Self.screen.frame
+    if let legacy = UserDefaults.standard.string(forKey: Self.legacyFrameKey) {
+      let n = legacy.split(separator: " ").compactMap { Double($0) }
+      if n.count >= 4, n[2] >= 480, n[3] >= 360 {
+        return NSRect(x: n[0] - s.minX, y: s.maxY - n[1] - n[3], width: n[2], height: n[3])
+      }
+    }
+    let size = NSSize(width: min(1100, s.width - 80), height: min(760, s.height - 120))
+    return NSRect(x: (s.width - size.width) / 2, y: (s.height - size.height) / 2, width: size.width, height: size.height)
+  }
 
   private func notify() {
     channel?.invokeMethod("state", arguments: state)
   }
+
+  /// A titled window keeps out of the menu bar; this one covers the whole screen.
+  override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 
   // ---------------------------------------------------------------- open / hidden
 
@@ -148,7 +227,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     if overlay && overlayReason == "computer" { channel?.invokeMethod("openRequested", arguments: nil) }
     if !overlay {
       NSApp.setActivationPolicy(.regular)
-      if isMiniaturized { deminiaturize(nil) }
+      present()
       makeKeyAndOrderFront(nil)
       NSApp.activate(ignoringOtherApps: true)
     }
@@ -156,39 +235,51 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   }
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
-    userOpen = false
-    orderOut(nil)
-    NSApp.setActivationPolicy(.accessory)
-    notify()
+    hideWindow()
     return false
   }
 
-  func windowDidMove(_ notification: Notification) {
-    saveNormalFrame()
-  }
-
-  func windowDidResize(_ notification: Notification) {
-    saveNormalFrame()
-  }
-
-  private func saveNormalFrame() {
-    if overlay || switching || !Self.isNormalSize(frame) { return }
-    saveFrame(usingName: Self.frameName)
-  }
-
-  private static func isNormalSize(_ r: NSRect) -> Bool {
-    r.width >= minNormalSize.width && r.height >= minNormalSize.height
-  }
-
-  func windowDidMiniaturize(_ notification: Notification) {
+  /// The user closes the full view: the window goes away (the orb stays while it is one).
+  func hideWindow() {
     userOpen = false
+    if !overlay { conceal() }
     notify()
   }
 
-  func windowDidDeminiaturize(_ notification: Notification) {
-    if overlay { return }
-    userOpen = true
-    notify()
+  /// On screen: over the whole main screen, taking the mouse only where Flutter draws.
+  private func present() {
+    setFrame(Self.screen.frame, display: true)
+    setTitleButtonsHidden()
+    orderFrontRegardless()
+    if hitTimer == nil {
+      // The cursor is checked against the rects on every frame: the window server only lets a
+      // window take the mouse or not as a whole.
+      let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.updateMousePassThrough() }
+      RunLoop.main.add(t, forMode: .common)
+      hitTimer = t
+    }
+    spaceKey.enabled = true
+  }
+
+  private func conceal() {
+    orderOut(nil)
+    hitTimer?.invalidate()
+    hitTimer = nil
+    spaceKey.enabled = false
+    NSApp.setActivationPolicy(.accessory)
+  }
+
+  /// Takes the mouse while the cursor is over something Flutter drew, lets it through elsewhere.
+  /// A press that is held keeps it where it started, so drags are never cut in two.
+  func updateMousePassThrough() {
+    var ignore = true
+    if passThroughHolds == 0 {
+      if NSEvent.pressedMouseButtons != 0 { return }
+      let m = NSEvent.mouseLocation
+      let p = NSPoint(x: m.x - frame.minX, y: frame.maxY - m.y)
+      ignore = !hitRects.contains { $0.contains(p) }
+    }
+    if ignoresMouseEvents != ignore { ignoresMouseEvents = ignore }
   }
 
   override var canBecomeKey: Bool { true }
@@ -198,57 +289,23 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
   func setOverlay(_ on: Bool, reason: String = "phone") {
     if on { overlayReason = reason }
-    if on == overlay { return }
+    if on == overlay {
+      notify()
+      return
+    }
     overlay = on
-    switching = true
-    defer { switching = false }
     if on {
-      if isMiniaturized { deminiaturize(nil) }
-      if Self.isNormalSize(frame) { normalFrame = frame }
-      minSize = NSSize(width: Self.overlaySize, height: Self.overlaySize)
-      // Stays a titled window with an invisible title bar: switching to a borderless window
-      // swaps the window's frame view, and the Flutter view stops showing after that.
-      styleMask = [.titled, .fullSizeContentView]
-      titlebarAppearsTransparent = true
-      titleVisibility = .hidden
-      setTitleButtonsHidden(true)
-      isOpaque = false
-      backgroundColor = .clear
-      hasShadow = false
-      // The orb draws no opaque pixel, and the window server lets the mouse through fully
-      // transparent ones: the whole square takes the user's clicks instead.
-      ignoresMouseEvents = false
-      level = .floating
-      collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-      setFrame(overlayFrame(), display: true)
+      present()
       NSApp.setActivationPolicy(.accessory)
-      orderFrontRegardless()
       yieldFocus()
-      // AppKit lays the title bar out again once the window has its new frame.
-      DispatchQueue.main.async { [weak self] in
-        guard let self = self, self.overlay else { return }
-        self.setTitleButtonsHidden(true)
-      }
+    } else if userOpen {
+      NSApp.setActivationPolicy(.regular)
+      present()
+      makeKeyAndOrderFront(nil)
+      // Back from working in other apps: Minerva comes in front of them.
+      if overlayReason == "computer" { NSApp.activate(ignoringOtherApps: true) }
     } else {
-      styleMask = [.titled, .closable, .miniaturizable, .resizable]
-      titlebarAppearsTransparent = false
-      titleVisibility = .visible
-      setTitleButtonsHidden(false)
-      isOpaque = true
-      backgroundColor = .windowBackgroundColor
-      hasShadow = true
-      level = .normal
-      collectionBehavior = []
-      minSize = Self.minNormalSize
-      if let f = normalFrame { setFrame(f, display: true) }
-      if userOpen {
-        NSApp.setActivationPolicy(.regular)
-        makeKeyAndOrderFront(nil)
-        // Back from working in other apps: the window comes in front of them.
-        if overlayReason == "computer" { NSApp.activate(ignoringOtherApps: true) }
-      } else {
-        orderOut(nil)
-      }
+      conceal()
     }
     notify()
   }
@@ -276,101 +333,161 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     app.activate()
   }
 
-  private func setTitleButtonsHidden(_ hidden: Bool) {
+  /// Hides the title bar for good: the traffic lights and every view of the frame but the
+  /// content (AppKit shows the buttons again when the window is laid out or changes key).
+  private func setTitleButtonsHidden() {
     for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-      standardWindowButton(b)?.isHidden = hidden
-      standardWindowButton(b)?.alphaValue = hidden ? 0 : 1
+      standardWindowButton(b)?.isHidden = true
+      standardWindowButton(b)?.alphaValue = 0
     }
-    // AppKit shows the buttons again when the window stops being key or is laid out (the orb gives
-    // the keyboard away): hide the whole title bar too, every view of the frame but the content
-    // (its alpha stays where it is set).
-    standardWindowButton(.closeButton)?.superview?.isHidden = hidden
-    if hidden, let content = contentView, let frameView = content.superview {
+    standardWindowButton(.closeButton)?.superview?.isHidden = true
+    if let content = contentView, let frameView = content.superview {
       for v in frameView.subviews where v !== content && !v.isHidden {
         v.isHidden = true
         v.alphaValue = 0
-        hiddenFrameViews.append(v)
       }
-    } else if !hidden {
-      for v in hiddenFrameViews {
-        v.isHidden = false
-        v.alphaValue = 1
-      }
-      hiddenFrameViews.removeAll()
     }
   }
 
   func windowDidResignKey(_ notification: Notification) {
-    if overlay { setTitleButtonsHidden(true) }
+    setTitleButtonsHidden()
   }
 
   func windowDidBecomeKey(_ notification: Notification) {
-    if overlay { setTitleButtonsHidden(true) }
+    setTitleButtonsHidden()
   }
 
-  /// Top-right corner of the main screen (where the orb sits in the normal window), or where the
-  /// user last dragged it.
-  private func overlayFrame() -> NSRect {
-    let size = NSSize(width: Self.overlaySize, height: Self.overlaySize)
-    if let saved = UserDefaults.standard.string(forKey: Self.overlayOriginKey) {
-      let rect = NSRect(origin: NSPointFromString(saved), size: size)
-      if NSScreen.screens.contains(where: { $0.visibleFrame.contains(rect) }) { return rect }
-    }
-    let v = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
-    return NSRect(origin: NSPoint(x: v.maxX - size.width - 20, y: v.maxY - size.height - 20), size: size)
+  func windowDidResize(_ notification: Notification) {
+    // AppKit lays the title bar out again once the window has its new frame.
+    DispatchQueue.main.async { [weak self] in self?.setTitleButtonsHidden() }
   }
 
-  /// In overlay mode the window handles the mouse itself: a drag moves it, a click is a tap
-  /// (Flutter's own gestures cannot tell them apart while the window follows the pointer).
   override func sendEvent(_ event: NSEvent) {
-    guard overlay else {
-      super.sendEvent(event)
-      return
-    }
-    // Minerva's own clicks are meant for the app below the orb, never for the orb itself.
+    // Minerva's own clicks are meant for the app below, never for its own window.
     if Self.isMouse(event.type),
       event.cgEvent?.getIntegerValueField(.eventSourceUserData) == ComputerControl.syntheticEventTag
     {
       return
     }
-    switch event.type {
-    case .leftMouseDown:
-      dragStart = (NSEvent.mouseLocation, frame.origin)
-      dragged = false
-    case .leftMouseDragged:
-      guard let start = dragStart else { return }
-      let p = NSEvent.mouseLocation
-      let dx = p.x - start.mouse.x, dy = p.y - start.mouse.y
-      if !dragged && hypot(dx, dy) < 3 { return }
-      dragged = true
-      setFrameOrigin(NSPoint(x: start.origin.x + dx, y: start.origin.y + dy))
-    case .leftMouseUp:
-      if dragStart == nil { return }
-      dragStart = nil
-      if dragged {
-        UserDefaults.standard.set(NSStringFromPoint(frame.origin), forKey: Self.overlayOriginKey)
-      } else {
-        channel?.invokeMethod("tap", arguments: nil)
-      }
-      // A click on the orb activates Minerva (once the event is handled): hand the keyboard back.
+    super.sendEvent(event)
+    // A click on the orb or a widget activates Minerva (once the event is handled): hand the
+    // keyboard back.
+    if overlay && (event.type == .leftMouseUp || event.type == .rightMouseUp) {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
         guard let self = self, self.overlay else { return }
         self.yieldFocus()
       }
-    case .rightMouseDown:
-      if let menu = contextMenu, let view = contentView {
-        NSMenu.popUpContextMenu(menu, with: event, for: view)
-      }
-    case .rightMouseUp, .rightMouseDragged:
-      return
-    default:
-      super.sendEvent(event)
     }
   }
 
   private static func isMouse(_ t: NSEvent.EventType) -> Bool {
     [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged,
      .otherMouseDown, .otherMouseUp, .otherMouseDragged, .scrollWheel].contains(t)
+  }
+}
+
+/// The space bar toggles Minerva's mic from any app while Minerva is on screen: a keyboard event
+/// tap (it needs the Accessibility permission Minerva already has for computer use) takes a bare
+/// space press away from the app in front, unless the user is typing in a text field there or
+/// Minerva itself is in front (Flutter handles it then). Minerva's own key presses are tagged and
+/// go through. The tap runs on its own thread, so the keyboard never waits for the UI.
+final class SpaceKey {
+  /// Called on the main thread on each press taken.
+  var onPress: (() -> Void)?
+
+  var enabled: Bool {
+    get {
+      lock.lock()
+      defer { lock.unlock() }
+      return on
+    }
+    set {
+      lock.lock()
+      on = newValue
+      lock.unlock()
+      if newValue { install() }
+    }
+  }
+
+  private let lock = NSLock()
+  private var on = false
+  private var tap: CFMachPort?
+  private var thread: Thread?
+  /// The last space press was taken: its repeats and its release are taken too.
+  private var taking = false
+
+  private func install() {
+    guard thread == nil, AXIsProcessTrusted() else { return }
+    let t = Thread { [weak self] in
+      guard let self = self else { return }
+      let mask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+      guard let port = CGEvent.tapCreate(
+        tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
+        eventsOfInterest: CGEventMask(mask),
+        callback: { _, type, event, info in
+          Unmanaged<SpaceKey>.fromOpaque(info!).takeUnretainedValue().handle(type, event)
+        },
+        userInfo: Unmanaged.passUnretained(self).toOpaque())
+      else {
+        DispatchQueue.main.async { self.thread = nil }
+        return
+      }
+      self.tap = port
+      CFRunLoopAddSource(CFRunLoopGetCurrent(), CFMachPortCreateRunLoopSource(nil, port, 0), .commonModes)
+      CFRunLoopRun()
+    }
+    t.name = "minerva.space"
+    thread = t
+    t.start()
+  }
+
+  private func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
+    let pass = Unmanaged.passUnretained(event)
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+      if let tap = tap { CGEvent.tapEnable(tap: tap, enable: true) }
+      return pass
+    }
+    guard event.getIntegerValueField(.keyboardEventKeycode) == Int64(kVK_Space) else { return pass }
+    if type == .keyUp {
+      let took = taking
+      taking = false
+      return took ? nil : pass
+    }
+    if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return taking ? nil : pass }
+    taking = false
+    guard enabled,
+      event.getIntegerValueField(.eventSourceUserData) != ComputerControl.syntheticEventTag,
+      event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn]).isEmpty,
+      NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+      !Self.typingInFocusedField()
+    else { return pass }
+    taking = true
+    DispatchQueue.main.async { [weak self] in self?.onPress?() }
+    return nil
+  }
+
+  private static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXSearchField", "AXComboBox"]
+
+  /// The focused element of the app in front takes text (a field, a text view, a terminal, an
+  /// editable web page).
+  private static func typingInFocusedField() -> Bool {
+    let system = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(system, 0.1)
+    var v: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &v) == .success,
+      let v = v, CFGetTypeID(v) == AXUIElementGetTypeID()
+    else { return false }
+    let el = v as! AXUIElement
+    AXUIElementSetMessagingTimeout(el, 0.1)
+    var role: CFTypeRef?
+    if AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &role) == .success,
+      let r = role as? String, textRoles.contains(r)
+    {
+      return true
+    }
+    var settable: DarwinBoolean = false
+    return AXUIElementIsAttributeSettable(el, kAXSelectedTextRangeAttribute as CFString, &settable) == .success
+      && settable.boolValue
   }
 }
 

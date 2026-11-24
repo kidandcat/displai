@@ -18,6 +18,8 @@ class DisplayView extends StatelessWidget {
     super.key,
     required this.controller,
     this.cornerReserve = Size.zero,
+    this.strip = true,
+    this.scale,
   });
 
   final DisplayController controller;
@@ -26,6 +28,12 @@ class DisplayView extends StatelessWidget {
   /// display (the orb). The view's header leaves it free.
   final Size cornerReserve;
 
+  /// Shows the timeline strip (not in a widget over other apps).
+  final bool strip;
+
+  /// The display's scale ([DisplayScale]); null: from the width.
+  final double? scale;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -33,7 +41,7 @@ class DisplayView extends StatelessWidget {
         final double width = constraints.hasBoundedWidth
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final double s = DisplayScale.forWidth(width);
+        final double s = scale ?? DisplayScale.forWidth(width);
         return Theme(
           data: displayThemeData(),
           child: DisplayScale(
@@ -61,7 +69,7 @@ class DisplayView extends StatelessWidget {
     final DisplayViewEntry? entry = controller.current;
     final List<DisplayViewEntry> timeline = controller.timeline;
     final bool showStrip =
-        timeline.length > 1 || (entry == null && timeline.isNotEmpty);
+        strip && (timeline.length > 1 || (entry == null && timeline.isNotEmpty));
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       decoration: entry == null
