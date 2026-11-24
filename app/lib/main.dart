@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,8 +15,13 @@ import 'voice/model_store.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // On a phone Minerva is the remote of a desktop that does all the processing.
-  runApp(Platform.isAndroid || Platform.isIOS ? const RemoteApp() : const MinervaApp());
+  // On a phone Minerva is the remote of a desktop that does all the processing, held upright.
+  if (Platform.isAndroid || Platform.isIOS) {
+    unawaited(SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]));
+    runApp(const RemoteApp());
+  } else {
+    runApp(const MinervaApp());
+  }
 }
 
 class MinervaApp extends StatelessWidget {
