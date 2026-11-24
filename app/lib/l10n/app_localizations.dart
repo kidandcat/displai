@@ -245,8 +245,14 @@ abstract class AppLocalizations {
   /// Webhooks dialog.
   ///
   /// In en, this message translates to:
-  /// **'Other services can notify Minerva by calling this address (with any path after it). The encryption ends on this Mac: the relay does not see what arrives. Keep it private: whoever has it can write to Minerva.'**
+  /// **'Other services can notify Minerva by calling a webhook\'s address (with any path after it). Each webhook has its own secret address; ask Minerva to create one for each service. The encryption ends on this Mac: the relay does not see what arrives. Keep the addresses private: whoever has one can write to Minerva.'**
   String get webhooksExplanation;
+
+  /// Webhooks dialog, when none is registered.
+  ///
+  /// In en, this message translates to:
+  /// **'No webhooks yet. Ask Minerva to create one.'**
+  String get webhooksNone;
 
   /// Snack bar after copying the webhook address.
   ///
@@ -367,6 +373,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Scheduling…'**
   String get activityScheduling;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
+  /// **'Setting up webhooks…'**
+  String get activityWebhooks;
 
   /// What the assistant is doing (spoken aloud).
   ///

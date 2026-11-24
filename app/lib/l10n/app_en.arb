@@ -116,9 +116,13 @@
   "@webhooksActive": {
     "description": "Webhooks button tooltip while they can be received."
   },
-  "webhooksExplanation": "Other services can notify Minerva by calling this address (with any path after it). The encryption ends on this Mac: the relay does not see what arrives. Keep it private: whoever has it can write to Minerva.",
+  "webhooksExplanation": "Other services can notify Minerva by calling a webhook's address (with any path after it). Each webhook has its own secret address; ask Minerva to create one for each service. The encryption ends on this Mac: the relay does not see what arrives. Keep the addresses private: whoever has one can write to Minerva.",
   "@webhooksExplanation": {
     "description": "Webhooks dialog."
+  },
+  "webhooksNone": "No webhooks yet. Ask Minerva to create one.",
+  "@webhooksNone": {
+    "description": "Webhooks dialog, when none is registered."
   },
   "addressCopied": "Address copied",
   "@addressCopied": {
@@ -213,6 +217,10 @@
   },
   "activityScheduling": "Scheduling…",
   "@activityScheduling": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
+  "activityWebhooks": "Setting up webhooks…",
+  "@activityWebhooks": {
     "description": "What the assistant is doing (spoken aloud)."
   },
   "activityRunningCommand": "Running a command…",

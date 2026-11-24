@@ -290,11 +290,47 @@ class _WebhookButton extends StatelessWidget {
       );
 }
 
-/// The address third parties can send webhooks to; the assistant hears about each one.
+/// The webhooks third parties can call, each at its own secret address; the assistant hears about
+/// each request and creates new webhooks when asked.
 class _WebhookDialog extends StatelessWidget {
   const _WebhookDialog({required this.webhooks});
 
   final Webhooks webhooks;
+
+  Widget _row(BuildContext context, Webhook h) {
+    final t = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context);
+    final url = webhooks.urlOf(h);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(h.name, style: t.titleSmall),
+                if (h.description.isNotEmpty) Text(h.description, style: t.bodySmall?.copyWith(color: Colors.white70)),
+                SelectableText(url ?? '—', style: t.bodySmall?.copyWith(fontFamily: 'Menlo')),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: l.copy,
+            icon: const Icon(Icons.copy, size: 18),
+            onPressed: url == null
+                ? null
+                : () async {
+                    await Clipboard.setData(ClipboardData(text: url));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.addressCopied)));
+                    }
+                  },
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -303,35 +339,29 @@ class _WebhookDialog extends StatelessWidget {
     return ListenableBuilder(
       listenable: webhooks,
       builder: (context, _) {
-        final url = webhooks.url;
+        final hooks = webhooks.hooks;
         return AlertDialog(
           title: Text(l.webhooks),
           content: SizedBox(
-            width: 460,
+            width: 520,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(l.webhooksExplanation, style: t.bodyMedium),
                 const SizedBox(height: 16),
-                SelectableText(url ?? '—', style: t.titleSmall?.copyWith(fontFamily: 'Menlo')),
+                if (hooks.isEmpty) Text(l.webhooksNone, style: t.bodyMedium?.copyWith(color: Colors.white54)),
+                if (hooks.isNotEmpty)
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 320),
+                    child: ListView(shrinkWrap: true, children: [for (final h in hooks) _row(context, h)]),
+                  ),
                 const SizedBox(height: 12),
                 Text(webhooks.status, style: t.bodySmall?.copyWith(color: kAccent)),
               ],
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: url == null
-                  ? null
-                  : () async {
-                      await Clipboard.setData(ClipboardData(text: url));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.addressCopied)));
-                      }
-                    },
-              child: Text(l.copy),
-            ),
             FilledButton(onPressed: () => Navigator.pop(context), child: Text(l.close)),
           ],
         );

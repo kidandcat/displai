@@ -284,13 +284,23 @@ third parties (GitHub, Stripe, home automation…) call the desktop at
   tunnel) and terminates TLS on the desktop: the relay only passes ciphertext.
 - On vps2, Caddy (built with caddy-l4, `apt-mark hold caddy`) hands `*.minerva.kidandcat.com` by SNI, still
   encrypted, to the relay's `-tls-addr 127.0.0.1:8444` (`relay/deploy/Caddyfile.snippet`).
-- `<id>` and `<key>` derive from a per-desktop secret (`<data>/webhooks/secret`, 0600). The id is public
-  (it is the certificate's host name, listed in Certificate Transparency logs, and scanners probe new names
-  within seconds), so the path key is the secret: any other path gets a 404 and is neither saved nor
-  reported.
+- `<id>` derives from a per-desktop secret (`<data>/webhooks/secret`, 0600). The id is public (it is the
+  certificate's host name, listed in Certificate Transparency logs, and scanners probe new names within
+  seconds), so the path key is the secret.
+- Each webhook is one sender with its own random key (24 bytes, base64url). The registry
+  (`<data>/webhooks/hooks.json`, 0600: name, description, key, created) lives only on the desktop: the app
+  writes it atomically when the brain calls `webhook_create` / `webhook_delete` (`webhook_list` shows them),
+  and the helper rereads it whenever it changes, so a deleted webhook's URL stops working with the next
+  request. After TLS, the helper maps the first path segment to a webhook (constant-time compare, keys
+  shorter than 16 chars ignored); a key that matches none gets a 404 and is neither saved nor reported.
+  The relay knows nothing about webhooks: it sees the SNI host name, IPs, timing and sizes, never paths,
+  headers or bodies.
+- Migration: before per-webhook keys there was one key derived from the secret. When `hooks.json` is
+  missing, the helper creates it once: with that old key as the webhook `default` if the secret already
+  existed, else empty. From then on the file is the app's.
 - Each request is answered at once (`{"ok":true}`, or the `hub.challenge` echoed), saved to
-  `<data>/webhooks/inbox/` (1 MB max, newest 200) and sent to the brain as a `[webhook]` message, marked as
-  third-party content. `MINERVA_NO_WEBHOOKS` turns it off.
+  `<data>/webhooks/inbox/` (1 MB max, newest 200) and sent to the brain as `[webhook <name>] …` (with the
+  webhook's description), marked as third-party content. `MINERVA_NO_WEBHOOKS` turns it off.
 - A GET or HEAD without a body is crawler noise unless it carries a challenge-style query parameter
   (`hub.challenge`, `crc_token`, `validationToken`, `echostr`…): it is answered and logged, but neither
   saved nor sent to the brain.

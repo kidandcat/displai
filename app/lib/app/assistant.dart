@@ -33,6 +33,7 @@ import '../workers/workers.dart';
 import '../voice/listener.dart';
 import '../voice/model_store.dart';
 import '../voice/speaker.dart';
+import '../webhooks/webhook_tools.dart';
 import '../webhooks/webhooks.dart';
 import 'assistant_ui.dart';
 
@@ -242,6 +243,10 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         ..addListener(() => presence.workers = workers.runningIds);
       _applyWorkerModel();
       routines = Routines(store: store, notify: notify);
+      if (Platform.environment['MINERVA_NO_WEBHOOKS'] == null) {
+        webhooks = Webhooks(relay: _relay, dir: '${store.dir}/webhooks', onWebhook: (ev) => notify(Webhooks.describe(ev)))
+          ..addListener(notifyListeners);
+      }
       providers = [
         CommandTools(vault: vault),
         ComputerTools(vault: vault),
@@ -251,6 +256,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         SkillTools(_skillsDir),
         workers,
         routines,
+        if (webhooks != null) WebhookTools(webhooks!),
       ];
       var sessionId = store.get('brain_session');
       if (sessionId == null) {
@@ -273,11 +279,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         onCall: (name) => _setActivity(''),
       );
       await _mcp.start();
-      if (Platform.environment['MINERVA_NO_WEBHOOKS'] == null) {
-        webhooks = Webhooks(relay: _relay, dir: '${store.dir}/webhooks', onWebhook: (ev) => notify(Webhooks.describe(ev)))
-          ..addListener(notifyListeners);
-        await webhooks!.start();
-      }
+      await webhooks?.start();
       final brain = brainModel.resolve(catalog);
       _claude = ClaudeSession(
         model: brain.model,
@@ -833,6 +835,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         'start_worker' || 'message_worker' => l.activityStartingWorker,
         'list_workers' || 'worker_status' || 'stop_worker' => l.activityCheckingWorkers,
         'create_routine' || 'list_routines' || 'update_routine' || 'delete_routine' => l.activityScheduling,
+        'webhook_create' || 'webhook_list' || 'webhook_delete' => l.activityWebhooks,
         'run_command' => l.activityRunningCommand,
         'read_file' || 'list_dir' => l.activityReadingFiles,
         'write_file' => l.activityWritingFile,

@@ -1,13 +1,49 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
 import '../l10n/l10n.dart';
 
+/// A registered webhook: one sender (a service, a device, an automation) with its own secret key,
+/// the first path segment of its URL.
+class Webhook {
+  const Webhook({required this.name, this.description = '', required this.key, this.created});
+
+  factory Webhook.fromJson(Map<String, dynamic> j) => Webhook(
+        name: '${j['name'] ?? ''}',
+        description: '${j['description'] ?? ''}',
+        key: '${j['key'] ?? ''}',
+        created: DateTime.tryParse('${j['created'] ?? ''}'),
+      );
+
+  final String name;
+  final String description;
+  final String key;
+  final DateTime? created;
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        if (description.isNotEmpty) 'description': description,
+        'key': key,
+        if (created != null) 'created': created!.toUtc().toIso8601String(),
+      };
+}
+
+class WebhookException implements Exception {
+  WebhookException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// Webhooks from third parties (GitHub, Stripe, home automation…) at this Mac's own address,
 /// `https://<id>.minerva.kidandcat.com/<key>/…`, through the relay (see docs/design.md §3.7).
+/// Each webhook has its own key; the registry (`<dir>/hooks.json`: name, description, key,
+/// created) lives only on this Mac. The helper reads it and rejects any request whose key is not
+/// in it, so those never reach the brain; the relay never sees keys or names, only ciphertext.
 ///
 /// The work is done by the bundled minerva-webhooks helper (relay/cmd/minerva-webhooks, built
 /// into Minerva.app/Contents/MacOS by an Xcode build phase): it keeps a tunnel open to the relay,
@@ -16,21 +52,39 @@ import '../l10n/l10n.dart';
 /// by SNI or ALPN (needed to answer ACME TLS-ALPN-01 next to normal traffic) and there is no
 /// maintained Dart ACME client; golang.org/x/crypto/acme/autocert does all of it.
 ///
-/// This class runs the helper (restarting it if it dies), keeps its state for the UI and hands
-/// every request to [onWebhook].
+/// This class runs the helper (restarting it if it dies), keeps its state for the UI, owns the
+/// registry (the helper only writes it once, when it is missing, to keep the old single key working
+/// as "default") and hands every request to [onWebhook].
 class Webhooks extends ChangeNotifier {
   Webhooks({required this.relay, required this.dir, required this.onWebhook});
 
   /// The relay's URL (wss://minerva.kidandcat.com); webhook hosts are `<id>.<its host>`.
   final String relay;
 
-  /// The helper's state: tunnel secret, certificates and the inbox of full requests.
+  /// The helper's state: tunnel secret, webhook registry, certificates and the inbox of full
+  /// requests.
   final String dir;
 
   final void Function(Map<String, dynamic> event) onWebhook;
 
-  /// This Mac's webhook URL, once the helper said it.
+  /// This Mac's webhook host (`https://<id>.<relay host>/`), once the helper said it. A webhook's
+  /// URL is this plus its key, see [urlOf].
   String? url;
+
+  /// The registered webhooks, by name; loaded once the helper is ready.
+  List<Webhook> get hooks => _hooks.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+  final _hooks = <String, Webhook>{};
+
+  String get _registryPath => '$dir/hooks.json';
+
+  static final _slug = RegExp(r'^[a-z0-9][a-z0-9_-]{0,39}$');
+  static String normalizeName(String name) => name.trim().toLowerCase();
+  static bool validName(String name) => _slug.hasMatch(name);
+
+  Webhook? operator [](String name) => _hooks[normalizeName(name)];
+
+  /// The URL of [h], or null while the helper has not said this Mac's host.
+  String? urlOf(Webhook h) => url == null ? null : '$url${h.key}/';
 
   /// The tunnel to the relay is up.
   bool online = false;
@@ -107,6 +161,8 @@ class Webhooks extends ChangeNotifier {
       case 'ready':
         url = ev['url'] as String?;
         error = null;
+        // The helper has created (or migrated) the registry by now.
+        loadRegistry();
         if (_ready?.isCompleted == false) _ready!.complete();
       case 'tunnel':
         online = ev['up'] == true;
@@ -117,10 +173,82 @@ class Webhooks extends ChangeNotifier {
         certError = ev['error'] as String?;
         debugPrint('webhooks: certificate ${certOk ? 'until $certExpires' : 'failed: $certError'}');
       case 'webhook':
-        debugPrint('webhook: ${ev['method']} ${ev['path']} (${ev['size']} B)');
+        final h = this['${ev['webhook'] ?? ''}'];
+        debugPrint('webhook ${ev['webhook']}: ${ev['method']} ${ev['path']} (${ev['size']} B)');
+        if (h != null && h.description.isNotEmpty) ev['description'] = h.description;
         onWebhook(ev);
     }
     notifyListeners();
+  }
+
+  /// Reads the registry. A broken file leaves no webhooks (the helper then rejects everything
+  /// too, keeping its last good copy).
+  void loadRegistry() {
+    _hooks.clear();
+    try {
+      final f = File(_registryPath);
+      if (!f.existsSync()) return;
+      final list = (jsonDecode(f.readAsStringSync()) as Map<String, dynamic>)['webhooks'] as List? ?? const [];
+      for (final j in list) {
+        final h = Webhook.fromJson(j as Map<String, dynamic>);
+        if (h.name.isNotEmpty) _hooks[h.name] = h;
+      }
+    } catch (e) {
+      debugPrint('webhooks registry: $e');
+    }
+    notifyListeners();
+  }
+
+  /// Registers a new webhook named [name] with a fresh random key.
+  Future<Webhook> create(String name, {String description = ''}) async {
+    name = normalizeName(name);
+    if (!validName(name)) throw WebhookException('invalid name "$name" (use a slug like github, up to 40 chars)');
+    // Before the helper is ready the registry may still be waiting for its migration.
+    if (url == null) throw WebhookException('webhooks are not running: $status');
+    if (_hooks.containsKey(name)) throw WebhookException('a webhook named "$name" already exists');
+    final h = Webhook(name: name, description: description.trim(), key: newKey(), created: DateTime.now());
+    _hooks[name] = h;
+    try {
+      await _save();
+    } catch (e) {
+      _hooks.remove(name);
+      throw WebhookException('could not save the registry: $e');
+    }
+    notifyListeners();
+    return h;
+  }
+
+  /// Deletes (revokes) a webhook: the helper rejects its key from the next request on. False if
+  /// there is no such webhook.
+  Future<bool> delete(String name) async {
+    final h = _hooks.remove(normalizeName(name));
+    if (h == null) return false;
+    try {
+      await _save();
+    } catch (e) {
+      _hooks[h.name] = h;
+      throw WebhookException('could not save the registry: $e');
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// A random key: 24 bytes from a secure source, 32 URL-safe characters.
+  static String newKey() {
+    final r = Random.secure();
+    return base64Url.encode([for (var i = 0; i < 24; i++) r.nextInt(256)]).replaceAll('=', '');
+  }
+
+  /// Writes the registry atomically (temp file with mode 0600, then rename): the helper rereads it
+  /// whenever it changes.
+  Future<void> _save() async {
+    final json = const JsonEncoder.withIndent('  ').convert({'webhooks': [for (final h in hooks) h.toJson()]});
+    final tmp = File('$_registryPath.tmp-${DateTime.now().microsecondsSinceEpoch}');
+    await tmp.create(recursive: true);
+    final r = await Process.run('/bin/chmod', ['600', tmp.path]);
+    if (r.exitCode != 0) throw WebhookException('chmod failed: ${r.stderr}');
+    await tmp.writeAsString('$json\n', flush: true);
+    await tmp.rename(_registryPath);
   }
 
   /// One line for the UI.
@@ -133,22 +261,27 @@ class Webhooks extends ChangeNotifier {
     return l.webhooksOn;
   }
 
-  /// What the brain is told about its webhook address (empty when there is none).
+  /// What the brain is told about webhooks (empty when they are not running).
   String promptSection() {
-    final u = url;
-    if (u == null) return '';
-    return 'Webhooks: third parties can call this Mac at $u (any path under it; keep it private, '
-        'it is the only key). A message that starts with "[webhook" is such a request.';
+    if (url == null) return '';
+    return 'Webhooks: services can call this Mac over the internet through webhooks. Each webhook is '
+        'named and has its own secret URL. When the user wants to add or connect a webhook, create a '
+        'new one for that sender with webhook_create and use the URL it returns; never hand out or '
+        'reuse another webhook\'s URL. webhook_list shows them, webhook_delete revokes one. A message '
+        'that starts with "[webhook <name>]" is a request to that webhook: handle it by what that '
+        'webhook is for.';
   }
 
   /// The message the brain gets for a webhook: the request, cut short, and where the full one is.
   static String describe(Map<String, dynamic> ev, {int maxBody = 6000}) {
     final b = StringBuffer();
     final query = '${ev['query'] ?? ''}';
-    b.write('[webhook] ${ev['method']} ${ev['path']}${query.isEmpty ? '' : '?$query'}');
+    b.write('[webhook ${ev['webhook'] ?? '?'}] ${ev['method']} ${ev['path']}${query.isEmpty ? '' : '?$query'}');
     final remote = '${ev['remote'] ?? ''}';
     if (remote.isNotEmpty) b.write(' from $remote');
     b.writeln();
+    final about = '${ev['description'] ?? ''}';
+    if (about.isNotEmpty) b.writeln('Webhook for: ${_clip(about, 300)}');
     final headers = ev['headers'];
     if (headers is Map) {
       final skip = {'accept-encoding', 'connection', 'content-length'};

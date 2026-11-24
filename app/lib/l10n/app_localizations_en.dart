@@ -100,7 +100,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get webhooksExplanation =>
-      'Other services can notify Minerva by calling this address (with any path after it). The encryption ends on this Mac: the relay does not see what arrives. Keep it private: whoever has it can write to Minerva.';
+      'Other services can notify Minerva by calling a webhook\'s address (with any path after it). Each webhook has its own secret address; ask Minerva to create one for each service. The encryption ends on this Mac: the relay does not see what arrives. Keep the addresses private: whoever has one can write to Minerva.';
+
+  @override
+  String get webhooksNone => 'No webhooks yet. Ask Minerva to create one.';
 
   @override
   String get addressCopied => 'Address copied';
@@ -168,6 +171,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get activityScheduling => 'Scheduling…';
+
+  @override
+  String get activityWebhooks => 'Setting up webhooks…';
 
   @override
   String get activityRunningCommand => 'Running a command…';
