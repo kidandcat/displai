@@ -190,7 +190,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     }
   }
 
-  /// Bottom-right corner of the main screen, or where the user last dragged it.
+  /// Top-right corner of the main screen (where the orb sits in the normal window), or where the
+  /// user last dragged it.
   private func overlayFrame() -> NSRect {
     let size = NSSize(width: Self.overlaySize, height: Self.overlaySize)
     if let saved = UserDefaults.standard.string(forKey: Self.overlayOriginKey) {
@@ -198,7 +199,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       if NSScreen.screens.contains(where: { $0.visibleFrame.contains(rect) }) { return rect }
     }
     let v = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
-    return NSRect(origin: NSPoint(x: v.maxX - size.width - 20, y: v.minY + 20), size: size)
+    return NSRect(origin: NSPoint(x: v.maxX - size.width - 20, y: v.maxY - size.height - 20), size: size)
   }
 
   /// In overlay mode the window handles the mouse itself: a drag moves it, a click is a tap

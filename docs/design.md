@@ -279,7 +279,7 @@ quit). One window, three states (`MainFlutterWindow.swift`, `lib/app/desktop_win
 - The audio engine runs only while the window is open, no phone is connected and `MINERVA_NO_MIC` is
   unset; otherwise it is shut down, so macOS shows no mic in use.
 - **Overlay**: a 132 pt round window with the orb, floating above other apps on every Space,
-  bottom-right by default. The native window handles the mouse: a click mutes, a drag moves it
+  top-right by default (as in the normal window). The native window handles the mouse: a click mutes, a drag moves it
   (position kept in `overlayOrigin`), a right click opens the menu. When the phone leaves it goes
   back to open or hidden.
 - The Flutter engine starts headless, before any window is shown. A second launch asks the running
