@@ -425,7 +425,9 @@ class _GripPainter extends CustomPainter {
   bool shouldRepaint(_GripPainter old) => false;
 }
 
-/// The orb over the other apps.
+/// The orb over the other apps, on a dark disc: the orb only adds light (shaders/presence.frag,
+/// alpha 0), which shows over the panel or a dark app but not over the window's transparent
+/// pixels, where the window server drops it, nor over a light app.
 class _Orb extends StatelessWidget {
   const _Orb({
     required this.presence,
@@ -450,8 +452,15 @@ class _Orb extends StatelessWidget {
           onPanUpdate: (d) => onMove(d.delta),
           onPanEnd: (_) => onDone(),
           onSecondaryTap: onMenu,
-          child: ClipOval(
-            child: PresenceView(signal: presence, compact: true, compactSize: _OverlayShellState._orbSize),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF07050A).withValues(alpha: 0.88),
+              border: Border.all(color: kPresenceAccent.withValues(alpha: 0.25)),
+            ),
+            child: ClipOval(
+              child: PresenceView(signal: presence, compact: true, compactSize: _OverlayShellState._orbSize),
+            ),
           ),
         ),
       );

@@ -120,6 +120,9 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     isMovable = false
     level = .floating
     collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+    // Stays on screen while other apps are in front, and when one of them hides the others.
+    hidesOnDeactivate = false
+    canHide = false
     ignoresMouseEvents = true
     setFrame(Self.screen.frame, display: false)
     setTitleButtonsHidden()
@@ -294,9 +297,13 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       return
     }
     overlay = on
+    // The orb stays over every app, their floating panels too; the full view only over their
+    // windows, so their dialogs still show above it.
+    level = on ? .statusBar : .floating
     if on {
-      present()
       NSApp.setActivationPolicy(.accessory)
+      // After the policy switch, which deactivates the app.
+      present()
       yieldFocus()
     } else if userOpen {
       NSApp.setActivationPolicy(.regular)
