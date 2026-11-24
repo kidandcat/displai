@@ -229,7 +229,9 @@ final class ComputerControl: NSObject {
       guard let display = content.displays.first(where: { $0.displayID == mainId }) ?? content.displays.first else {
         throw ComputerError(code: "not_found", message: "No display to capture")
       }
-      filter = SCContentFilter(display: display, excludingWindows: [])
+      // Without Minerva's own windows (the corner orb), so the model sees only the Mac.
+      let own = content.windows.filter { $0.owningApplication?.processID == ownPid }
+      filter = SCContentFilter(display: display, excludingWindows: own)
       frame = CGDisplayBounds(display.displayID)
     }
     let longest = max(frame.width, frame.height)

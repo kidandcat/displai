@@ -7,12 +7,16 @@ import webview_flutter_wkwebview
 /// Minerva's only window, in one of three states:
 ///   open     the normal window; the Mac listens and speaks
 ///   hidden   closed or minimized; the app keeps running in the background without the Mac's mic
-///   overlay  a phone is connected: a small round orb, always on top in a corner of the screen;
-///            drag it to move it, click it to mute. It goes back to open or hidden afterwards.
+///   overlay  a small round orb, always on top in a corner of the screen, while a phone is
+///            connected (reason "phone") or while Minerva works in other apps of the Mac (reason
+///            "computer"); drag it to move it, click it to mute. The orb never keeps the keyboard:
+///            the app the user (or Minerva) works in stays in front. It goes back to open or
+///            hidden afterwards.
 ///
 /// Method channel `minerva/window`:
-///   Dart → native  state() -> {open, overlay}   setOverlay(bool)   show()
+///   Dart → native  state() -> {open, overlay}   setOverlay({on, reason})   show()
 ///   native → Dart  state({open, overlay})       tap()   (the overlay orb was clicked)
+///                  openRequested()   (the user asked for the window while it is the orb)
 class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var audio: VoiceAudio?
   private var computer: ComputerControl?
@@ -21,6 +25,10 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   /// The user has the window open (not closed or minimized).
   private(set) var userOpen = false
   private(set) var overlay = false
+  /// Why the window is the orb: "phone" or "computer".
+  private(set) var overlayReason = "phone"
+  /// The last other app in front, given the focus back while the window is the orb.
+  private var lastOtherApp: NSRunningApplication?
   private var normalFrame: NSRect?
   /// Set while switching to or from the overlay: the frames the window goes through are not saved.
   private var switching = false
@@ -74,6 +82,14 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     channel.setMethodCallHandler { [weak self] call, result in self?.handle(call, result) }
     self.channel = channel
     delegate = self
+    NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+    ) { [weak self] note in
+      guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+        app.processIdentifier != ProcessInfo.processInfo.processIdentifier
+      else { return }
+      self?.lastOtherApp = app
+    }
     isReleasedWhenClosed = false
     // The normal frame is saved by us, never the overlay's (macOS restoration would bring back
     // whatever the window last was).
@@ -95,7 +111,11 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     case "state":
       result(state)
     case "setOverlay":
-      setOverlay(call.arguments as? Bool ?? false)
+      if let args = call.arguments as? [String: Any] {
+        setOverlay(args["on"] as? Bool ?? false, reason: args["reason"] as? String ?? "phone")
+      } else {
+        setOverlay(call.arguments as? Bool ?? false)
+      }
       result(nil)
     case "show":
       showNormal()
@@ -115,6 +135,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
   func showNormal() {
     userOpen = true
+    // Minerva is working in another app: the user wants the window back.
+    if overlay && overlayReason == "computer" { channel?.invokeMethod("openRequested", arguments: nil) }
     if !overlay {
       NSApp.setActivationPolicy(.regular)
       if isMiniaturized { deminiaturize(nil) }
@@ -165,7 +187,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
   // ---------------------------------------------------------------- overlay
 
-  func setOverlay(_ on: Bool) {
+  func setOverlay(_ on: Bool, reason: String = "phone") {
+    if on { overlayReason = reason }
     if on == overlay { return }
     overlay = on
     switching = true
@@ -188,6 +211,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       setFrame(overlayFrame(), display: true)
       NSApp.setActivationPolicy(.accessory)
       orderFrontRegardless()
+      yieldFocus()
     } else {
       styleMask = [.titled, .closable, .miniaturizable, .resizable]
       titlebarAppearsTransparent = false
@@ -203,6 +227,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       if userOpen {
         NSApp.setActivationPolicy(.regular)
         makeKeyAndOrderFront(nil)
+        // Back from working in other apps: the window comes in front of them.
+        if overlayReason == "computer" { NSApp.activate(ignoringOtherApps: true) }
       } else {
         orderOut(nil)
       }
@@ -210,10 +236,40 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     notify()
   }
 
+  /// Gives the keyboard back to the app in front before Minerva, so typing and key presses go
+  /// there and not to the orb.
+  private func yieldFocus() {
+    let me = ProcessInfo.processInfo.processIdentifier
+    guard NSApp.isActive || NSWorkspace.shared.frontmostApplication?.processIdentifier == me else { return }
+    var target = lastOtherApp.flatMap { $0.isTerminated ? nil : $0 }
+    if target == nil {
+      // The owner of the topmost window of another regular app.
+      let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+        as? [[String: Any]] ?? []
+      for w in info where (w[kCGWindowLayer as String] as? Int) == 0 {
+        guard let pid = w[kCGWindowOwnerPID as String] as? pid_t, pid != me,
+          let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy == .regular
+        else { continue }
+        target = app
+        break
+      }
+    }
+    guard let app = target else { return }
+    if #available(macOS 14.0, *) { NSApp.yieldActivation(to: app) }
+    app.activate()
+  }
+
   private func setTitleButtonsHidden(_ hidden: Bool) {
     for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
       standardWindowButton(b)?.isHidden = hidden
     }
+    // AppKit shows the buttons again when the window stops being key (the orb gives the keyboard
+    // away): hide the whole title bar view too.
+    standardWindowButton(.closeButton)?.superview?.isHidden = hidden
+  }
+
+  func windowDidResignKey(_ notification: Notification) {
+    if overlay { setTitleButtonsHidden(true) }
   }
 
   /// Top-right corner of the main screen (where the orb sits in the normal window), or where the
@@ -253,6 +309,11 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
         UserDefaults.standard.set(NSStringFromPoint(frame.origin), forKey: Self.overlayOriginKey)
       } else {
         channel?.invokeMethod("tap", arguments: nil)
+      }
+      // A click on the orb activates Minerva (once the event is handled): hand the keyboard back.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        guard let self = self, self.overlay else { return }
+        self.yieldFocus()
       }
     case .rightMouseDown:
       if let menu = contextMenu, let view = contentView {

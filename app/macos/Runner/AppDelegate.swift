@@ -85,7 +85,9 @@ class AppDelegate: FlutterAppDelegate, NSMenuDelegate {
   func menuWillOpen(_ menu: NSMenu) {
     guard let w = window else { return }
     menu.item(withTag: 1)?.title =
-      w.overlay ? "Móvil conectado" : w.userOpen ? "Escuchando en este Mac" : "En segundo plano · el Mac no escucha"
+      w.overlay
+      ? (w.overlayReason == "computer" ? "Usando el Mac · Abrir Minerva para volver" : "Móvil conectado")
+      : w.userOpen ? "Escuchando en este Mac" : "En segundo plano · el Mac no escucha"
   }
 
   @objc private func openWindow() {

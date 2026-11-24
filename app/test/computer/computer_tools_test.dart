@@ -156,4 +156,15 @@ void main() {
     }
     expect(tools.handles('show'), isFalse);
   });
+
+  test('actions on the screen move Minerva out of the way; reads do not', () {
+    for (final n in ['click', 'type_text', 'press_key', 'scroll', 'open', 'activate']) {
+      expect(ComputerTools.needsScreen(n, {}), isTrue, reason: n);
+    }
+    expect(ComputerTools.needsScreen('screen', {}), isTrue);
+    expect(ComputerTools.needsScreen('screen', {'window_id': 7}), isFalse);
+    for (final n in ['ui_tree', 'apps', 'windows', 'run_command', 'show']) {
+      expect(ComputerTools.needsScreen(n, {}), isFalse, reason: n);
+    }
+  });
 }

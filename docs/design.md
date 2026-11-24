@@ -193,6 +193,7 @@ brain's built-ins), so any MCP-capable brain gets the same capabilities.
 | `ui_tree` | Compact accessibility tree of the focused window, with `[n]` targets. |
 | `click`, `type_text`, `press_key`, `scroll` | CGEvent / AX actions, by `[n]` target or coordinates. |
 | `open`, `activate`, `apps`, `windows` | Apps, URLs and files. |
+| `minerva_window` | Minerva's own window: `orb` or `full` (see 3.8, it also switches on its own). |
 
 The native side is `macos/Runner/ComputerControl.swift` (method channel `minerva/computer`); it needs
 the Accessibility and Screen Recording permissions.
@@ -276,13 +277,21 @@ quit). One window, three states (`MainFlutterWindow.swift`, `lib/app/desktop_win
 | open | window shown | on | yes |
 | hidden | closed, minimized, or started with `--background` | off (audio engine shut down) | no (menu bar item) |
 | overlay | a phone is connected | off | no |
+| overlay | Minerva works in other apps of the Mac (computer use) | on | no |
 
 - The audio engine runs only while the window is open, no phone is connected and `MINERVA_NO_MIC` is
   unset; otherwise it is shut down, so macOS shows no mic in use.
 - **Overlay**: a 132 pt round window with the orb, floating above other apps on every Space,
   top-right by default (as in the normal window). The native window handles the mouse: a click mutes, a drag moves it
-  (position kept in `overlayOrigin`), a right click opens the menu. When the phone leaves it goes
-  back to open or hidden.
+  (position kept in `overlayOrigin`), a right click opens the menu. The orb never keeps the
+  keyboard: entering it and clicking it give the focus back to the last other app in front. When
+  the phone leaves it goes back to open or hidden.
+- **Using the Mac**: with the window open, the first computer-use action on the screen (`click`,
+  `type_text`, `press_key`, `scroll`, `open`, `activate`, `screen` of the whole display) turns the
+  window into the orb, so it neither covers the app nor takes its keyboard; the Mac keeps listening
+  and speaking. It comes back when the brain shows something (`show`, `html`, `form`, `video`,
+  `back`), when the brain calls `minerva_window full` (the user asks for it), or when the user opens
+  it from the menu bar, Spotlight or Finder. `screen` leaves Minerva's own windows out.
 - The Flutter engine starts headless, before any window is shown. A second launch asks the running
   instance to show its window and exits. App Nap is disabled so routines and the relay keep their timers.
 
