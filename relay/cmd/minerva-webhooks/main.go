@@ -1,23 +1,26 @@
 // Command minerva-webhooks runs on the Minerva desktop (the app bundles and starts it) and
 // receives webhooks from third parties at https://<id>.<domain>/<key>/…, through the relay. The
-// host name is public (Certificate Transparency logs list it), so the path key is the secret:
-// anything else gets a 404 and is neither saved nor reported.
+// host name is public (Certificate Transparency logs list it), so the path key is the secret.
+// Each webhook has its own key, registered by the app in -dir/hooks.json (name, description,
+// key, created; see registry.go): a request is reported with the name of the webhook its key
+// belongs to, and a request under no registered key gets a 404 and is neither saved nor
+// reported. The relay never sees keys or names: TLS ends here.
 //
 // It keeps a tunnel open to the relay (package tunnel), terminates TLS itself with a Let's
 // Encrypt certificate for its own host name (obtained and renewed here with ACME TLS-ALPN-01,
 // answered through the same tunnel), and reports every request as a JSON line on stdout. The
 // relay only ever sees ciphertext and never holds the key.
 //
-// State lives in -dir: the tunnel secret (the id is derived from it), the ACME account and
-// certificates (certs/) and the full requests (inbox/). It exits when stdin closes, so it never
+// State lives in -dir: the tunnel secret (the id is derived from it), the webhook registry
+// (hooks.json), the ACME account and certificates (certs/) and the full requests (inbox/). It exits when stdin closes, so it never
 // outlives the app.
 //
 // Stdout, one JSON object per line:
 //
-//	{"t":"ready","id":"…","url":"https://…/"}
+//	{"t":"ready","id":"…","url":"https://…/"} (a webhook's URL is url + its key + "/")
 //	{"t":"tunnel","up":true|false,"error":"…"}
 //	{"t":"cert","ok":true|false,"expires":"…","error":"…"}
-//	{"t":"webhook","method":"POST","path":"/…" (after the key),"query":"…","headers":{…},"remote":"1.2.3.4",
+//	{"t":"webhook","webhook":"<name>","method":"POST","path":"/…" (after the key),"query":"…","headers":{…},"remote":"1.2.3.4",
 //	 "body":"…","base64":false,"size":123,"file":"…/inbox/….json"}
 package main
 
@@ -65,15 +68,23 @@ func main() {
 	if err := os.MkdirAll(filepath.Join(*dir, "inbox"), 0o700); err != nil {
 		log.Fatal(err)
 	}
-	secret, err := loadSecret(filepath.Join(*dir, "secret"))
+	secretPath := filepath.Join(*dir, "secret")
+	var legacySince time.Time // when the secret, and so the old single key, came to be
+	if fi, err := os.Stat(secretPath); err == nil {
+		legacySince = fi.ModTime()
+	}
+	secret, err := loadSecret(secretPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	id := tunnel.ID(secret)
-	key := tunnel.PathKey(secret)
+	hooksPath := filepath.Join(*dir, "hooks.json")
+	if err := migrateRegistry(hooksPath, tunnel.PathKey(secret), legacySince); err != nil {
+		log.Fatal(err)
+	}
 	host := id + "." + strings.Trim(*domain, ".")
 	out := &emitter{enc: json.NewEncoder(os.Stdout)}
-	out.emit(map[string]any{"t": "ready", "id": id, "url": "https://" + host + "/" + key + "/"})
+	out.emit(map[string]any{"t": "ready", "id": id, "url": "https://" + host + "/"})
 
 	// The app closes our stdin when it quits (or dies).
 	go func() {
@@ -107,7 +118,7 @@ func main() {
 	}
 	ln.Start()
 
-	h := &handler{key: key, dir: filepath.Join(*dir, "inbox"), maxBody: *maxBody, out: out}
+	h := &handler{hooks: &registry{path: hooksPath}, dir: filepath.Join(*dir, "inbox"), maxBody: *maxBody, out: out}
 	srv := &http.Server{
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -187,7 +198,7 @@ func (e *emitter) emit(v any) {
 // handler turns every request into a "webhook" event and answers at once: the assistant acts on
 // it later, so the sender only learns that it arrived.
 type handler struct {
-	key     string // secret first path segment, see [tunnel.PathKey]
+	hooks   *registry // the keys, one per webhook, that make up the first path segment
 	dir     string
 	maxBody int64
 	out     *emitter
@@ -195,15 +206,14 @@ type handler struct {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	path, ok := strings.CutPrefix(r.URL.Path, "/"+h.key)
-	if !ok || path != "" && path[0] != '/' {
-		log.Printf("ignored %s (not under the path key) from %s", r.Method, r.RemoteAddr)
+	key, path, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+	hook, ok := h.hooks.lookup(key)
+	if !ok {
+		log.Printf("ignored %s (no webhook with that key) from %s", r.Method, r.RemoteAddr)
 		http.NotFound(w, r)
 		return
 	}
-	if path == "" {
-		path = "/"
-	}
+	path = "/" + path
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.maxBody))
 	if err != nil {
 		http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
@@ -212,13 +222,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if noise(r, body) {
 		// Crawlers and scanners (the host name is in Certificate Transparency logs): answered,
 		// but neither saved nor reported.
-		log.Printf("ignored %s %s from %s (no body, no challenge)", r.Method, path, r.RemoteAddr)
+		log.Printf("ignored %s %s on %s from %s (no body, no challenge)", r.Method, path, hook.Name, r.RemoteAddr)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"ok":true}`+"\n")
 		return
 	}
 	ev := map[string]any{
 		"t":       "webhook",
+		"webhook": hook.Name,
 		"method":  r.Method,
 		"path":    path,
 		"query":   r.URL.RawQuery,
