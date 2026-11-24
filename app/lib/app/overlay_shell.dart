@@ -19,6 +19,8 @@ import 'main_view.dart';
 ///     right click: Minerva's menu);
 ///   - the widget Minerva pops over the other apps while it works in them: the view it showed
 ///     last, on its own dark panel.
+/// Going to the orb, the panel closes around its own orb and flies with it to the corner; coming
+/// back it does the reverse.
 /// Only those take clicks: their rects go to the native side, which lets the rest through.
 class OverlayShell extends StatefulWidget {
   const OverlayShell({super.key, required this.window, required this.assistant, required this.child});
@@ -31,12 +33,22 @@ class OverlayShell extends StatefulWidget {
   State<OverlayShell> createState() => _OverlayShellState();
 }
 
-class _OverlayShellState extends State<OverlayShell> {
+class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderStateMixin {
   /// Height of the panel's top strip (drag it to move the panel; it holds the close button).
   static const double _bar = 30;
   static const double _orbSize = 122;
   static const double _margin = 24;
   static const Size _minPanel = Size(480, 360);
+
+  /// Height of the full view's status bar (main_view.dart's [StatusBar]).
+  static const double _statusBar = 52;
+
+  /// The panel's way to the orb and back: 0 is the panel, 1 the orb.
+  late final _morph = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
+    ..addStatusListener((s) => _window.panelShown.value = s != AnimationStatus.completed);
+
+  /// The window's last overlay state.
+  bool? _overlay;
 
   DesktopWindow get _window => widget.window;
 
@@ -62,11 +74,24 @@ class _OverlayShellState extends State<OverlayShell> {
   @override
   void dispose() {
     _window.removeListener(_onWindow);
+    _morph.dispose();
     super.dispose();
   }
 
+  /// Morphs the panel into the orb and back when the window goes to the overlay and back; it
+  /// jumps when there is no panel on screen to morph.
   void _onWindow() {
-    _window.panelShown.value = !_window.overlay;
+    final overlay = _window.overlay, was = _overlay;
+    _overlay = overlay;
+    if (overlay == was) return;
+    if (was == null || !_window.open) {
+      _morph.value = overlay ? 1 : 0;
+    } else if (overlay) {
+      unawaited(_morph.forward());
+    } else {
+      unawaited(_morph.reverse());
+    }
+    _window.panelShown.value = _morph.status != AnimationStatus.completed;
   }
 
   /// Sends the clickable rects to the native side when they change (after the frame that drew
@@ -103,6 +128,16 @@ class _OverlayShellState extends State<OverlayShell> {
     return _fit(p & const Size.square(_orbSize), screen);
   }
 
+  /// The orb inside the panel, as the circle the panel closes around: the full orb in the middle,
+  /// or the big corner orb while something is on screen (main_view.dart). Its shell's radius is
+  /// [r]: the visible orb reaches twice that (shaders/presence.frag).
+  static ({Offset c, double r}) _panelOrb(Rect panel, bool showing) {
+    final area = Rect.fromLTRB(panel.left, panel.top + _bar, panel.right, panel.bottom - _statusBar);
+    if (!showing) return (c: area.center, r: 0.19 * PresenceView.fullExtent * area.shortestSide);
+    const size = 180.0;
+    return (c: Offset(area.right - 12 - size / 2, area.top + 12 + size / 2), r: 0.25 * size);
+  }
+
   /// Where the widget goes for the tools' `at`.
   Rect _widgetRect(String at, Rect usable, Rect screen) {
     final center = at == 'center';
@@ -132,7 +167,7 @@ class _OverlayShellState extends State<OverlayShell> {
   Widget build(BuildContext context) => ValueListenableBuilder<Assistant?>(
         valueListenable: widget.assistant,
         builder: (context, a, _) => ListenableBuilder(
-          listenable: Listenable.merge([_window, _window.panelShown, ?a, a?.display]),
+          listenable: Listenable.merge([_window, _window.panelShown, _morph, ?a, a?.display]),
           builder: (context, _) => _build(context, a),
         ),
       );
@@ -144,17 +179,32 @@ class _OverlayShellState extends State<OverlayShell> {
     final orbMode = _window.overlay;
     final panel = _panelRect(usable);
     final orb = _orbRect(usable, screen);
+    final t = _morph.value;
     final view = orbMode && !_window.panelShown.value ? a?.widgetView : null;
     if (view?.seq != _widgetSeq) {
       _widgetSeq = view?.seq;
       _widgetShift = Offset.zero;
     }
     final widgetRect = view == null ? null : _widgetRect(a!.widgetAt, usable, screen);
+    // Nothing takes clicks halfway.
     _report([
-      if (!orbMode && _window.open) panel,
-      if (orbMode && a != null) orb,
+      if (t == 0 && !orbMode && _window.open) panel,
+      if (t == 1 && orbMode && a != null) orb,
       ?widgetRect,
     ]);
+    // The morph: the panel's clip closes from its rounded rect to a circle around its orb (shape),
+    // then the panel flies so that orb lands on the corner orb (flight), and fades into it.
+    final shape = Curves.easeInOutCubic.transform(const Interval(0, 0.55).transform(t));
+    final flight = Curves.easeInOutCubic.transform(const Interval(0.3, 1).transform(t));
+    final from = _panelOrb(panel, a != null && !a.display.isEmpty);
+    final local = from.c - panel.topLeft;
+    final scale = 1 + (_orbSize / 4 / from.r - 1) * flight;
+    final to = Offset.lerp(local, orb.center - panel.topLeft, flight)!;
+    final clip = RRect.lerp(
+      RRect.fromRectAndRadius(Offset.zero & panel.size, const Radius.circular(12)),
+      RRect.fromRectAndRadius(Rect.fromCircle(center: local, radius: 2 * from.r), Radius.circular(2 * from.r)),
+      shape,
+    )!;
     return TickerMode(
       enabled: _window.open || orbMode,
       child: Stack(
@@ -162,33 +212,46 @@ class _OverlayShellState extends State<OverlayShell> {
           Positioned.fromRect(
             rect: panel,
             child: Offstage(
-              offstage: orbMode,
+              offstage: t == 1,
               child: TickerMode(
-                enabled: !orbMode,
-                child: _Panel(
-                  onMove: (d) => setState(() => _panel = _fit(panel.shift(d), usable)),
-                  onResize: (d) => setState(() => _panel = _fit(
-                        Rect.fromLTWH(
-                          panel.left,
-                          panel.top,
-                          math.max(_minPanel.width, panel.width + d.dx),
-                          math.max(_minPanel.height, panel.height + d.dy),
+                enabled: t < 1,
+                child: Opacity(
+                  opacity: 1 - const Interval(0.8, 1).transform(t),
+                  child: Transform(
+                    transform: Matrix4.translationValues(to.dx, to.dy, 0)
+                      ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
+                      ..multiply(Matrix4.translationValues(-local.dx, -local.dy, 0)),
+                    child: ClipRRect(
+                      clipper: _RRectClip(clip),
+                      // Still, the panel's shadow shows.
+                      clipBehavior: t == 0 ? Clip.none : Clip.antiAlias,
+                      child: _Panel(
+                        onMove: (d) => setState(() => _panel = _fit(panel.shift(d), usable)),
+                        onResize: (d) => setState(() => _panel = _fit(
+                              Rect.fromLTWH(
+                                panel.left,
+                                panel.top,
+                                math.max(_minPanel.width, panel.width + d.dx),
+                                math.max(_minPanel.height, panel.height + d.dy),
+                              ),
+                              usable,
+                            )),
+                        onDone: () {
+                          final p = _panel;
+                          if (p != null) _window.setPanel(p);
+                        },
+                        onClose: () => unawaited(_window.hide()),
+                        child: MediaQuery(
+                          data: mq.copyWith(
+                            size: Size(panel.width, panel.height - _bar),
+                            padding: EdgeInsets.zero,
+                            viewPadding: EdgeInsets.zero,
+                            viewInsets: EdgeInsets.zero,
+                          ),
+                          child: widget.child,
                         ),
-                        usable,
-                      )),
-                  onDone: () {
-                    final p = _panel;
-                    if (p != null) _window.setPanel(p);
-                  },
-                  onClose: () => unawaited(_window.hide()),
-                  child: MediaQuery(
-                    data: mq.copyWith(
-                      size: Size(panel.width, panel.height - _bar),
-                      padding: EdgeInsets.zero,
-                      viewPadding: EdgeInsets.zero,
-                      viewInsets: EdgeInsets.zero,
+                      ),
                     ),
-                    child: widget.child,
                   ),
                 ),
               ),
@@ -202,18 +265,21 @@ class _OverlayShellState extends State<OverlayShell> {
                 onMove: (d) => setState(() => _widgetShift += d),
               ),
             ),
-          if (orbMode && a != null)
+          if (t > 0 && a != null)
             Positioned.fromRect(
               rect: orb,
-              child: _Orb(
-                presence: a.presence,
-                onTap: a.toggleMute,
-                onMove: (d) => setState(() => _orb = _fit(orb.shift(d), screen).topLeft),
-                onDone: () {
-                  final o = _orb;
-                  if (o != null) _window.setOrb(o);
-                },
-                onMenu: () => unawaited(_window.contextMenu()),
+              child: Opacity(
+                opacity: const Interval(0.75, 1).transform(t),
+                child: _Orb(
+                  presence: a.presence,
+                  onTap: a.toggleMute,
+                  onMove: (d) => setState(() => _orb = _fit(orb.shift(d), screen).topLeft),
+                  onDone: () {
+                    final o = _orb;
+                    if (o != null) _window.setOrb(o);
+                  },
+                  onMenu: () => unawaited(_window.contextMenu()),
+                ),
               ),
             ),
         ],
@@ -328,6 +394,18 @@ class _CloseButtonState extends State<_CloseButton> {
           ),
         ),
       );
+}
+
+class _RRectClip extends CustomClipper<RRect> {
+  const _RRectClip(this.rrect);
+
+  final RRect rrect;
+
+  @override
+  RRect getClip(Size size) => rrect;
+
+  @override
+  bool shouldReclip(_RRectClip old) => old.rrect != rrect;
 }
 
 class _GripPainter extends CustomPainter {
