@@ -5,8 +5,9 @@ import 'package:flutter/widgets.dart';
 import 'presence_view.dart';
 
 /// Canvas-only version of the presence (used when the fragment shader cannot
-/// be loaded). Simpler look: glowing core, a few rotating dashed rings and a
-/// spectrum contour, same inputs as the shader.
+/// be loaded). Same layout and inputs as the shader, far fewer details: the
+/// glowing nucleus, the shell's outline, the three gyroscope orbits with their
+/// comets and the ring of spectrum bars.
 class PresenceFallbackPainter extends CustomPainter {
   PresenceFallbackPainter({
     required this.frame,
@@ -18,44 +19,43 @@ class PresenceFallbackPainter extends CustomPainter {
   final Color accent;
   final bool compact;
 
-  static const int _contourPoints = 96;
+  static const int _bars = 48;
+  static const Color _white = Color(0xFFFFFFFF);
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    final rect = Offset.zero & size;
-    final accent = frame.tint(this.accent);
     if (!compact) {
-      canvas.drawRect(rect, Paint()..color = kPresenceBackground);
+      canvas.drawRect(Offset.zero & size, Paint()..color = kPresenceBackground);
     }
-    final c = size.center(Offset.zero);
-    final unit = size.shortestSide / (compact ? 0.62 : 1.0);
+    final accent = frame.tint(this.accent);
+    final accent2 = frame.tint2;
+    final rect = PresenceView.orbRect(size, compact: compact);
+    final c = rect.center;
+    // Shell radius, as in the shader.
+    final unit = rect.width * (compact ? 0.26 : 0.19);
     final s = frame.state;
-    final react = s[1] + s[3];
-    final lvl = frame.level * react;
-    final breath = 0.5 + 0.5 * math.sin(frame.time * 0.85);
-    final think = s[2];
-    final thinkPulse = (0.5 + 0.5 * math.sin(frame.time * 4.2)) * think;
+    final listen = s[1], think = s[2], speak = s[3];
+    final react = listen + speak;
+    final hear = frame.level * listen, say = frame.level * speak;
+    final breath = math.sin(frame.time * 0.9);
+    final pulse = 0.5 + 0.5 * math.sin(frame.spin * 0.5);
+    final minStroke = compact ? 1.0 : 0.0;
 
-    // Core glow.
-    final coreI = (0.55 + 0.18 * breath * s[0] + 1.1 * lvl + 0.35 * thinkPulse)
-        .clamp(0.0, 1.6);
-    final coreR = unit * 0.09 * (1 + 0.6 * lvl);
+    // Nucleus.
+    final coreR = unit * (0.5 + 0.04 * breath + 0.35 * say + 0.1 * think * pulse);
+    final coreI = (0.7 + 0.3 * say + 0.2 * think * pulse).clamp(0.0, 1.0);
     canvas.drawCircle(
       c,
       coreR,
       Paint()
         ..shader = RadialGradient(
           colors: [
-            Color.lerp(
-              accent,
-              const Color(0xFFFFFFFF),
-              0.7,
-            )!.withValues(alpha: (coreI / 1.6).clamp(0.0, 1.0)),
-            accent.withValues(alpha: 0.25 * coreI / 1.6),
+            Color.lerp(accent, _white, 0.8)!.withValues(alpha: coreI),
+            accent.withValues(alpha: 0.3 * coreI),
             accent.withValues(alpha: 0),
           ],
-          stops: const [0, 0.25, 1],
+          stops: const [0, 0.3, 1],
         ).createShader(Rect.fromCircle(center: c, radius: coreR)),
     );
 
@@ -63,88 +63,102 @@ class PresenceFallbackPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.butt
       ..isAntiAlias = true;
-    final minStroke = compact ? 1.0 : 0.0;
 
-    void dashedRing(
-      double radius,
-      int segments,
-      double duty,
-      double rotation,
-      double width,
-      double alpha,
-    ) {
-      stroke
-        ..strokeWidth = math.max(width, minStroke)
-        ..color = accent.withValues(alpha: alpha.clamp(0.0, 1.0));
-      final r = Rect.fromCircle(center: c, radius: radius);
-      final step = 2 * math.pi / segments;
-      for (var i = 0; i < segments; i++) {
-        canvas.drawArc(r, rotation + i * step, step * duty, false, stroke);
-      }
-    }
-
-    final swell = lvl * 0.012 + breath * 0.004 * s[0];
-    final spin = frame.spin * 2 * math.pi;
-    dashedRing(unit * (0.045 + swell * 0.15), 2, 0.32, spin * 0.16, 1.2, 0.8);
-    dashedRing(unit * (0.075 + swell * 0.35), 1, 1, 0, 1.0, 0.7);
-    dashedRing(
-      unit * (0.145 + swell * 0.7),
-      3,
-      0.27,
-      -spin * 0.035,
-      unit * 0.012,
-      0.35,
-    );
-    if (!compact) {
-      dashedRing(
-        unit * (0.19 + swell * 0.85),
-        48,
-        0.5,
-        spin * 0.012,
-        1.2,
-        0.45,
-      );
-      dashedRing(unit * (0.30 + swell * 0.6), 60, 0.3, -spin * 0.006, 1.5, 0.2);
-    }
-    dashedRing(
-      unit * (0.24 + swell),
-      2,
-      0.07 + 0.05 * think,
-      spin * 0.06,
-      2.2,
-      0.85,
-    );
-
-    // Spectrum contour (mirrored: lows on top, highs at the bottom).
-    final path = Path();
-    final b = frame.bands;
-    for (var i = 0; i <= _contourPoints; i++) {
-      final a = i / _contourPoints * 2 * math.pi; // 0 at top, clockwise
-      final t = (a <= math.pi ? a : 2 * math.pi - a) / math.pi;
-      final x = t * 7;
-      final i0 = x.floor().clamp(0, 7);
-      final i1 = math.min(i0 + 1, 7);
-      final spec = (b[i0] + (b[i1] - b[i0]) * (x - i0)) * react;
-      final rr = unit * (0.24 + swell + spec * 0.05);
-      final p = c + Offset(math.sin(a) * rr, -math.cos(a) * rr);
-      if (i == 0) {
-        path.moveTo(p.dx, p.dy);
-      } else {
-        path.lineTo(p.dx, p.dy);
-      }
-    }
+    // Shell.
+    final shellR = unit * (1 + 0.01 * breath + 0.05 * say + 0.015 * hear);
     stroke
-      ..strokeWidth = math.max(1.0, minStroke)
-      ..color = accent.withValues(alpha: 0.25 + 0.5 * react);
-    canvas.drawPath(path, stroke);
+      ..strokeWidth = math.max(1.2, minStroke)
+      ..color = Color.lerp(
+        accent,
+        accent2,
+        0.3,
+      )!.withValues(alpha: (0.45 + 0.4 * react * frame.level).clamp(0.0, 1.0));
+    canvas.drawCircle(c, shellR, stroke);
 
-    // Thinking: expanding pulse ring.
+    // Thinking: an expanding pulse inside the shell.
     if (think > 0.001) {
-      final f = (frame.time * 0.45) % 1.0;
+      final f = (frame.spin * 0.08) % 1.0;
       stroke
         ..strokeWidth = 1.5
-        ..color = accent.withValues(alpha: (think * (1 - f) * (1 - f) * 0.6));
-      canvas.drawCircle(c, unit * (0.04 + f * 0.28), stroke);
+        ..color = accent2.withValues(alpha: think * (1 - f) * 0.7);
+      canvas.drawCircle(c, shellR * (0.2 + 0.8 * f), stroke);
+    }
+
+    // Gyroscope: each orbit is a circle in a tilted plane, so an ellipse here.
+    final fill = Paint()..isAntiAlias = true;
+    for (var i = 0; i < PresenceFrame.ringCount; i++) {
+      final ux = frame.ringBasis[i * 6], uy = frame.ringBasis[i * 6 + 1];
+      final vx = frame.ringBasis[i * 6 + 3], vy = frame.ringBasis[i * 6 + 4];
+      final radius =
+          unit * ((compact ? 1.21 : 1.25) + (compact ? 0.105 : 0.12) * i);
+      final ringColor = Color.lerp(accent, accent2, i == 1 ? 0.85 : 0.12)!;
+      // Plane normal = u x v; the ellipse's short axis points along its
+      // screen projection, squeezed by the normal's z.
+      final nx =
+          uy * frame.ringBasis[i * 6 + 5] - frame.ringBasis[i * 6 + 2] * vy;
+      final ny =
+          frame.ringBasis[i * 6 + 2] * vx - ux * frame.ringBasis[i * 6 + 5];
+      final nz = ux * vy - uy * vx;
+      canvas
+        ..save()
+        ..translate(c.dx, c.dy)
+        ..rotate(math.atan2(-ny, nx));
+      stroke
+        ..strokeWidth = math.max(1.0, minStroke)
+        ..color = ringColor.withValues(alpha: 0.4 + 0.25 * think);
+      canvas
+        ..drawOval(
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: 2 * radius * nz.abs(),
+            height: 2 * radius,
+          ),
+          stroke,
+        )
+        ..restore();
+      // The comet's head sits at -u (screen y points down, the plane's up).
+      fill.color = Color.lerp(ringColor, _white, 0.7)!;
+      canvas.drawCircle(
+        c + Offset(-ux, uy) * radius,
+        math.max(unit * 0.03, 1.5),
+        fill,
+      );
+    }
+
+    // Spectrum bars, mirrored four ways like the shader's.
+    final r0 = unit * (compact ? 1.50 : 1.70);
+    final b = frame.bands;
+    stroke
+      ..strokeWidth = math.max(unit * 0.02, 1.0)
+      ..color = Color.lerp(
+        accent,
+        accent2,
+        0.15 + 0.85 * listen,
+      )!.withValues(alpha: (0.35 + 0.5 * react).clamp(0.0, 1.0));
+    for (var i = 0; i < _bars; i++) {
+      final turn = (i + 0.5) / _bars;
+      final t = ((turn * 2) % 1.0 * 2 - 1).abs() * 7;
+      final i0 = t.floor().clamp(0, 7);
+      final i1 = math.min(i0 + 1, 7);
+      final band = b[i0] + (b[i1] - b[i0]) * (t - i0);
+      final len =
+          unit *
+          (0.02 + (compact ? 0.25 : 0.32) * band * (listen + 0.4 * speak));
+      final a = turn * 2 * math.pi;
+      final dir = Offset(math.cos(a), math.sin(a));
+      canvas.drawLine(c + dir * r0, c + dir * (r0 + len), stroke);
+    }
+
+    // Speaking: a ring that swells with the voice.
+    if (speak > 0.001) {
+      stroke
+        ..strokeWidth = 1.5
+        ..color = Color.lerp(
+          accent,
+          _white,
+          0.6,
+        )!.withValues(alpha: speak * (0.3 + 0.6 * frame.level));
+      canvas.drawCircle(c, shellR + unit * (0.08 + 0.25 * say), stroke);
     }
   }
 

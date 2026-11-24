@@ -15,7 +15,7 @@ enum PresenceMode { idle, listening, thinking, speaking }
 /// to zero when audio stops arriving.
 ///
 /// Only [mode] changes notify listeners; audio updates are polled by the view's
-/// ticker to avoid rebuilding widgets 30 times a second.
+/// frame loop to avoid rebuilding widgets 30 times a second.
 class PresenceSignal extends ChangeNotifier {
   /// [clock] returns a monotonic time; injectable for tests.
   PresenceSignal({Duration Function()? clock})
