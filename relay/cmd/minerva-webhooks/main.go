@@ -1,5 +1,7 @@
 // Command minerva-webhooks runs on the Minerva desktop (the app bundles and starts it) and
-// receives webhooks from third parties at https://<id>.<domain>/…, through the relay.
+// receives webhooks from third parties at https://<id>.<domain>/<key>/…, through the relay. The
+// host name is public (Certificate Transparency logs list it), so the path key is the secret:
+// anything else gets a 404 and is neither saved nor reported.
 //
 // It keeps a tunnel open to the relay (package tunnel), terminates TLS itself with a Let's
 // Encrypt certificate for its own host name (obtained and renewed here with ACME TLS-ALPN-01,
@@ -15,7 +17,7 @@
 //	{"t":"ready","id":"…","url":"https://…/"}
 //	{"t":"tunnel","up":true|false,"error":"…"}
 //	{"t":"cert","ok":true|false,"expires":"…","error":"…"}
-//	{"t":"webhook","method":"POST","path":"/…","query":"…","headers":{…},"remote":"1.2.3.4",
+//	{"t":"webhook","method":"POST","path":"/…" (after the key),"query":"…","headers":{…},"remote":"1.2.3.4",
 //	 "body":"…","base64":false,"size":123,"file":"…/inbox/….json"}
 package main
 
@@ -68,9 +70,10 @@ func main() {
 		log.Fatal(err)
 	}
 	id := tunnel.ID(secret)
+	key := tunnel.PathKey(secret)
 	host := id + "." + strings.Trim(*domain, ".")
 	out := &emitter{enc: json.NewEncoder(os.Stdout)}
-	out.emit(map[string]any{"t": "ready", "id": id, "url": "https://" + host + "/"})
+	out.emit(map[string]any{"t": "ready", "id": id, "url": "https://" + host + "/" + key + "/"})
 
 	// The app closes our stdin when it quits (or dies).
 	go func() {
@@ -104,7 +107,7 @@ func main() {
 	}
 	ln.Start()
 
-	h := &handler{dir: filepath.Join(*dir, "inbox"), maxBody: *maxBody, out: out}
+	h := &handler{key: key, dir: filepath.Join(*dir, "inbox"), maxBody: *maxBody, out: out}
 	srv := &http.Server{
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -184,6 +187,7 @@ func (e *emitter) emit(v any) {
 // handler turns every request into a "webhook" event and answers at once: the assistant acts on
 // it later, so the sender only learns that it arrived.
 type handler struct {
+	key     string // secret first path segment, see [tunnel.PathKey]
 	dir     string
 	maxBody int64
 	out     *emitter
@@ -191,9 +195,13 @@ type handler struct {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/favicon.ico" || r.URL.Path == "/robots.txt" {
+	path, ok := strings.CutPrefix(r.URL.Path, "/"+h.key)
+	if !ok || path != "" && path[0] != '/' {
 		http.NotFound(w, r)
 		return
+	}
+	if path == "" {
+		path = "/"
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.maxBody))
 	if err != nil {
@@ -203,7 +211,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ev := map[string]any{
 		"t":       "webhook",
 		"method":  r.Method,
-		"path":    r.URL.Path,
+		"path":    path,
 		"query":   r.URL.RawQuery,
 		"headers": r.Header,
 		"remote":  r.RemoteAddr,

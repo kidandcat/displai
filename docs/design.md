@@ -266,6 +266,23 @@ speech recognition, the brain, the voice and all tools stay on the desktop. Same
   The phone reports `idle{n}` when the voice it got has played, which ends the desktop's "speaking" state.
 - `app/tool/remote_smoke.dart` is a headless remote for testing without a phone.
 
+**Webhooks** (`relay/cmd/minerva-webhooks`, `relay/tunnel`, `relay/passthrough.go`, `app/lib/webhooks/`):
+third parties (GitHub, Stripe, home automation…) call the desktop at
+`https://<id>.minerva.kidandcat.com/<key>/…`.
+
+- The bundled Go helper keeps a tunnel to the relay (`/tunnel` control socket, one `/tunnel/accept`
+  WebSocket per connection), gets its own Let's Encrypt certificate (ACME TLS-ALPN-01 through the same
+  tunnel) and terminates TLS on the desktop: the relay only passes ciphertext.
+- On vps2, Caddy (built with caddy-l4, `apt-mark hold caddy`) hands `*.minerva.kidandcat.com` by SNI, still
+  encrypted, to the relay's `-tls-addr 127.0.0.1:8444` (`relay/deploy/Caddyfile.snippet`).
+- `<id>` and `<key>` derive from a per-desktop secret (`<data>/webhooks/secret`, 0600). The id is public
+  (it is the certificate's host name, listed in Certificate Transparency logs, and scanners probe new names
+  within seconds), so the path key is the secret: any other path gets a 404 and is neither saved nor
+  reported.
+- Each request is answered at once (`{"ok":true}`, or the `hub.challenge` echoed), saved to
+  `<data>/webhooks/inbox/` (1 MB max, newest 200) and sent to the brain as a `[webhook]` message, marked as
+  third-party content. `MINERVA_NO_WEBHOOKS` turns it off.
+
 ### 3.8 Desktop service and window states
 
 Minerva runs as a background app on the Mac (`app/tool/install_macos_service.sh`: a LaunchAgent
