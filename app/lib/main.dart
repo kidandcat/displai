@@ -125,21 +125,13 @@ class _HomePageState extends State<HomePage> {
       builder: (context, _) => TickerMode(
         enabled: a.window.open || a.window.overlay,
         child: a.window.overlay
-          // A phone is connected: the window is just the orb on a dark disc, the rest transparent.
-          ? Scaffold(
-              backgroundColor: Colors.transparent,
-              body: Center(
-                child: Container(
-                  width: 124,
-                  height: 124,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: kBackground.withValues(alpha: 0.88),
-                    border: Border.all(color: kAccent.withValues(alpha: 0.25)),
-                  ),
-                  child: ClipOval(
-                    child: PresenceView(signal: a.presence, compact: true, compactSize: 122),
-                  ),
+          // A phone is connected or Minerva works in other apps: the window is just the orb, its
+          // glow drawn straight over the screen, everything else fully transparent.
+          ? Material(
+              type: MaterialType.transparency,
+              child: Center(
+                child: ClipOval(
+                  child: PresenceView(signal: a.presence, compact: true, compactSize: 122),
                 ),
               ),
             )

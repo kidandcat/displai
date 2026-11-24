@@ -452,11 +452,38 @@ final class ComputerControl: NSObject {
     try requireAccessibility()
     var el: AXUIElement?
     guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(p.x), Float(p.y), &el) == .success,
-      let el = el
+      var hit = el
     else { return nil }
     var pid: pid_t = 0
-    AXUIElementGetPid(el, &pid)
-    return ["line": Self.describe(read(el, children: false)), "app": appName(pid), "pid": Int(pid)]
+    AXUIElementGetPid(hit, &pid)
+    if pid == Self.ownPid {
+      // Minerva's own orb is on top there: ask the app whose window is below it.
+      guard let below = Self.otherWindowOwner(at: p) else { return nil }
+      el = nil
+      guard AXUIElementCopyElementAtPosition(AXUIElementCreateApplication(below), Float(p.x), Float(p.y), &el)
+        == .success, let other = el
+      else { return nil }
+      hit = other
+      AXUIElementGetPid(hit, &pid)
+      if pid == Self.ownPid { return nil }
+    }
+    return ["line": Self.describe(read(hit, children: false)), "app": appName(pid), "pid": Int(pid)]
+  }
+
+  /// The owner of the topmost on-screen window at [p] that is not Minerva's.
+  private static func otherWindowOwner(at p: CGPoint) -> pid_t? {
+    guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+      as? [[String: Any]]
+    else { return nil }
+    for w in info {
+      guard let pid = (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value, pid != ownPid,
+        let bounds = w[kCGWindowBounds as String] as? NSDictionary,
+        let rect = CGRect(dictionaryRepresentation: bounds), rect.contains(p)
+      else { continue }
+      if let alpha = (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue, alpha < 0.05 { continue }
+      return pid
+    }
+    return nil
   }
 
   private func cached(_ index: Int) throws -> AXUIElement {
@@ -505,17 +532,17 @@ final class ComputerControl: NSObject {
     let src = CGEventSource(stateID: .combinedSessionState)
     let (down, up): (CGEventType, CGEventType) =
       button == .right ? (.rightMouseDown, .rightMouseUp) : (.leftMouseDown, .leftMouseUp)
-    CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: button)?
-      .post(tap: .cghidEventTap)
-    usleep(30_000)
-    for i in 1...count {
-      for type in [down, up] {
-        guard let e = CGEvent(mouseEventSource: src, mouseType: type, mouseCursorPosition: p, mouseButton: button) else {
-          throw ComputerError(code: "event", message: "Could not create a mouse event")
+    try passingThroughOwnWindows {
+      Self.post(CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: button))
+      usleep(30_000)
+      for i in 1...count {
+        for type in [down, up] {
+          guard let e = CGEvent(mouseEventSource: src, mouseType: type, mouseCursorPosition: p, mouseButton: button)
+          else { throw ComputerError(code: "event", message: "Could not create a mouse event") }
+          e.setIntegerValueField(.mouseEventClickState, value: Int64(i))
+          Self.post(e)
+          usleep(15_000)
         }
-        e.setIntegerValueField(.mouseEventClickState, value: Int64(i))
-        e.post(tap: .cghidEventTap)
-        usleep(15_000)
       }
     }
   }
@@ -523,23 +550,59 @@ final class ComputerControl: NSObject {
   func scroll(dx: Int, dy: Int, at p: CGPoint?) throws -> String {
     try requireAccessibility()
     let src = CGEventSource(stateID: .combinedSessionState)
-    if let p = p {
-      CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?
-        .post(tap: .cghidEventTap)
-      usleep(30_000)
-    }
-    // dy > 0 scrolls down (content moves up), dx > 0 scrolls right. Send it in small steps so apps
-    // that ignore large deltas still move.
-    let steps = max(abs(dx), abs(dy), 1)
-    let sx = dx == 0 ? 0 : -dx.signum(), sy = dy == 0 ? 0 : -dy.signum()
-    for i in 0..<steps {
-      let wy = Int32(i < abs(dy) ? sy : 0), wx = Int32(i < abs(dx) ? sx : 0)
-      guard let e = CGEvent(scrollWheelEvent2Source: src, units: .line, wheelCount: 2, wheel1: wy, wheel2: wx, wheel3: 0)
-      else { throw ComputerError(code: "event", message: "Could not create a scroll event") }
-      e.post(tap: .cghidEventTap)
-      usleep(8_000)
+    try passingThroughOwnWindows {
+      if let p = p {
+        Self.post(CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left))
+        usleep(30_000)
+      }
+      // dy > 0 scrolls down (content moves up), dx > 0 scrolls right. Send it in small steps so apps
+      // that ignore large deltas still move.
+      let steps = max(abs(dx), abs(dy), 1)
+      let sx = dx == 0 ? 0 : -dx.signum(), sy = dy == 0 ? 0 : -dy.signum()
+      for i in 0..<steps {
+        let wy = Int32(i < abs(dy) ? sy : 0), wx = Int32(i < abs(dx) ? sx : 0)
+        guard let e = CGEvent(scrollWheelEvent2Source: src, units: .line, wheelCount: 2, wheel1: wy, wheel2: wx, wheel3: 0)
+        else { throw ComputerError(code: "event", message: "Could not create a scroll event") }
+        Self.post(e)
+        usleep(8_000)
+      }
     }
     return "scrolled dx=\(dx) dy=\(dy)" + (p.map { " at (\(Int($0.x)),\(Int($0.y)))" } ?? "")
+  }
+
+  /// Marks the mouse events Minerva posts (eventSourceUserData), so its own windows can tell them
+  /// from the user's and never act on them.
+  static let syntheticEventTag: Int64 = 0x4D49_4E45_5256
+
+  private static func post(_ e: CGEvent?) {
+    guard let e = e else { return }
+    e.setIntegerValueField(.eventSourceUserData, value: syntheticEventTag)
+    e.post(tap: .cghidEventTap)
+  }
+
+  /// Runs [body] with Minerva's own windows (the corner orb) letting the mouse through, so the
+  /// synthetic clicks and scrolls reach the app below and never the orb. The user's real mouse
+  /// reaches the orb again right after.
+  private func passingThroughOwnWindows(_ body: () throws -> Void) throws {
+    let onMain = { (work: () -> [NSWindow]) -> [NSWindow] in
+      Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+    }
+    let own = onMain {
+      let shown = (NSApp?.windows ?? []).filter { $0.isVisible && !$0.ignoresMouseEvents }
+      shown.forEach { $0.ignoresMouseEvents = true }
+      return shown
+    }
+    if own.isEmpty { return try body() }
+    usleep(20_000)
+    defer {
+      // The window server routes the posted events asynchronously: let the last ones land first.
+      usleep(80_000)
+      _ = onMain {
+        own.forEach { $0.ignoresMouseEvents = false }
+        return own
+      }
+    }
+    try body()
   }
 
   // MARK: - Keyboard

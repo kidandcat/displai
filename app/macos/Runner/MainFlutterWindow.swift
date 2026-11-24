@@ -35,6 +35,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var switching = false
   private var dragStart: (mouse: NSPoint, origin: NSPoint)?
   private var dragged = false
+  /// Views of the window frame (the title bar) hidden while the window is the orb.
+  private var hiddenFrameViews: [NSView] = []
   var contextMenu: NSMenu?
 
   static let overlaySize: CGFloat = 132
@@ -213,12 +215,20 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       isOpaque = false
       backgroundColor = .clear
       hasShadow = false
+      // The orb draws no opaque pixel, and the window server lets the mouse through fully
+      // transparent ones: the whole square takes the user's clicks instead.
+      ignoresMouseEvents = false
       level = .floating
       collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
       setFrame(overlayFrame(), display: true)
       NSApp.setActivationPolicy(.accessory)
       orderFrontRegardless()
       yieldFocus()
+      // AppKit lays the title bar out again once the window has its new frame.
+      DispatchQueue.main.async { [weak self] in
+        guard let self = self, self.overlay else { return }
+        self.setTitleButtonsHidden(true)
+      }
     } else {
       styleMask = [.titled, .closable, .miniaturizable, .resizable]
       titlebarAppearsTransparent = false
@@ -269,13 +279,32 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private func setTitleButtonsHidden(_ hidden: Bool) {
     for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
       standardWindowButton(b)?.isHidden = hidden
+      standardWindowButton(b)?.alphaValue = hidden ? 0 : 1
     }
-    // AppKit shows the buttons again when the window stops being key (the orb gives the keyboard
-    // away): hide the whole title bar view too.
+    // AppKit shows the buttons again when the window stops being key or is laid out (the orb gives
+    // the keyboard away): hide the whole title bar too, every view of the frame but the content
+    // (its alpha stays where it is set).
     standardWindowButton(.closeButton)?.superview?.isHidden = hidden
+    if hidden, let content = contentView, let frameView = content.superview {
+      for v in frameView.subviews where v !== content && !v.isHidden {
+        v.isHidden = true
+        v.alphaValue = 0
+        hiddenFrameViews.append(v)
+      }
+    } else if !hidden {
+      for v in hiddenFrameViews {
+        v.isHidden = false
+        v.alphaValue = 1
+      }
+      hiddenFrameViews.removeAll()
+    }
   }
 
   func windowDidResignKey(_ notification: Notification) {
+    if overlay { setTitleButtonsHidden(true) }
+  }
+
+  func windowDidBecomeKey(_ notification: Notification) {
     if overlay { setTitleButtonsHidden(true) }
   }
 
@@ -296,6 +325,12 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   override func sendEvent(_ event: NSEvent) {
     guard overlay else {
       super.sendEvent(event)
+      return
+    }
+    // Minerva's own clicks are meant for the app below the orb, never for the orb itself.
+    if Self.isMouse(event.type),
+      event.cgEvent?.getIntegerValueField(.eventSourceUserData) == ComputerControl.syntheticEventTag
+    {
       return
     }
     switch event.type {
@@ -331,6 +366,11 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     default:
       super.sendEvent(event)
     }
+  }
+
+  private static func isMouse(_ t: NSEvent.EventType) -> Bool {
+    [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+     .otherMouseDown, .otherMouseUp, .otherMouseDragged, .scrollWheel].contains(t)
   }
 }
 
