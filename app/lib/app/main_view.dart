@@ -67,7 +67,8 @@ class MainView extends StatelessWidget {
                     duration: const Duration(milliseconds: 350),
                     child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence),
                   ),
-                  DisplayView(controller: a.display),
+                  // The header of each view leaves room for the corner orb.
+                  DisplayView(controller: a.display, cornerReserve: Size.square(12 + compactOrb)),
                   // The full orb: the sphere and its inner rings, ~0.3 of the short side around the center.
                   // Tapping it (or the corner orb) mutes or unmutes the mic.
                   if (!showing)

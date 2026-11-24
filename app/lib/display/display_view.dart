@@ -2,6 +2,8 @@
 /// transitions and the timeline strip.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:genui/genui.dart';
 
@@ -12,9 +14,17 @@ import 'theme.dart';
 /// controller [DisplayController.isEmpty] (so an idle animation behind it
 /// shows through), except for the timeline strip.
 class DisplayView extends StatelessWidget {
-  const DisplayView({super.key, required this.controller});
+  const DisplayView({
+    super.key,
+    required this.controller,
+    this.cornerReserve = Size.zero,
+  });
 
   final DisplayController controller;
+
+  /// Area in the top-right corner, from the edges, covered by something on top of the
+  /// display (the orb). The view's header leaves it free.
+  final Size cornerReserve;
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +97,7 @@ class DisplayView extends StatelessWidget {
                       key: ValueKey('view-${entry.seq}'),
                       entry: entry,
                       controller: controller,
+                      cornerReserve: cornerReserve,
                     ),
             ),
           ),
@@ -130,10 +141,16 @@ class _ActionDelegate implements ActionDelegate {
 /// One view. It never scrolls: content that does not fit is cut (with a fade at the bottom),
 /// and the overflow is reported to the controller so the model learns to show less.
 class _ViewPage extends StatefulWidget {
-  const _ViewPage({super.key, required this.entry, required this.controller});
+  const _ViewPage({
+    super.key,
+    required this.entry,
+    required this.controller,
+    required this.cornerReserve,
+  });
 
   final DisplayViewEntry entry;
   final DisplayController controller;
+  final Size cornerReserve;
 
   @override
   State<_ViewPage> createState() => _ViewPageState();
@@ -147,7 +164,9 @@ class _ViewPageState extends State<_ViewPage> {
   DisplayController get controller => widget.controller;
 
   void _measure() {
-    if (!mounted || !_clip.hasClients || !_clip.position.hasContentDimensions) return;
+    if (!mounted || !_clip.hasClients || !_clip.position.hasContentDimensions) {
+      return;
+    }
     final double px = _clip.position.maxScrollExtent;
     // The outgoing page of a transition is still laid out; only the current one reports.
     if (controller.current?.seq == entry.seq) controller.reportOverflow(px);
@@ -177,6 +196,44 @@ class _ViewPageState extends State<_ViewPage> {
           28 * s,
           120 * s,
         );
+        // Keep the header clear of whatever sits in the top-right corner (the orb): the title
+        // wraps before it, and the body starts below it.
+        final double rightGap =
+            hPad +
+            math.max(0, (constraints.maxWidth - 2 * hPad - 1560 * s) / 2);
+        final Size reserve = widget.cornerReserve;
+        final Widget header = Padding(
+          padding: EdgeInsets.only(
+            right: math.max(0, reserve.width - rightGap),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: math.max(0, reserve.height - 44 * s - 34 * s),
+            ),
+            child: _Header(entry: entry),
+          ),
+        );
+        // A form gets the page's height and scrolls its own fields, so its submit button is
+        // always visible; nothing is cut.
+        if (entry.kind == 'form') {
+          return Padding(
+            padding: EdgeInsets.fromLTRB(hPad, 44 * s, hPad, 32 * s),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 1560 * s),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    header,
+                    SizedBox(height: 34 * s),
+                    Expanded(child: surface),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
         final Widget page = SingleChildScrollView(
           controller: _clip,
           physics: const NeverScrollableScrollPhysics(),
@@ -187,7 +244,7 @@ class _ViewPageState extends State<_ViewPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _Header(entry: entry),
+                  header,
                   SizedBox(height: 34 * s),
                   surface,
                 ],
@@ -235,7 +292,10 @@ class _Header extends StatelessWidget {
               : const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [DisplayColors.accent, DisplayColors.accentSecondary],
+                      colors: [
+                        DisplayColors.accent,
+                        DisplayColors.accentSecondary,
+                      ],
                     ),
                   ),
                 ),

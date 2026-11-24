@@ -60,52 +60,75 @@ class DisplayText {
 
   final double s;
 
+  /// Font family of the display text; null is the platform's font. Tests that render the display
+  /// to images set a real font here (the test font has no glyphs).
+  static String? family;
+
   static const List<FontFeature> _tabular = [FontFeature.tabularFigures()];
 
   TextStyle get title => TextStyle(
+    fontFamily: family,
     fontSize: 46 * s,
     fontWeight: FontWeight.w300,
     color: DisplayColors.text,
     letterSpacing: -0.5,
     height: 1.15,
   );
-  TextStyle get subtitle =>
-      TextStyle(fontSize: 22 * s, color: DisplayColors.textMuted, height: 1.4);
+  TextStyle get subtitle => TextStyle(
+    fontFamily: family,
+    fontSize: 22 * s,
+    color: DisplayColors.textMuted,
+    height: 1.4,
+  );
   TextStyle get heading => TextStyle(
+    fontFamily: family,
     fontSize: 32 * s,
     fontWeight: FontWeight.w500,
     color: DisplayColors.text,
     height: 1.25,
   );
   TextStyle get headingSmall => TextStyle(
+    fontFamily: family,
     fontSize: 26 * s,
     fontWeight: FontWeight.w500,
     color: DisplayColors.text,
     height: 1.25,
   );
-  TextStyle get body =>
-      TextStyle(fontSize: 22 * s, color: DisplayColors.text, height: 1.5);
-  TextStyle get bodyMuted =>
-      TextStyle(fontSize: 19 * s, color: DisplayColors.textMuted, height: 1.45);
+  TextStyle get body => TextStyle(
+    fontFamily: family,
+    fontSize: 22 * s,
+    color: DisplayColors.text,
+    height: 1.5,
+  );
+  TextStyle get bodyMuted => TextStyle(
+    fontFamily: family,
+    fontSize: 19 * s,
+    color: DisplayColors.textMuted,
+    height: 1.45,
+  );
   TextStyle get cardTitle => TextStyle(
+    fontFamily: family,
     fontSize: 24 * s,
     fontWeight: FontWeight.w600,
     color: DisplayColors.text,
     height: 1.25,
   );
   TextStyle get label => TextStyle(
+    fontFamily: family,
     fontSize: 15 * s,
     fontWeight: FontWeight.w600,
     color: DisplayColors.textMuted,
     letterSpacing: 1.2,
   );
   TextStyle get value => TextStyle(
+    fontFamily: family,
     fontSize: 22 * s,
     fontWeight: FontWeight.w600,
     color: DisplayColors.accent,
     fontFeatures: _tabular,
   );
   TextStyle get statValue => TextStyle(
+    fontFamily: family,
     fontSize: 52 * s,
     fontWeight: FontWeight.w300,
     color: DisplayColors.text,
@@ -113,6 +136,7 @@ class DisplayText {
     height: 1.1,
   );
   TextStyle get cell => TextStyle(
+    fontFamily: family,
     fontSize: 21 * s,
     color: DisplayColors.text,
     fontFeatures: _tabular,
@@ -122,10 +146,18 @@ class DisplayText {
 
 /// Small numbered badge shown on every selectable item.
 class OrdinalBadge extends StatelessWidget {
-  const OrdinalBadge(this.number, {super.key, this.filled = false});
+  const OrdinalBadge(
+    this.number, {
+    super.key,
+    this.filled = false,
+    this.solid = false,
+  });
 
   final int number;
   final bool filled;
+
+  /// An opaque dark backdrop, for badges drawn over images.
+  final bool solid;
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +167,11 @@ class OrdinalBadge extends StatelessWidget {
       constraints: BoxConstraints(minWidth: size, minHeight: size),
       padding: EdgeInsets.symmetric(horizontal: 6 * s),
       decoration: BoxDecoration(
-        color: filled ? DisplayColors.accent : const Color(0x1AA78BFA),
+        color: filled
+            ? DisplayColors.accent
+            : solid
+            ? const Color(0xE6120E1A)
+            : const Color(0x1AA78BFA),
         borderRadius: BorderRadius.circular(size / 2),
         border: Border.all(color: DisplayColors.borderStrong, width: 1.2),
       ),
@@ -146,6 +182,7 @@ class OrdinalBadge extends StatelessWidget {
         child: Text(
           '$number',
           style: TextStyle(
+            fontFamily: DisplayText.family,
             fontSize: 15 * s,
             fontWeight: FontWeight.w700,
             color: filled ? DisplayColors.background : DisplayColors.accent,

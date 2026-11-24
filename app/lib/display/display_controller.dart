@@ -267,10 +267,12 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
     e
       ..title = str(args['title']) ?? ''
       ..subtitle = null
+      // Filled, so the form gets the page's height: its fields scroll and the submit button
+      // stays visible.
       ..root = DisplayNode(
         id: 'root',
         type: 'column',
-        props: {},
+        props: {'fill': true},
         children: [?form],
       )
       ..shownAt = DateTime.now();
@@ -657,8 +659,10 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
       );
       if (e.subtitle != null) buf.writeln('  subtitle ${quote(e.subtitle!)}');
       if (_overflow > 0) {
-        buf.writeln('  OVERFLOW: ~${_overflow.round()} px at the bottom are cut off (the display '
-            'never scrolls). Show less or split it into several views.');
+        buf.writeln(
+          '  OVERFLOW: ~${_overflow.round()} px at the bottom are cut off (the display '
+          'never scrolls). Show less or split it into several views.',
+        );
       }
       for (final DisplayNode n in e.root.children) {
         _describe(buf, e, n, 1);

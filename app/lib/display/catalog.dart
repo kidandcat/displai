@@ -6,6 +6,7 @@
 library;
 
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:genui/genui.dart';
@@ -202,19 +203,27 @@ class _CardsView extends StatelessWidget {
     final double s = DisplayScale.of(context);
     final double gap = 22 * s;
     if (!grid) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) SizedBox(height: 14 * s),
-            _CardTile(
-              data: items[i],
-              number: ord > 0 ? ord + i : null,
-              grid: false,
-              onTap: () => onTap(i),
-            ),
-          ],
-        ],
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          // On narrow screens (the phone) the image shrinks to a thumbnail and the value
+          // goes under the title, so the title keeps its room.
+          final bool narrow = constraints.maxWidth < 600 * s;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) SizedBox(height: 14 * s),
+                _CardTile(
+                  data: items[i],
+                  number: ord > 0 ? ord + i : null,
+                  grid: false,
+                  narrow: narrow,
+                  onTap: () => onTap(i),
+                ),
+              ],
+            ],
+          );
+        },
       );
     }
     return LayoutBuilder(
@@ -222,6 +231,8 @@ class _CardsView extends StatelessWidget {
         final double w = constraints.maxWidth;
         final int cols = ((w + gap) / (340 * s + gap)).floor().clamp(1, 4);
         final double itemW = (w - gap * (cols - 1)) / cols;
+        // Images are capped in height, so a grid shows more than one row of cards.
+        final double imageH = math.min(itemW * 10 / 16, 170 * s);
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -233,6 +244,7 @@ class _CardsView extends StatelessWidget {
                   data: items[i],
                   number: ord > 0 ? ord + i : null,
                   grid: true,
+                  imageHeight: imageH,
                   onTap: () => onTap(i),
                 ),
               ),
@@ -249,12 +261,20 @@ class _CardTile extends StatelessWidget {
     required this.number,
     required this.grid,
     required this.onTap,
+    this.narrow = false,
+    this.imageHeight,
   });
 
   final _Json data;
   final int? number;
   final bool grid;
   final VoidCallback onTap;
+
+  /// List cards on a narrow screen: thumbnail image, value under the title.
+  final bool narrow;
+
+  /// Height of a grid card's image.
+  final double? imageHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -279,12 +299,16 @@ class _CardTile extends StatelessWidget {
                 maxLines: grid ? 2 : 3,
               ),
             ),
-            if (value != null) ...[
+            if (value != null && !narrow) ...[
               SizedBox(width: 16 * s),
               Text(value, style: t.value),
             ],
           ],
         ),
+        if (value != null && narrow) ...[
+          SizedBox(height: 4 * s),
+          Text(value, style: t.value),
+        ],
         if (subtitle != null) ...[
           SizedBox(height: 6 * s),
           RichDisplayText(subtitle, style: t.bodyMuted, maxLines: 2),
@@ -306,7 +330,11 @@ class _CardTile extends StatelessWidget {
         final double radius = 18 * s;
         final Widget badge = number == null
             ? const SizedBox.shrink()
-            : OrdinalBadge(number!, filled: hover);
+            : OrdinalBadge(
+                number!,
+                filled: hover,
+                solid: grid && image != null,
+              );
         Widget content;
         if (grid) {
           content = Column(
@@ -318,12 +346,17 @@ class _CardTile extends StatelessWidget {
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(radius - 1),
                   ),
-                  child: AspectRatio(
-                    aspectRatio: 16 / 10,
-                    child: displayImage(image),
-                  ),
+                  child: imageHeight != null
+                      ? SizedBox(
+                          height: imageHeight,
+                          child: displayImage(image),
+                        )
+                      : AspectRatio(
+                          aspectRatio: 16 / 10,
+                          child: displayImage(image),
+                        ),
                 ),
-              Padding(padding: EdgeInsets.all(22 * s), child: texts),
+              Padding(padding: EdgeInsets.all(20 * s), child: texts),
             ],
           );
           content = Stack(
@@ -341,17 +374,24 @@ class _CardTile extends StatelessWidget {
           }
         } else {
           content = Padding(
-            padding: EdgeInsets.symmetric(horizontal: 22 * s, vertical: 18 * s),
+            padding: narrow
+                ? EdgeInsets.symmetric(horizontal: 16 * s, vertical: 16 * s)
+                : EdgeInsets.symmetric(horizontal: 22 * s, vertical: 18 * s),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (number != null) ...[badge, SizedBox(width: 20 * s)],
+                if (number != null) ...[
+                  badge,
+                  SizedBox(width: (narrow ? 12 : 20) * s),
+                ],
                 if (image != null) ...[
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12 * s),
-                    child: displayImage(image, width: 132 * s, height: 88 * s),
+                    child: narrow
+                        ? displayImage(image, width: 84 * s, height: 84 * s)
+                        : displayImage(image, width: 132 * s, height: 88 * s),
                   ),
-                  SizedBox(width: 22 * s),
+                  SizedBox(width: (narrow ? 14 : 22) * s),
                 ],
                 Expanded(child: texts),
               ],
@@ -428,6 +468,119 @@ class _TableView extends StatelessWidget {
     });
     final double badgeW = 56 * s;
     final hPad = EdgeInsets.symmetric(horizontal: 24 * s);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Too narrow for side-by-side columns (the phone): one block per row.
+        if (nCols > 2 && constraints.maxWidth < nCols * 150 * s) {
+          return _stacked(t, nCols, numericCol);
+        }
+        return _columns(t, nCols, flex, numericCol, badgeW, hPad);
+      },
+    );
+  }
+
+  /// Each row as a block: the first cell as its title (with a numeric last column beside it)
+  /// and the other cells as "COLUMN  value" lines.
+  Widget _stacked(DisplayText t, int nCols, List<bool> numericCol) {
+    final double s = t.s;
+    final int? side = numericCol[nCols - 1] ? nCols - 1 : null;
+    String cell(List<String> r, int j) => j < r.length ? r[j] : '';
+    return Container(
+      decoration: panelDecoration(s),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < rows.length; i++)
+            Selectable(
+              onTap: () => onTap(i),
+              builder: (context, hover) => AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 18 * s,
+                  vertical: 14 * s,
+                ),
+                decoration: BoxDecoration(
+                  color: hover
+                      ? const Color(0x1AA78BFA)
+                      : (i.isOdd ? const Color(0x08FFFFFF) : null),
+                  border: i == 0
+                      ? null
+                      : const Border(
+                          top: BorderSide(
+                            color: DisplayColors.border,
+                            width: 0.6,
+                          ),
+                        ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (ord > 0) ...[
+                      OrdinalBadge(ord + i, filled: hover),
+                      SizedBox(width: 12 * s),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  cell(rows[i], 0),
+                                  style: t.cell.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              if (side != null) ...[
+                                SizedBox(width: 12 * s),
+                                Text(cell(rows[i], side), style: t.cell),
+                              ],
+                            ],
+                          ),
+                          for (var j = 1; j < nCols; j++)
+                            if (j != side && cell(rows[i], j).isNotEmpty)
+                              Padding(
+                                padding: EdgeInsets.only(top: 4 * s),
+                                child: Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      if (j < columns.length)
+                                        TextSpan(
+                                          text: '${columns[j].toUpperCase()}  ',
+                                          style: t.label,
+                                        ),
+                                      TextSpan(text: cell(rows[i], j)),
+                                    ],
+                                  ),
+                                  style: t.bodyMuted,
+                                ),
+                              ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _columns(
+    DisplayText t,
+    int nCols,
+    List<int> flex,
+    List<bool> numericCol,
+    double badgeW,
+    EdgeInsets hPad,
+  ) {
+    final double s = t.s;
 
     Widget cells(List<String> values, TextStyle style) => Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -515,11 +668,14 @@ Widget _stats(CatalogItemContext ctx, _Json data) {
     builder: (context) {
       final t = DisplayText.of(context);
       final double s = t.s;
-      final double gap = 22 * s;
       final bool anyDelta = items.any((it) => it['delta'] != null);
       return LayoutBuilder(
         builder: (context, c) {
-          final int fit = ((c.maxWidth + gap) / (250 * s + gap)).floor();
+          // Narrow screens (the phone) take smaller tiles, two per row.
+          final bool narrow = c.maxWidth < 700 * s;
+          final double gap = (narrow ? 14 : 22) * s;
+          final double minTile = (narrow ? 130 : 250) * s;
+          final int fit = ((c.maxWidth + gap) / (minTile + gap)).floor();
           final int cols = fit.clamp(1, items.isEmpty ? 1 : items.length);
           final double w = (c.maxWidth - gap * (cols - 1)) / cols;
           return Wrap(
@@ -529,7 +685,7 @@ Widget _stats(CatalogItemContext ctx, _Json data) {
               for (final it in items)
                 Container(
                   width: w,
-                  padding: EdgeInsets.all(26 * s),
+                  padding: EdgeInsets.all((narrow ? 18 : 26) * s),
                   decoration: panelDecoration(s),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -613,41 +769,41 @@ Widget _keyValue(CatalogItemContext ctx, _Json data) {
     builder: (context) {
       final t = DisplayText.of(context);
       final double s = t.s;
+      final EdgeInsets cellPad = EdgeInsets.symmetric(vertical: 14 * s);
       return Container(
         decoration: panelDecoration(s),
         padding: EdgeInsets.symmetric(horizontal: 26 * s, vertical: 8 * s),
-        child: Column(
+        // The key column takes its natural width (up to 45%), the value the rest.
+        child: Table(
+          columnWidths: const {
+            0: MinColumnWidth(
+              IntrinsicColumnWidth(),
+              FractionColumnWidth(0.45),
+            ),
+            1: FlexColumnWidth(),
+          },
+          border: const TableBorder(
+            horizontalInside: BorderSide(
+              color: DisplayColors.border,
+              width: 0.6,
+            ),
+          ),
           children: [
-            for (var i = 0; i < items.length; i++)
-              Container(
-                padding: EdgeInsets.symmetric(vertical: 14 * s),
-                decoration: BoxDecoration(
-                  border: i == 0
-                      ? null
-                      : const Border(
-                          top: BorderSide(
-                            color: DisplayColors.border,
-                            width: 0.6,
-                          ),
-                        ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        items[i][0],
-                        style: t.bodyMuted.copyWith(fontSize: 20 * s),
-                      ),
+            for (final kv in items)
+              TableRow(
+                children: [
+                  Padding(
+                    padding: cellPad.copyWith(right: 24 * s),
+                    child: Text(
+                      kv[0],
+                      style: t.bodyMuted.copyWith(fontSize: 20 * s),
                     ),
-                    SizedBox(width: 20 * s),
-                    Expanded(
-                      flex: 3,
-                      child: RichDisplayText(items[i][1], style: t.cell),
-                    ),
-                  ],
-                ),
+                  ),
+                  Padding(
+                    padding: cellPad,
+                    child: RichDisplayText(kv[1], style: t.cell),
+                  ),
+                ],
               ),
           ],
         ),
@@ -923,9 +1079,25 @@ Widget _column(CatalogItemContext ctx, _Json data) {
 
 Widget _row(CatalogItemContext ctx, _Json data) {
   final List<String> ids = _children(data);
-  return Builder(
-    builder: (context) {
-      final double gap = 26 * DisplayScale.of(context);
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final double s = DisplayScale.of(context);
+      final double gap = 26 * s;
+      // Children narrower than this (the phone) go one under the other.
+      if (ids.length > 1 &&
+          (constraints.maxWidth - gap * (ids.length - 1)) / ids.length <
+              260 * s) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < ids.length; i++) ...[
+              if (i > 0) SizedBox(height: gap),
+              ctx.buildChild(ids[i]),
+            ],
+          ],
+        );
+      }
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -941,10 +1113,14 @@ Widget _row(CatalogItemContext ctx, _Json data) {
 
 Widget _grid(CatalogItemContext ctx, _Json data) {
   final List<String> ids = _children(data);
-  final int cols = (data['cols'] as num?)?.toInt() ?? 2;
-  return Builder(
-    builder: (context) {
-      final double gap = 26 * DisplayScale.of(context);
+  final int wanted = ((data['cols'] as num?)?.toInt() ?? 2).clamp(1, 12);
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final double s = DisplayScale.of(context);
+      final double gap = 26 * s;
+      // Fewer columns when the cells would get too narrow (the phone).
+      final int fit = ((constraints.maxWidth + gap) / (140 * s + gap)).floor();
+      final int cols = math.min(wanted, math.max(1, fit));
       final rows = <Widget>[];
       for (var start = 0; start < ids.length; start += cols) {
         if (rows.isNotEmpty) rows.add(SizedBox(height: gap));

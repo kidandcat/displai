@@ -3,6 +3,8 @@
 /// and fill them (update values) while the user edits.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:genui/genui.dart';
@@ -115,41 +117,107 @@ class _DisplayFormState extends State<DisplayForm> {
     final String submitLabel =
         (widget.data['submit'] as String?) ?? DisplayStrings.submit;
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: 980 * s),
-      child: Container(
-        padding: EdgeInsets.all(34 * s),
-        decoration: panelDecoration(s),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (intro != null) ...[
-              RichDisplayText(intro, style: t.bodyMuted),
-              SizedBox(height: 26 * s),
-            ],
-            for (final f in _fields) ...[
-              _FieldShell(
-                label: (f['label'] as String?) ?? (f['name'] as String),
-                required: f['required'] == true,
-                error: _errors.contains(f['name']),
-                child: _field(f, values[f['name']], t),
-              ),
-              SizedBox(height: 26 * s),
-            ],
-            Row(
+    final List<Map<String, Object?>> fields = _fields;
+    final double pad = 28 * s;
+    final double colGap = 32 * s;
+    final double rowGap = 20 * s;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Wide screens lay the fields out in two columns.
+        final bool twoCols =
+            constraints.maxWidth >= 900 * s && fields.length > 2;
+        final double panelW = math.min(
+          constraints.maxWidth,
+          (twoCols ? 1300 : 980) * s,
+        );
+        // The panel's border also takes room, so the field width comes from the inner width.
+        final Widget fieldsView = LayoutBuilder(
+          builder: (context, inner) {
+            final double fieldW = twoCols
+                ? ((inner.maxWidth - colGap) / 2).floorToDouble()
+                : inner.maxWidth;
+            return Wrap(
+              spacing: colGap,
+              runSpacing: rowGap,
               children: [
-                _SubmitButton(
-                  label: submitted
-                      ? '$submitLabel  ·  ${DisplayStrings.submitted} ✓'
-                      : submitLabel,
-                  onTap: _submit,
+                for (final f in fields)
+                  SizedBox(
+                    width: fieldW,
+                    child: _FieldShell(
+                      label: (f['label'] as String?) ?? (f['name'] as String),
+                      required: f['required'] == true,
+                      error: _errors.contains(f['name']),
+                      child: _field(f, values[f['name']], t),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+        // With a bounded height (a form view) the fields scroll and the submit button stays
+        // visible; inside a show body the form takes its natural height.
+        final bool bounded = constraints.hasBoundedHeight;
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Container(
+            width: panelW,
+            padding: EdgeInsets.all(pad),
+            decoration: panelDecoration(s),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (intro != null) ...[
+                  RichDisplayText(intro, style: t.bodyMuted),
+                  SizedBox(height: rowGap),
+                ],
+                if (bounded)
+                  Flexible(
+                    // The bottom padding is where the fade goes, so it only covers fields
+                    // when they do not fit (and hints that they scroll).
+                    child: ShaderMask(
+                      blendMode: BlendMode.dstIn,
+                      shaderCallback: (rect) => LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: const [
+                          Colors.white,
+                          Colors.white,
+                          Colors.transparent,
+                        ],
+                        stops: [
+                          0,
+                          1 - 18 * s / rect.height.clamp(1, double.infinity),
+                          1,
+                        ],
+                      ).createShader(rect),
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.only(bottom: 18 * s),
+                        child: fieldsView,
+                      ),
+                    ),
+                  )
+                else
+                  fieldsView,
+                SizedBox(height: 26 * s),
+                Row(
+                  children: [
+                    Flexible(
+                      child: _SubmitButton(
+                        label: submitted
+                            ? '$submitLabel  ·  ${DisplayStrings.submitted} ✓'
+                            : submitLabel,
+                        onTap: _submit,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -230,13 +298,18 @@ class _DisplayFormState extends State<DisplayForm> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Transform.scale(
-                  scale: s * 1.3,
-                  child: Switch(
-                    value: on,
-                    onChanged: (v) => _set(name, v),
-                    activeThumbColor: DisplayColors.background,
-                    activeTrackColor: DisplayColors.accent,
+                // Scaled with the display, taking the room it is drawn in.
+                SizedBox(
+                  width: 60 * s,
+                  height: 38 * s,
+                  child: FittedBox(
+                    child: Switch(
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      value: on,
+                      onChanged: (v) => _set(name, v),
+                      activeThumbColor: DisplayColors.background,
+                      activeTrackColor: DisplayColors.accent,
+                    ),
                   ),
                 ),
                 SizedBox(width: 14 * s),
@@ -344,7 +417,7 @@ class _FieldShell extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        SizedBox(height: 10 * s),
+        SizedBox(height: 8 * s),
         child,
         if (error) ...[
           SizedBox(height: 6 * s),
