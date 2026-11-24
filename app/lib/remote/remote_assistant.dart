@@ -8,7 +8,7 @@ import 'package:flutter/widgets.dart' show GlobalKey, Size;
 import '../app/assistant_ui.dart';
 import '../app/settings.dart';
 import '../audio/native_audio.dart';
-import '../brain/claude_models.dart';
+import '../brain/models.dart';
 import '../display/display.dart';
 import '../display/display_runner.dart';
 import '../l10n/l10n.dart';
@@ -68,8 +68,11 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
   ModelChoice brainModel = defaultBrainModel;
   @override
   ModelChoice workerModel = defaultWorkerModel;
+  final _catalogs = <BrainProvider, ModelCatalog>{};
   @override
-  ClaudeCatalog? catalog;
+  ModelCatalog? catalogFor(BrainProvider provider) => _catalogs[provider];
+  @override
+  Set<BrainProvider> unavailableProviders = {};
   @override
   String? fastUnavailable;
   @override
@@ -185,7 +188,17 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     settingsKnown = true;
     brainModel = ModelChoice.fromJson(m['brain']) ?? brainModel;
     workerModel = ModelChoice.fromJson(m['workers']) ?? workerModel;
-    catalog = ClaudeCatalog.fromJson(m['catalog']) ?? catalog;
+    // Each provider's models; a desktop from before there was a choice sends Claude's alone.
+    final catalogs = m['catalogs'] is Map ? m['catalogs'] as Map : {'claude': m['catalog']};
+    final unavailable = m['unavailable'] is List ? m['unavailable'] as List : const [];
+    for (final p in BrainProvider.values) {
+      final c = ModelCatalog.fromJson(catalogs[p.name], p);
+      if (c != null) _catalogs[p] = c;
+    }
+    unavailableProviders = {
+      for (final p in BrainProvider.values)
+        if (unavailable.contains(p.name)) p,
+    };
     fastUnavailable = m['fast_unavailable'] as String?;
     // The phone's screens follow the desktop's language too.
     languageSetting.value = validLanguage(m['language'] as String?);

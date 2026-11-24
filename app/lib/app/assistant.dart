@@ -9,8 +9,9 @@ import 'package:path_provider/path_provider.dart';
 
 import '../audio/native_audio.dart';
 import 'desktop_window.dart';
-import '../brain/claude_models.dart';
-import '../brain/claude_session.dart';
+import '../brain/antigravity_session.dart';
+import '../brain/brain_session.dart';
+import '../brain/models.dart';
 import '../brain/system_prompt.dart';
 import '../display/display.dart';
 import '../display/display_runner.dart';
@@ -40,9 +41,9 @@ import 'settings.dart';
 
 /// Wires voice, brain and display together (docs/design.md §2 and §5).
 ///
-/// Mic (echo-cancelled) → [Listener] → [ClaudeSession] → sentences → [Speaker] → [NativeAudio].
+/// Mic (echo-cancelled) → [Listener] → [BrainSession] → sentences → [Speaker] → [NativeAudio].
 /// Display tool calls arrive through the embedded MCP server; partial tool input streams into
-/// the [DisplayController] while Claude is still writing it.
+/// the [DisplayController] while the brain is still writing it.
 class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings {
   Assistant({required this.models, this.voice = defaultVoice, DesktopWindow? window})
       : window = window ?? DesktopWindow();
@@ -55,9 +56,15 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   @override
   ModelChoice workerModel = defaultWorkerModel;
 
-  /// The models of the installed Claude Code (null until it first reported them).
+  /// The models of each provider's installed agent (absent until it first reported them).
+  final _catalogs = <BrainProvider, ModelCatalog>{};
+
   @override
-  ClaudeCatalog? catalog;
+  ModelCatalog? catalogFor(BrainProvider provider) => _catalogs[provider];
+
+  /// Providers whose agent is not installed or not signed in (it could not list its models).
+  @override
+  final unavailableProviders = <BrainProvider>{};
 
   /// Why Claude Code says fast mode can't be used on this account (a reason code such as
   /// `extra_usage_disabled`), else null.
@@ -97,7 +104,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   late final Listener _listener;
   late final Speaker _speaker;
-  late final ClaudeSession _claude;
+  /// The conversation, on [brainModel]'s provider (replaced when the user switches it).
+  late BrainSession _brain;
+  StreamSubscription<BrainEvent>? _brainSub;
   late final DisplayMcpServer _mcp;
   final _subs = <StreamSubscription<Object?>>[];
 
@@ -249,7 +258,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   bool get _playing => onPhone ? phone!.playing : audio.isPlaying;
 
   bool get speaking => _pendingTts > 0 || _playing;
-  bool get busy => _claude.busy || speaking;
+  bool get busy => _brain.busy || speaking;
 
   Future<void> start() async {
     try {
@@ -257,7 +266,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
           (await getApplicationSupportDirectory()).path;
       store = await Store.open(dataDir);
       languageSetting.value = validLanguage(store.get('language'));
-      catalog = ClaudeCatalog.load(store);
+      for (final p in BrainProvider.values) {
+        final c = ModelCatalog.load(store, p);
+        if (c != null) _catalogs[p] = c;
+      }
       brainModel = ModelChoice.load(store, 'brain', defaultBrainModel);
       workerModel = ModelChoice.load(store, 'workers', defaultWorkerModel);
       voice = validVoice(int.tryParse(store.get('voice') ?? '')) ?? voice;
@@ -294,11 +306,6 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         routines,
         if (webhooks != null) WebhookTools(webhooks!),
       ];
-      var sessionId = store.get('brain_session');
-      if (sessionId == null) {
-        sessionId = ClaudeSession.newSessionId();
-        store.set('brain_session', sessionId);
-      }
       _speaker = await Speaker.start(modelDir: models.supertonic, voice: voice, language: speechLanguage);
       _listener = await Listener.start(vadModel: models.vad, parakeetDir: models.parakeet);
       _mcp = DisplayMcpServer(
@@ -316,23 +323,17 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       );
       await _mcp.start();
       await webhooks?.start();
-      final brain = brainModel.resolve(catalog);
-      _claude = ClaudeSession(
-        model: brain.model,
-        effort: brain.effort,
-        fast: brain.fast,
-        describe: true,
-        systemPrompt: buildSystemPrompt([
-          languagePromptSection(speechLanguage, strings),
-          MemoryTools.promptSection(store),
-          SkillTools.promptSection(_skillsDir),
-          webhooks?.promptSection() ?? '',
-        ]),
-        mcpUrl: _mcp.url,
-        workDir: '${store.dir}/brain',
-        sessionId: sessionId,
-      );
-      await _claude.start();
+      _brain = _newBrain();
+      _brainSub = _brain.events.listen(_onBrain);
+      try {
+        await _brain.start();
+      } catch (e) {
+        // Antigravity missing or signed out: Minerva still starts (so the user can switch back to
+        // Claude), and each turn says the brain failed until it is fixed.
+        if (brainModel.provider == BrainProvider.claude) rethrow;
+        debugPrint('brain start failed: $e');
+      }
+      unawaited(_listAntigravityModels());
       window.onOpenRequested = () => unawaited(_useMac(false));
       await window.init();
       window.addListener(_syncAudio);
@@ -347,7 +348,6 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         ..add(audio.idle.listen((_) => _onAudioIdle()))
         ..add(_listener.events.listen(_onHeard))
         ..add(_speaker.speech.listen(_onSpeech))
-        ..add(_claude.events.listen(_onBrain))
         ..add(display.userEvents.listen(_onDisplayEvent))
         ..add(display.vaultSubmissions.listen(_onVaultSubmission));
       ready = true;
@@ -396,15 +396,51 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   // ---------------------------------------------------------------- models
 
-  /// Switches the conversation's model, effort or speed. The brain restarts on the same
-  /// conversation, at once or when the answer in progress ends.
+  /// Switches the conversation's model, effort or speed: the brain goes on with the same
+  /// conversation, at once or when the answer in progress ends. Switching the provider stops the
+  /// answer in progress and goes on with that provider's own conversation.
   @override
   void setBrainModel(ModelChoice choice) {
+    final switched = choice.provider != brainModel.provider;
     brainModel = choice;
     choice.save(store, 'brain');
-    final r = choice.resolve(catalog);
-    _claude.reconfigure(model: r.model, effort: r.effort, fast: r.fast);
+    if (switched) {
+      if (_brain.busy) _stopTurn();
+      _brainSub?.cancel();
+      _brain.dispose();
+      _brain = _newBrain();
+      _brainSub = _brain.events.listen(_onBrain);
+      unawaited(_brain.start().catchError((Object e) => debugPrint('brain start failed: $e')));
+    } else {
+      final r = choice.resolve(_catalogs[choice.provider]);
+      _brain.reconfigure(model: r.model, effort: r.effort, fast: r.fast);
+    }
     notifyListeners();
+  }
+
+  /// The conversation's session on [brainModel]'s provider. Each provider keeps its own
+  /// conversation, resumed from its id in the store.
+  BrainSession _newBrain() {
+    final choice = brainModel;
+    final key = choice.provider == BrainProvider.claude ? 'brain_session' : 'brain_session.${choice.provider.name}';
+    final r = choice.resolve(_catalogs[choice.provider]);
+    return BrainSession.create(
+      provider: choice.provider,
+      model: r.model,
+      effort: r.effort,
+      fast: r.fast,
+      describe: true,
+      systemPrompt: buildSystemPrompt([
+        languagePromptSection(speechLanguage, strings),
+        MemoryTools.promptSection(store),
+        SkillTools.promptSection(_skillsDir),
+        webhooks?.promptSection() ?? '',
+      ]),
+      mcpUrl: _mcp.url,
+      workDir: '${store.dir}/brain',
+      sessionId: store.get(key),
+      onSessionId: (id) => store.set(key, id),
+    );
   }
 
   /// Switches the model, effort or speed of workers started from now on.
@@ -417,25 +453,43 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   }
 
   void _applyWorkerModel() {
-    final r = workerModel.resolve(catalog);
+    final r = workerModel.resolve(_catalogs[workerModel.provider]);
     workers
+      ..provider = workerModel.provider
       ..model = r.model
       ..effort = r.effort
       ..fast = r.fast;
   }
 
-  /// Claude Code (re)started: keep its model list, and note whether the account can use fast mode.
-  void _described(Map<String, dynamic> info) {
-    final c = ClaudeCatalog.fromInfo(info);
-    if (c.all.isNotEmpty) {
-      catalog = c..save(store);
-      _applyWorkerModel();
-    }
+  /// The brain (re)started: keep its model list, and (Claude Code) note whether the account can
+  /// use fast mode.
+  void _described(Described e) {
+    final c = e.catalog;
+    if (c != null && c.all.isNotEmpty) _saveCatalog(c);
+    if (c?.provider != BrainProvider.claude) return notifyListeners();
+    final info = e.info;
     // At start Claude Code reports fast mode as asked for; whether the account can use it shows
     // after the first request (FastModeState). Only a reason other than "not asked for" counts.
     final reason = info['fast_mode_disabled_reason'] as String?;
     if (info['fast_mode_state'] != 'on' && reason != null && reason != 'sdk_opt_in_required') {
       fastUnavailable = reason;
+    }
+    notifyListeners();
+  }
+
+  void _saveCatalog(ModelCatalog c) {
+    _catalogs[c.provider] = c..save(store);
+    unavailableProviders.remove(c.provider);
+    _applyWorkerModel();
+  }
+
+  /// Antigravity's models, for the pickers, whatever the conversation runs on.
+  Future<void> _listAntigravityModels() async {
+    final c = await AntigravitySession.listModels();
+    if (c != null && c.all.isNotEmpty) {
+      _saveCatalog(c);
+    } else if (_catalogs[BrainProvider.antigravity] == null) {
+      unavailableProviders.add(BrainProvider.antigravity);
     }
     notifyListeners();
   }
@@ -565,7 +619,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     p.pushSettings({
       'brain': brainModel.toJson(),
       'workers': workerModel.toJson(),
-      'catalog': catalog?.toJson(),
+      'catalogs': {for (final e in _catalogs.entries) e.key.name: e.value.toJson()},
+      // Claude's alone, as phone apps from before there was a choice of provider read it.
+      'catalog': _catalogs[BrainProvider.claude]?.toJson(),
+      'unavailable': [for (final p in unavailableProviders) p.name],
       'fast_unavailable': fastUnavailable,
       'language': languageSetting.value,
       'voice': voice,
@@ -727,7 +784,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     _pendingTts = 0;
     _sentence.clear();
     _stopAudio();
-    _claude.interrupt();
+    _brain.interrupt();
     display.cancelPartial();
     phone?.cancelPartial();
     _setActivity('');
@@ -745,7 +802,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     _setActivity(strings.activityThinking);
     final p = phone;
     final where = p != null && p.active ? ' [phone ${p.width.round()}x${p.height.round()}]' : '';
-    unawaited(_claude.send('[${formatStamp(DateTime.now())}]$where $text'));
+    unawaited(_brain.send('[${formatStamp(DateTime.now())}]$where $text'));
     _updatePresence();
     notifyListeners();
   }
@@ -790,7 +847,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       case MessageTaken():
         break;
       case Described():
-        _described(e.info);
+        _described(e);
       case FastModeState():
         if (fastUnavailable != (e.on ? null : e.reason)) {
           fastUnavailable = e.on ? null : e.reason;
@@ -1055,7 +1112,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     if (!ready) return;
     final mode = _playing || _pendingTts > 0 && _firstAudioAt != null
         ? PresenceMode.speaking
-        : _claude.busy || _pendingTts > 0
+        : _brain.busy || _pendingTts > 0
             ? PresenceMode.thinking
             : _muted
                 ? PresenceMode.idle
@@ -1078,7 +1135,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     if (ready) {
       routines.dispose();
       workers.dispose();
-      _claude.dispose();
+      _brainSub?.cancel();
+      _brain.dispose();
       _listener.dispose();
       _speaker.dispose();
       unawaited(_mcp.stop());

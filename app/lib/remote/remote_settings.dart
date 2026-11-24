@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../app/main_view.dart';
 import '../app/model_picker.dart';
 import '../app/settings.dart';
-import '../brain/claude_models.dart';
+import '../brain/models.dart';
 import '../l10n/l10n.dart';
 import 'remote_assistant.dart';
 
@@ -75,7 +75,7 @@ class RemoteSettingsPage extends StatelessWidget {
   Widget _modelTile(BuildContext context, String title, ModelChoice choice,
       {required bool workers, required bool enabled}) {
     final l = AppLocalizations.of(context);
-    final model = assistant.catalog?.find(choice.model);
+    final model = assistant.catalogFor(choice.provider)?.find(choice.model);
     final effort = effortFor(model, choice.effort);
     return ListTile(
       enabled: enabled,
@@ -83,6 +83,7 @@ class RemoteSettingsPage extends StatelessWidget {
       title: Text(title),
       subtitle: Text(
         [
+          choice.provider.label,
           model?.name ?? choice.model,
           if (effort != null) effortName(l, effort),
           if (choice.fast && (model?.fast ?? false)) l.speedFast,

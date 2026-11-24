@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../brain/brain_session.dart';
 import '../brain/claude_session.dart';
+import '../brain/models.dart';
 import '../l10n/l10n.dart';
 import '../mcp/display_mcp_server.dart';
 import '../store/store.dart';
@@ -39,7 +41,10 @@ class Workers extends ToolProvider with ChangeNotifier {
 
   /// Applied to every tool result a worker gets (the vault's redaction).
   final ToolResult Function(ToolResult result)? scrub;
-  /// Model, effort (null: the model has none) and fast mode for workers started from now on.
+  /// Provider, model, effort (null: the model has none) and fast mode for workers started from
+  /// now on. A worker resumed later goes on with the provider it started on (its conversation is
+  /// that provider's).
+  BrainProvider provider = BrainProvider.claude;
   String model;
   String? effort;
   bool fast = false;
@@ -50,8 +55,6 @@ class Workers extends ToolProvider with ChangeNotifier {
 
   /// Ids of the running workers, oldest first.
   Iterable<int> get runningIds => _running.keys;
-
-  static const _builtins = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'];
 
   static const _progressTool = McpTool(
     'report_progress',
@@ -66,10 +69,10 @@ class Workers extends ToolProvider with ChangeNotifier {
   );
 
   /// The user's language is the OS one the voice speaks (see `speechLanguage` in l10n.dart).
-  static String get _systemPrompt => '''
+  static String _systemPrompt(BrainProvider provider) => '''
 You are a background worker of Minerva, a voice assistant on the user's Mac. The assistant gave you a task; do it fully on your own. Nobody reads your messages while you work. Your final message is your report: the assistant reads it and tells the user by voice.
 
-- Use Minerva's tools for commands and files (run_command, read_file, write_file, list_dir), plus Read, Glob, Grep and the web. You have no screen and no mouse or keyboard.
+- Use Minerva's tools for commands and files (run_command, read_file, write_file, list_dir), plus ${provider == BrainProvider.claude ? 'Read, Glob, Grep' : 'view_file, grep_search, find_by_name'} and the web. You have no screen and no mouse or keyboard.
 - Nobody confirms anything: your tools run at once. Do destructive actions (deleting files or data, sending messages or emails, buying or paying, publishing, overwriting, irreversible commands) only when the task clearly asks for them. Otherwise do not do them: say in your report what you would do, and let the assistant ask the user.
 - Credentials: vault_list shows the saved ones; write {{vault:name.field}} where a value goes in run_command or write_file (Minerva fills it in; you never see values). If one is missing, say so in your report.
 - Call report_progress at each milestone with a one-line note.
@@ -162,32 +165,53 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
   }
 
   Future<int> start(String title, String task) async {
-    final sessionId = ClaudeSession.newSessionId();
+    // Claude Code takes the id it is given; Antigravity picks its own once started.
+    final sessionId = provider == BrainProvider.claude ? ClaudeSession.newSessionId() : _storedId(provider, null);
     store.db.execute(
       "INSERT INTO workers(title, task, status, session_id, started) VALUES (?, ?, 'running', ?, ?)",
       [title, task, sessionId, Store.now()],
     );
     final id = store.db.lastInsertRowId;
-    await _launch(id, title, sessionId, task);
+    await _launch(id, title, sessionId, task, model: model, effort: effort, fast: fast);
     return id;
   }
 
-  Future<void> _launch(int id, String title, String sessionId, String text) async {
+  /// The workers table's session_id: Claude Code's id alone (as before there was a choice of
+  /// provider), else `<provider>:<id>` (the id empty until the agent picked it).
+  static String _storedId(BrainProvider provider, String? id) =>
+      provider == BrainProvider.claude ? id! : '${provider.name}:${id ?? ''}';
+
+  static (BrainProvider, String?) _parseStoredId(String stored) {
+    for (final p in BrainProvider.values) {
+      if (p != BrainProvider.claude && stored.startsWith('${p.name}:')) {
+        final id = stored.substring(p.name.length + 1);
+        return (p, id.isEmpty ? null : id);
+      }
+    }
+    return (BrainProvider.claude, stored);
+  }
+
+  Future<void> _launch(int id, String title, String storedId, String text,
+      {required String model, required String? effort, required bool fast}) async {
     final w = _Worker(id, title);
     final mcp = DisplayMcpServer(
       tools: [for (final p in hostTools) ...p.tools, _progressTool],
       handler: (name, args) => _handle(w, name, args),
     );
     await mcp.start();
-    final session = ClaudeSession(
+    final (provider, sessionId) = _parseStoredId(storedId);
+    final session = BrainSession.create(
+      provider: provider,
       model: model,
       effort: effort,
       fast: fast,
-      systemPrompt: _systemPrompt,
+      systemPrompt: _systemPrompt(provider),
       mcpUrl: mcp.url,
       workDir: '${store.dir}/workers',
       sessionId: sessionId,
-      builtinTools: _builtins,
+      onSessionId: (sid) =>
+          store.db.execute('UPDATE workers SET session_id = ? WHERE id = ?', [_storedId(provider, sid), id]),
+      fileTools: true,
       autocompact: '200k',
       replayUserMessages: true,
     );
@@ -196,7 +220,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
       ..session = session
       ..sub = session.events.listen((e) {
         // A follow-up sent mid-run is either folded into the running turn or gets its own:
-        // finish on the first turn end after Claude Code took every message sent.
+        // finish on the first turn end after the agent took every message sent.
         if (e is MessageTaken) w.taken++;
         if (e is TurnDone && (w.taken >= w.sent || e.error != null || e.interrupted)) _finished(w, e);
       });
@@ -252,7 +276,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     if (text.isEmpty) return const ToolResult.error('error: empty text');
     final running = _running[id];
     if (running != null) {
-      // Claude Code queues it and answers it after the current turn.
+      // The agent answers it within the current turn or after it.
       running.sent++;
       await running.session.send(text);
       return ToolResult('sent to worker $id');
@@ -260,7 +284,12 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     final rows = store.db.select('SELECT title, session_id FROM workers WHERE id = ?', [id]);
     if (rows.isEmpty) return ToolResult.error('error: no worker $id');
     store.db.execute("UPDATE workers SET status = 'running', finished = NULL WHERE id = ?", [id]);
-    await _launch(id, rows.first['title'] as String, rows.first['session_id'] as String, text);
+    // Resumed on the provider it started on, with that provider's model when the workers' one
+    // is another's.
+    final stored = rows.first['session_id'] as String;
+    final (was, _) = _parseStoredId(stored);
+    final r = was == provider ? (model: model, effort: effort, fast: fast) : defaultModel(was, workers: true).resolve(null);
+    await _launch(id, rows.first['title'] as String, stored, text, model: r.model, effort: r.effort, fast: r.fast);
     return ToolResult('worker $id resumed with the new message');
   }
 
@@ -305,11 +334,11 @@ class _Worker {
   final int id;
   final String title;
   late final DisplayMcpServer mcp;
-  late final ClaudeSession session;
+  late final BrainSession session;
   late final StreamSubscription<BrainEvent> sub;
   bool stopped = false;
 
-  /// Messages sent to the session, and how many of them Claude Code has taken in.
+  /// Messages sent to the session, and how many of them the agent has taken in.
   int sent = 0;
   int taken = 0;
 

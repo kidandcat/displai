@@ -3,6 +3,7 @@
 // Run: dart run tool/brain_smoke.dart
 import 'dart:io';
 
+import 'package:minerva/brain/brain_session.dart';
 import 'package:minerva/brain/claude_session.dart';
 import 'package:minerva/mcp/display_mcp_server.dart';
 

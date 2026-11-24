@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../brain/claude_models.dart';
+import '../brain/models.dart';
 import '../l10n/l10n.dart';
 import 'main_view.dart';
 import 'settings.dart';
@@ -14,7 +14,7 @@ class ModelButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final choice = assistant.brainModel;
-    final name = assistant.catalog?.find(choice.model)?.name ?? choice.model;
+    final name = assistant.catalogFor(choice.provider)?.find(choice.model)?.name ?? choice.model;
     return Tooltip(
       message: AppLocalizations.of(context).modelTitle,
       child: TextButton.icon(
@@ -42,9 +42,10 @@ String effortName(AppLocalizations l, String effort) =>
     }[effort] ??
     effort;
 
-/// Picks the model, effort and speed of the conversation and, on its other tab, of the workers.
-/// The list comes from the installed Claude Code: its newest model of each family, then the
-/// previous ones folded away. Above the status bar on the desktop; on a phone, across the screen.
+/// Picks the provider (Claude or Antigravity), model, effort and speed of the conversation and,
+/// on its other tab, of the workers. The list comes from the provider's installed agent (Claude
+/// Code's newest model of each family, then the previous ones folded away; Antigravity's as it
+/// lists them). Above the status bar on the desktop; on a phone, across the screen.
 class ModelPicker extends StatefulWidget {
   const ModelPicker({super.key, required this.assistant, this.workers = false});
 
@@ -66,15 +67,27 @@ class _ModelPickerState extends State<ModelPicker> {
 
   ModelChoice get _choice => _workers ? _a.workerModel : _a.brainModel;
 
-  ModelChoice get _default => _workers ? defaultWorkerModel : defaultBrainModel;
+  ModelChoice get _default =>
+      defaultModel(_choice.provider, workers: _workers, catalog: _a.catalogFor(_choice.provider));
 
   bool _narrow(BuildContext context) => MediaQuery.sizeOf(context).width < 600;
 
   void _set(ModelChoice c) => _workers ? _a.setWorkerModel(c) : _a.setBrainModel(c);
 
-  void _pick(ClaudeModel m) => _set(_choice.copyWith(model: m.value));
+  void _pick(BrainModel m) => _set(_choice.copyWith(model: m.value));
 
-  bool _matches(ClaudeModel m) {
+  /// Another provider: its default model, at the same effort.
+  void _pickProvider(BrainProvider p) {
+    if (p == _choice.provider) return;
+    final d = defaultModel(p, workers: _workers, catalog: _a.catalogFor(p));
+    _set(d.copyWith(effort: _choice.effort));
+    setState(() {
+      _query = '';
+      _showPrevious = false;
+    });
+  }
+
+  bool _matches(BrainModel m) {
     final q = _query.trim().toLowerCase();
     return q.isEmpty ||
         m.name.toLowerCase().contains(q) ||
@@ -112,7 +125,8 @@ class _ModelPickerState extends State<ModelPicker> {
 
   Widget _body(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final catalog = _a.catalog;
+    final provider = _choice.provider;
+    final catalog = _a.catalogFor(provider);
     final theme = Theme.of(context);
     final narrow = _narrow(context);
     return Column(
@@ -123,11 +137,11 @@ class _ModelPickerState extends State<ModelPicker> {
           padding: EdgeInsets.fromLTRB(16, narrow ? 6 : 14, narrow ? 4 : 16, 4),
           child: Row(
             children: [
-              Text('Claude', style: theme.textTheme.titleMedium),
+              Text(provider.label, style: theme.textTheme.titleMedium),
               const SizedBox(width: 8),
               if (catalog != null && catalog.version.isNotEmpty)
                 Expanded(
-                  child: Text('${catalog.version} (Claude Code)',
+                  child: Text('${catalog.version} (${provider.agent})',
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38)),
                 )
@@ -155,14 +169,37 @@ class _ModelPickerState extends State<ModelPicker> {
             onSelectionChanged: (s) => setState(() => _workers = s.first),
           ),
         ),
-        if (catalog == null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: SegmentedButton<BrainProvider>(
+            showSelectedIcon: false,
+            segments: [
+              for (final p in BrainProvider.values)
+                ButtonSegment(
+                  value: p,
+                  label: Text(p.label),
+                  // An agent that is not there can't be picked (but stays shown when in use).
+                  enabled: p == provider || !_a.unavailableProviders.contains(p),
+                ),
+            ],
+            selected: {provider},
+            onSelectionChanged: (s) => _pickProvider(s.first),
+          ),
+        ),
+        if (catalog == null && _a.unavailableProviders.contains(provider))
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(l.modelUnavailable(provider.agent), style: const TextStyle(color: Colors.orangeAccent)),
+          )
+        else if (catalog == null)
           Padding(
             padding: const EdgeInsets.all(24),
             child: Row(
               children: [
                 const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                 const SizedBox(width: 12),
-                Expanded(child: Text(l.modelLoading, style: const TextStyle(color: Colors.white54))),
+                Expanded(
+                    child: Text(l.modelLoading(provider.agent), style: const TextStyle(color: Colors.white54))),
               ],
             ),
           )
@@ -197,14 +234,14 @@ class _ModelPickerState extends State<ModelPicker> {
         ],
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-          child: Text(_workers ? l.modelWorkersNote : l.modelConversationNote,
+          child: Text(_workers ? l.modelWorkersNote : '${l.modelConversationNote} ${l.modelProviderNote}',
               style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38)),
         ),
       ],
     );
   }
 
-  List<Widget> _models(BuildContext context, ClaudeCatalog catalog) {
+  List<Widget> _models(BuildContext context, ModelCatalog catalog) {
     final l = AppLocalizations.of(context);
     if (_query.trim().isNotEmpty) {
       final found = catalog.all.where(_matches).toList();
@@ -232,7 +269,7 @@ class _ModelPickerState extends State<ModelPicker> {
     ];
   }
 
-  Widget _tile(BuildContext context, ClaudeModel m) {
+  Widget _tile(BuildContext context, BrainModel m) {
     final l = AppLocalizations.of(context);
     final selected = m.value == _choice.model;
     final isDefault = m.value == _default.model;
@@ -265,7 +302,7 @@ class _ModelPickerState extends State<ModelPicker> {
     );
   }
 
-  List<Widget> _settings(BuildContext context, ClaudeCatalog catalog) {
+  List<Widget> _settings(BuildContext context, ModelCatalog catalog) {
     final l = AppLocalizations.of(context);
     final model = catalog.find(_choice.model);
     final effort = effortFor(model, _choice.effort);

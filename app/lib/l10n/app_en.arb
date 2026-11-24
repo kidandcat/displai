@@ -421,7 +421,23 @@
     }
   },
   "modelNoMatch": "No model matches",
-  "modelLoading": "Loading Claude Code's models…",
+  "modelLoading": "Loading {agent}'s models…",
+  "@modelLoading": {
+    "placeholders": {
+      "agent": {
+        "type": "String"
+      }
+    }
+  },
+  "modelUnavailable": "{agent} is not installed or not signed in. Install it and sign in from a terminal (for Antigravity: run agy).",
+  "@modelUnavailable": {
+    "placeholders": {
+      "agent": {
+        "type": "String"
+      }
+    }
+  },
+  "modelProviderNote": "Each provider keeps its own conversation.",
   "modelEffort": "Effort",
   "effortLow": "Low",
   "effortMedium": "Medium",

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:minerva/brain/claude_models.dart';
+import 'package:minerva/brain/models.dart';
 import 'package:minerva/store/store.dart';
 
 const _all = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -43,7 +43,7 @@ final _info = <String, dynamic>{
 };
 
 void main() {
-  final catalog = ClaudeCatalog.fromInfo(_info);
+  final catalog = ModelCatalog.fromInfo(_info);
 
   test('the newest model of each family comes first, aliases preferred', () {
     expect(catalog.version, '2.1.302');
@@ -86,9 +86,9 @@ void main() {
     final store = Store.memory(dir.path);
     addTearDown(store.close);
 
-    expect(ClaudeCatalog.load(store), isNull);
+    expect(ModelCatalog.load(store), isNull);
     catalog.save(store);
-    final back = ClaudeCatalog.load(store)!;
+    final back = ModelCatalog.load(store)!;
     expect(back.version, catalog.version);
     expect([for (final m in back.all) m.value], [for (final m in catalog.all) m.value]);
     expect(back.find('claude-opus-4-6')!.efforts, ['low', 'medium', 'high', 'max']);
@@ -103,13 +103,66 @@ void main() {
   });
 
   test('catalog and choices travel as JSON between the desktop and the phone', () {
-    final back = ClaudeCatalog.fromJson(jsonDecode(jsonEncode(catalog.toJson())))!;
+    final back = ModelCatalog.fromJson(jsonDecode(jsonEncode(catalog.toJson())))!;
     expect([for (final m in back.all) m.value], [for (final m in catalog.all) m.value]);
     expect(back.find('opus')!.fast, isTrue);
-    expect(ClaudeCatalog.fromJson(null), isNull);
+    expect(ModelCatalog.fromJson(null), isNull);
 
     const c = ModelChoice(model: 'sonnet', effort: 'max', fast: true);
     expect(ModelChoice.fromJson(jsonDecode(jsonEncode(c.toJson()))), c);
     expect(ModelChoice.fromJson({'model': 'opus'}), isNull);
+    // From an app without providers: Claude's.
+    expect(ModelChoice.fromJson({'model': 'opus', 'effort': 'low'})!.provider, BrainProvider.claude);
+  });
+
+  // As `agy models` lists them: the thinking level is part of the id.
+  final agy = ModelCatalog.antigravity(version: '1.5.16', models: [
+    ('gemini-4-neon-low', 'Gemini 4 Neon (Low)'),
+    ('gemini-4-neon-high', 'Gemini 4 Neon (High)'),
+    ('gemini-4-neon-medium', 'Gemini 4 Neon (Medium)'),
+    ('gemini-pro-orchestrator', 'Gemini Pro Orchestrator'),
+    ('claude-opus-5-5-high', 'Claude Opus 5.5 (High)'),
+    ('gpt-oss-120b-medium', 'GPT-OSS 120B (Medium)'),
+  ]);
+
+  test("Antigravity's models are listed once each, with their thinking levels", () {
+    expect([for (final m in agy.all) m.value],
+        ['gemini-4-neon', 'gemini-pro-orchestrator', 'claude-opus-5-5', 'gpt-oss-120b']);
+    expect(agy.previous, isEmpty);
+    expect(agy.find('gemini-4-neon')!.name, 'Gemini 4 Neon');
+    expect(agy.find('gemini-4-neon')!.efforts, ['low', 'medium', 'high']);
+    expect(agy.find('gemini-pro-orchestrator')!.efforts, isEmpty);
+    expect(agy.provider, BrainProvider.antigravity);
+  });
+
+  test('an Antigravity choice resolves to the model id with its level', () {
+    const c = ModelChoice(provider: BrainProvider.antigravity, model: 'gemini-4-neon', effort: 'max', fast: true);
+    expect(c.resolve(agy), (model: 'gemini-4-neon-high', effort: null, fast: false));
+    expect(c.copyWith(model: 'gemini-pro-orchestrator').resolve(agy),
+        (model: 'gemini-pro-orchestrator', effort: null, fast: false));
+    expect(c.copyWith(effort: 'low').resolve(null), (model: 'gemini-4-neon-low', effort: null, fast: false));
+    expect(defaultModel(BrainProvider.antigravity, workers: false, catalog: agy).model, 'gemini-4-neon');
+  });
+
+  test('each provider keeps its catalog, and the choice its provider', () {
+    final dir = Directory.systemTemp.createTempSync('minerva_models');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final store = Store.memory(dir.path);
+    addTearDown(store.close);
+
+    catalog.save(store);
+    agy.save(store);
+    expect(ModelCatalog.load(store)!.find('opus'), isNotNull);
+    final back = ModelCatalog.load(store, BrainProvider.antigravity)!;
+    expect(back.provider, BrainProvider.antigravity);
+    expect(back.find('gemini-4-neon')!.efforts, ['low', 'medium', 'high']);
+    expect(ModelCatalog.fromJson(jsonDecode(jsonEncode(agy.toJson())))!.provider, BrainProvider.antigravity);
+
+    const c = ModelChoice(provider: BrainProvider.antigravity, model: 'gemini-4-neon', effort: 'medium');
+    c.save(store, 'workers');
+    expect(ModelChoice.load(store, 'workers', defaultWorkerModel), c);
+    expect(ModelChoice.fromJson(jsonDecode(jsonEncode(c.toJson()))), c);
+    defaultWorkerModel.save(store, 'workers');
+    expect(ModelChoice.load(store, 'workers', defaultWorkerModel), defaultWorkerModel);
   });
 }

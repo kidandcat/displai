@@ -72,6 +72,8 @@ class DisplayMcpServer {
         description: t.description,
         // Round-trip through JSON: nested const maps are not Map<String, dynamic>.
         inputSchema: JsonObject.fromJson(jsonDecode(jsonEncode(t.inputSchema)) as Map<String, dynamic>),
+        // Antigravity loads MCP tools on demand unless told otherwise: Minerva's are always at hand.
+        meta: const {'antigravity/alwaysLoad': true},
         callback: (args, extra) async {
           onCall?.call(t.name);
           ToolResult r;

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../brain/claude_models.dart';
+import '../brain/models.dart';
 import '../l10n/l10n.dart';
 
 /// Minerva's settings, as the status bar on the Mac and the settings screen on the phone change
@@ -12,8 +12,11 @@ abstract interface class AssistantSettings implements Listenable {
   ModelChoice get brainModel;
   ModelChoice get workerModel;
 
-  /// The models of the installed Claude Code (null until it first reported them).
-  ClaudeCatalog? get catalog;
+  /// The models of [provider]'s installed agent (null until it first reported them).
+  ModelCatalog? catalogFor(BrainProvider provider);
+
+  /// Providers whose agent is not installed or not signed in.
+  Set<BrainProvider> get unavailableProviders;
 
   /// Why Claude Code says fast mode can't be used on this account, else null.
   String? get fastUnavailable;

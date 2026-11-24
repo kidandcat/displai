@@ -659,8 +659,20 @@ abstract class AppLocalizations {
   /// No description provided for @modelLoading.
   ///
   /// In en, this message translates to:
-  /// **'Loading Claude Code\'s models…'**
-  String get modelLoading;
+  /// **'Loading {agent}\'s models…'**
+  String modelLoading(String agent);
+
+  /// No description provided for @modelUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'{agent} is not installed or not signed in. Install it and sign in from a terminal (for Antigravity: run agy).'**
+  String modelUnavailable(String agent);
+
+  /// No description provided for @modelProviderNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Each provider keeps its own conversation.'**
+  String get modelProviderNote;
 
   /// No description provided for @modelEffort.
   ///

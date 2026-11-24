@@ -82,8 +82,9 @@ Checked locally with Claude Code **2.1.302**.
 - Permissions: Claude Code's own built-in tools are off except `WebSearch`/`WebFetch`
   (`--tools WebSearch,WebFetch`). Everything that touches the Mac is a Minerva tool (see 3.5), which
   runs at once (no confirmations, see the policy in 3.5), so no `--permission-prompt-tool` is needed.
-- The brain is meant to be **pluggable** (Codex, Antigravity and others later): the capabilities live in
-  Minerva's MCP server, and the brain adapter only has to speak MCP plus a streaming text protocol.
+- The brain is **pluggable** (`BrainSession` in `lib/brain/brain_session.dart`): the capabilities live
+  in Minerva's MCP server, and each provider's adapter only has to speak MCP plus a streaming text
+  protocol. Claude Code is one provider; Google Antigravity is the second (§3.1.1).
 - Model: user-selectable in the status bar's model picker, separately for the conversation (default
   `opus`, effort low) and for the workers (default `opus`, effort medium): model, effort and speed
   (fast mode, where the model and the account allow it). The list is never hard-coded: every brain start
@@ -97,6 +98,40 @@ Checked locally with Claude Code **2.1.302**.
   conversation survives restarts. `--autocompact 100k` keeps the context small (faster first voice); the
   full history stays searchable in Minerva's own store (§3.6). Each user message is prefixed with the
   local date and time.
+
+### 3.1.1 Brain: Google Antigravity
+
+Checked locally with the Antigravity CLI (`agy`) **1.5.16** on 2026-11-25. It must run on the user's
+**Antigravity subscription**, never the Gemini API or Gemini CLI with an API key, so Minerva drives
+the user's own `agy`, signed in with their Google account, the way OpenBot (CopilotKit) does
+(read from its installed app bundle).
+
+- `agy acp` serves the **Agent Client Protocol**: JSON-RPC 2.0 over stdio, one JSON per line. It is
+  spawned with the login shell's environment plus `AGY_CLI_DISABLE_AUTO_UPDATE=true`. Auth is `agy`'s
+  own (method `oauth-personal`, the same Google login as running `agy` in a terminal); no key is
+  stored or passed. `agy -p` (print mode) exists too, but it can't be kept warm, steered or interrupted.
+- Start: `initialize` → `session/new {cwd, mcpServers:[{type:"http", name:"minerva", url}],
+  _meta.antigravity.systemPrompt.append}` (the answer lists `availableModels`, which become the
+  picker's catalog). Later starts use `session/resume` with the stored id (Antigravity keeps the
+  conversation, no history replay), falling back to `session/new` when it is gone (-32002).
+- Models: ids carry the thinking level (`gemini-4-neon-low` … `-xhigh`); the picker shows each model
+  once with its levels as the effort. `session/set_model` switches without restarting. `agy models`
+  lists them at Minerva's start, so the picker has them before Antigravity is ever used.
+- Turns: `session/prompt` resolves with `stopReason` when the turn ends; text and tool calls stream as
+  `session/update` notifications (`agent_message_chunk`, `tool_call` with `rawInput`). MCP tools are
+  named `mcp_minerva_<tool>`. A prompt sent mid-turn steers it (the earlier prompt resolves at once).
+- Barge-in: the `session/cancel` notification; the prompt resolves with `cancelled` within
+  milliseconds. A prompt sent while the cancel is still in flight is refused, so `send` waits for it.
+- Permissions: Antigravity's own tools (shell, file edits, browser, subagents) can't be turned off per
+  session (`_meta.antigravity.disabledTools` had no effect), but each asks
+  `session/request_permission`: Minerva allows its MCP tools and the web (`search_web`,
+  `read_url_content`; workers also the read-only file tools) once, and refuses the rest. The system
+  prompt append says so. Minerva's MCP tools are flagged `_meta["antigravity/alwaysLoad"]` so
+  Antigravity does not defer them.
+- Each provider keeps its own conversation (`brain_session` for Claude, `brain_session.antigravity`);
+  switching providers stops the answer in progress and goes on with that provider's conversation.
+  Workers store `antigravity:<id>` and resume on the provider they started on.
+- Smoke test: `dart run tool/antigravity_smoke.dart` (tool call, interruption, resume in a new process).
 
 ### 3.2 Audio: sherpa-onnx
 

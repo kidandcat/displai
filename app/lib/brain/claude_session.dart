@@ -3,68 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-/// Events from a Claude Code turn, as the app needs them.
-sealed class BrainEvent {}
-
-class TextDelta extends BrainEvent {
-  TextDelta(this.text);
-  final String text;
-}
-
-/// A tool call started streaming (name without the `mcp__minerva__` prefix for display tools).
-class ToolStart extends BrainEvent {
-  ToolStart(this.index, this.name);
-  final int index;
-  final String name;
-}
-
-/// Accumulated (partial) JSON arguments of the tool call at [index].
-class ToolInput extends BrainEvent {
-  ToolInput(this.index, this.name, this.partialJson);
-  final int index;
-  final String name;
-  final String partialJson;
-}
-
-/// Claude Code is compacting the conversation (true) or finished doing so (false).
-class Compacting extends BrainEvent {
-  Compacting(this.active);
-  final bool active;
-}
-
-/// Claude Code took a message sent with [ClaudeSession.send] into the conversation, either as
-/// a new turn or attached to the turn in progress (only with [ClaudeSession.replayUserMessages]).
-class MessageTaken extends BrainEvent {}
-
-/// Claude Code's answer to the initialize request (only with [ClaudeSession.describe]): its
-/// version, the models it offers and whether fast mode is on (see [ClaudeCatalog]).
-class Described extends BrainEvent {
-  Described(this.info);
-  final Map<String, dynamic> info;
-}
-
-/// Claude Code's fast mode state after a turn: fast mode can turn off once a request finds the
-/// account can't use it (only [reason] then says why, e.g. `extra_usage_disabled`).
-class FastModeState extends BrainEvent {
-  FastModeState({required this.on, this.reason});
-  final bool on;
-  final String? reason;
-}
-
-class TurnDone extends BrainEvent {
-  TurnDone({required this.interrupted, this.error, this.result = ''});
-  final bool interrupted;
-  final String? error;
-
-  /// The turn's final text (what a worker reports back).
-  final String result;
-}
+import 'brain_session.dart';
+import 'models.dart';
 
 /// A long-lived headless Claude Code process (stream-json in/out), kept warm between turns.
 ///
 /// The conversation is saved by Claude Code under [sessionId] and resumed on the next start, so
 /// it survives restarts; Claude Code compacts it on its own when it reaches [autocompact] tokens.
-class ClaudeSession {
+class ClaudeSession implements BrainSession {
   ClaudeSession({
     required this.model,
     required this.systemPrompt,
@@ -111,9 +57,11 @@ class ClaudeSession {
   static const _prefix = 'mcp__${displayServer}__';
 
   final _events = StreamController<BrainEvent>.broadcast();
+  @override
   Stream<BrainEvent> get events => _events.stream;
 
   Process? _proc;
+  @override
   bool busy = false;
   bool _discard = false;
   Future<void>? _starting;
@@ -128,15 +76,17 @@ class ClaudeSession {
   final _toolJson = <int, StringBuffer>{};
   final _log = StringBuffer();
 
-  /// Last stderr lines, for diagnostics.
+  @override
   String get stderrTail => _log.toString();
 
   /// Starts Claude Code, resuming [sessionId] if it exists. Concurrent calls share one start.
+  @override
   Future<void> start() => _starting ??= _start().whenComplete(() => _starting = null);
 
   Future<void> _start() async {
-    final env = await _cleanEnvironment();
-    final claude = await _which('claude', env['PATH']!);
+    final env = await loginEnvironment();
+    final claude = findExecutable('claude', env['PATH']!);
+    if (claude == null) throw StateError('`claude` not found. Install Claude Code and sign in first.');
     await Directory(workDir).create(recursive: true);
     final mcpConfig = jsonEncode({
       'mcpServers': {
@@ -211,6 +161,7 @@ class ClaudeSession {
 
   /// Switches the model, effort or fast mode. A running process is restarted on the same
   /// conversation ([sessionId] is resumed), at once when idle, else when the turn ends.
+  @override
   void reconfigure({required String model, required String? effort, required bool fast}) {
     if (model == this.model && effort == this.effort && fast == this.fast) return;
     this.model = model;
@@ -232,8 +183,10 @@ class ClaudeSession {
     unawaited(start().catchError((Object e) => _log.write('claude restart failed: $e\n')));
   }
 
+  @override
   bool get running => _proc != null;
 
+  @override
   Future<void> send(String text) async {
     if (_starting != null) await _starting;
     if (_proc == null) await start();
@@ -255,6 +208,7 @@ class ClaudeSession {
     });
   }
 
+  @override
   void interrupt() {
     if (!busy || _proc == null) return;
     _discard = true;
@@ -265,6 +219,7 @@ class ClaudeSession {
     });
   }
 
+  @override
   void dispose() {
     _proc?.kill();
     _proc = null;
@@ -328,7 +283,8 @@ class ClaudeSession {
       case 'control_response':
         final r = ev['response'];
         if (r is Map && r['request_id'] == 'describe' && r['subtype'] == 'success' && r['response'] is Map) {
-          _events.add(Described((r['response'] as Map).cast<String, dynamic>()));
+          final info = (r['response'] as Map).cast<String, dynamic>();
+          _events.add(Described(info, catalog: ModelCatalog.fromInfo(info)));
         }
     }
   }
@@ -360,33 +316,4 @@ class ClaudeSession {
   }
 
   static String _shortName(String name) => name.startsWith(_prefix) ? name.substring(_prefix.length) : name;
-
-  /// The user's login-shell environment (so PATH finds `claude` from a GUI app), without
-  /// variables inherited from a parent Claude Code session (effort, session ids, sockets).
-  static Future<Map<String, String>> _cleanEnvironment() async {
-    final shell = Platform.environment['SHELL'] ?? '/bin/zsh';
-    final r = await Process.run(shell, ['-lc', 'env -0'], stdoutEncoding: utf8);
-    final env = <String, String>{};
-    for (final entry in (r.stdout as String).split('\x00')) {
-      final i = entry.indexOf('=');
-      if (i <= 0) continue;
-      env[entry.substring(0, i)] = entry.substring(i + 1);
-    }
-    if (env.isEmpty) env.addAll(Platform.environment);
-    env.removeWhere((k, _) => k.startsWith('CLAUDE') || k == 'CLAUDECODE' || k.startsWith('OPENBOT'));
-    env['PATH'] ??= '/usr/bin:/bin:/usr/sbin:/sbin';
-    return env;
-  }
-
-  static Future<String> _which(String cmd, String path) async {
-    for (final dir in path.split(':')) {
-      final f = File('$dir/$cmd');
-      if (f.existsSync()) return f.path;
-    }
-    for (final dir in ['${Platform.environment['HOME']}/.local/bin', '/opt/homebrew/bin', '/usr/local/bin']) {
-      final f = File('$dir/$cmd');
-      if (f.existsSync()) return f.path;
-    }
-    throw StateError('`$cmd` not found. Install Claude Code and sign in first.');
-  }
 }

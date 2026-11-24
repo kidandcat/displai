@@ -334,7 +334,18 @@ class AppLocalizationsEs extends AppLocalizations {
   String get modelNoMatch => 'Ningún modelo coincide';
 
   @override
-  String get modelLoading => 'Cargando los modelos de Claude Code…';
+  String modelLoading(String agent) {
+    return 'Cargando los modelos de $agent…';
+  }
+
+  @override
+  String modelUnavailable(String agent) {
+    return '$agent no está instalado o no tiene la sesión iniciada. Instálalo e inicia sesión desde una terminal (para Antigravity: ejecuta agy).';
+  }
+
+  @override
+  String get modelProviderNote =>
+      'Cada proveedor tiene su propia conversación.';
 
   @override
   String get modelEffort => 'Esfuerzo';

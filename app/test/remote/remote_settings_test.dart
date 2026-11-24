@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:minerva/brain/models.dart';
 import 'package:minerva/l10n/l10n.dart';
 import 'package:minerva/remote/remote_assistant.dart';
 import 'package:minerva/remote/remote_settings.dart';
@@ -66,14 +67,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Ajustes'), findsOneWidget);
-    expect(find.text('Opus 5.5 · Bajo'), findsOneWidget);
+    expect(find.text('Claude · Opus 5.5 · Bajo'), findsOneWidget);
     expect(find.text('Masculina 2'), findsOneWidget);
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('ci'), 200, scrollable: list);
     expect(find.text('github'), findsOneWidget);
 
     // The model picker fits the phone too.
-    await tester.scrollUntilVisible(find.text('Conversación'), -200, scrollable: list);
+    // Back to the top (under the app bar the tile would not take the tap).
+    await tester.drag(list, const Offset(0, 2000));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Conversación'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -81,6 +84,57 @@ void main() {
     await tester.tap(find.text('Sonnet 5.5').last);
     await tester.pumpAndSettle();
     expect(a.brainModel.model, 'sonnet');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets("the phone switches the provider, with each provider's models", (tester) async {
+    tester.view.physicalSize = const Size(377, 702);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final a = RemoteAssistant(relay: 'wss://example.invalid', key: 'k' * 43);
+    final settings = _settings()
+      ..['catalogs'] = {
+        'claude': _settings()['catalog'],
+        'antigravity': {
+          'provider': 'antigravity',
+          'version': '1.5.16',
+          'models': [
+            {
+              'value': 'gemini-4-neon',
+              'displayName': 'Gemini 4 Neon',
+              'supportsEffort': true,
+              'supportedEffortLevels': ['low', 'medium', 'high'],
+            },
+            {'value': 'gemini-pro-orchestrator', 'displayName': 'Gemini Pro Orchestrator'},
+          ],
+        },
+      }
+      ..['unavailable'] = <String>[];
+    a
+      ..handleMessage({'t': 'hello'})
+      ..handleMessage(settings);
+    expect(a.catalogFor(BrainProvider.antigravity)!.find('gemini-4-neon')!.efforts, ['low', 'medium', 'high']);
+
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('es'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: RemoteSettingsPage(assistant: a),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Conversación'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Antigravity'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(a.brainModel.provider, BrainProvider.antigravity);
+    expect(a.brainModel.model, 'gemini-4-neon');
+    expect(find.text('Gemini Pro Orchestrator'), findsOneWidget);
+    expect(find.text('1.5.16 (Antigravity CLI)'), findsOneWidget);
+    await tester.tap(find.text('Gemini Pro Orchestrator'));
+    await tester.pumpAndSettle();
+    expect(a.brainModel.model, 'gemini-pro-orchestrator');
 
     await tester.pumpWidget(const SizedBox());
   });
