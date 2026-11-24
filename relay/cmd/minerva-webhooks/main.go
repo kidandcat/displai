@@ -197,6 +197,7 @@ type handler struct {
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path, ok := strings.CutPrefix(r.URL.Path, "/"+h.key)
 	if !ok || path != "" && path[0] != '/' {
+		log.Printf("ignored %s (not under the path key) from %s", r.Method, r.RemoteAddr)
 		http.NotFound(w, r)
 		return
 	}
@@ -206,6 +207,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.maxBody))
 	if err != nil {
 		http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	if noise(r, body) {
+		// Crawlers and scanners (the host name is in Certificate Transparency logs): answered,
+		// but neither saved nor reported.
+		log.Printf("ignored %s %s from %s (no body, no challenge)", r.Method, path, r.RemoteAddr)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`+"\n")
 		return
 	}
 	ev := map[string]any{
@@ -238,6 +247,32 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = io.WriteString(w, `{"ok":true}`+"\n")
+}
+
+// noise reports a request the assistant does not hear about: a GET or HEAD without a body that
+// is not a subscription check (a challenge-style query parameter, see [challengeParam]).
+func noise(r *http.Request, body []byte) bool {
+	if len(body) > 0 || r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	for k := range r.URL.Query() {
+		if challengeParam(k) {
+			return false
+		}
+	}
+	return true
+}
+
+// challengeParam reports query parameters that senders use to verify a webhook URL: WebSub and
+// Meta (hub.challenge, hub.verify_token), X/Twitter (crc_token), Microsoft Graph
+// (validationToken), WeChat (echostr) and the like.
+func challengeParam(k string) bool {
+	k = strings.ToLower(k)
+	switch k {
+	case "crc_token", "validationtoken", "validation_token", "echostr", "hub.verify_token", "verify_token", "hub.mode":
+		return true
+	}
+	return strings.Contains(k, "challenge")
 }
 
 // save writes the full request to the inbox (the event the brain gets may be cut short), and

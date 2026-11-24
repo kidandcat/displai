@@ -102,3 +102,42 @@ func TestSecretPersists(t *testing.T) {
 		t.Fatalf("mode %v", fi.Mode())
 	}
 }
+
+// Crawlers find the host in Certificate Transparency logs: a GET or HEAD without a body is
+// answered but not saved or reported, unless it is a subscription check.
+func TestBodilessGetsAreNoise(t *testing.T) {
+	h, out := newTestHandler(t)
+	for _, req := range []*http.Request{
+		httptest.NewRequest("GET", "/k3y", nil),
+		httptest.NewRequest("GET", "/k3y/", nil),
+		httptest.NewRequest("HEAD", "/k3y/", nil),
+		httptest.NewRequest("GET", "/k3y/storage/logs/laravel.log", nil),
+		httptest.NewRequest("GET", "/k3y/wp-admin/setup.php?step=1", nil),
+		httptest.NewRequest("GET", "/k3y/.env", nil),
+	} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s %s: status %d", req.Method, req.URL, w.Code)
+		}
+	}
+	if files, _ := os.ReadDir(h.dir); out.Len() != 0 || len(files) != 0 {
+		t.Fatalf("noise reported %q, saved %d files", out, len(files))
+	}
+
+	// These still reach the assistant.
+	for _, req := range []*http.Request{
+		httptest.NewRequest("GET", "/k3y/meta?hub.mode=subscribe&hub.challenge=1", nil),
+		httptest.NewRequest("GET", "/k3y/x?crc_token=abc", nil),
+		httptest.NewRequest("GET", "/k3y/?challenge=abc", nil),
+		httptest.NewRequest("GET", "/k3y/", strings.NewReader("ping")),
+		httptest.NewRequest("POST", "/k3y/", nil),
+		httptest.NewRequest("DELETE", "/k3y/thing", nil),
+	} {
+		out.Reset()
+		h.ServeHTTP(httptest.NewRecorder(), req)
+		if !strings.Contains(out.String(), `"t":"webhook"`) {
+			t.Errorf("%s %s was not reported", req.Method, req.URL)
+		}
+	}
+}

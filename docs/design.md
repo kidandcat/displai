@@ -291,6 +291,9 @@ third parties (GitHub, Stripe, home automation…) call the desktop at
 - Each request is answered at once (`{"ok":true}`, or the `hub.challenge` echoed), saved to
   `<data>/webhooks/inbox/` (1 MB max, newest 200) and sent to the brain as a `[webhook]` message, marked as
   third-party content. `MINERVA_NO_WEBHOOKS` turns it off.
+- A GET or HEAD without a body is crawler noise unless it carries a challenge-style query parameter
+  (`hub.challenge`, `crc_token`, `validationToken`, `echostr`…): it is answered and logged, but neither
+  saved nor sent to the brain.
 
 ### 3.8 Desktop service and window states
 
