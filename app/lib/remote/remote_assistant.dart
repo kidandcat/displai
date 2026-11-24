@@ -320,7 +320,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     }
     // A view the brain shows while it used other apps: bring Minerva back to show it.
     if (id != null &&
-        const {'show', 'html', 'form', 'video', 'back'}.contains(name) &&
+        const {'show', 'html', 'form', 'video'}.contains(name) &&
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       await phoneControl.front();
     }
