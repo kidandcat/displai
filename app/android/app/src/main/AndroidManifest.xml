@@ -35,7 +35,43 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="minerva" android:host="pair"/>
             </intent-filter>
+            <!-- Long press on home on phones that pick an assist activity (Android 8 and older
+                 launchers); newer ones go through AssistService. -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST"/>
+                <action android:name="android.intent.action.VOICE_COMMAND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
         </activity>
+        <!-- Minerva as the digital assistant, see AssistService.kt. -->
+        <service
+            android:name=".AssistService"
+            android:label="Minerva"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/assist_service"/>
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService"/>
+            </intent-filter>
+        </service>
+        <service
+            android:name=".AssistSessionService"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true"/>
+        <service
+            android:name=".AssistRecognitionService"
+            android:label="Minerva"
+            android:exported="true">
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/assist_recognition"/>
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

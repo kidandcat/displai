@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Minerva as the digital assistant, see AssistService.kt. Not launchable from the lock
+     screen: the phone controls the desktop, so it has to be unlocked first. -->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.kidandcat.minerva.AssistSessionService"
+    android:recognitionService="com.kidandcat.minerva.AssistRecognitionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="false" />

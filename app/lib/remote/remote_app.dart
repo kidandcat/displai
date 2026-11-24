@@ -35,8 +35,14 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
   /// Pairing links opened from outside the app (minerva://pair?...), see MainActivity.
   static const _links = MethodChannel('minerva/link');
 
+  /// Opened as the phone's assistant (long press on home), see AssistService.kt.
+  static const _assist = MethodChannel('minerva/assist');
+
   RemoteAssistant? _assistant;
   bool _loaded = false;
+
+  /// An assist launch that came before the pairing was loaded.
+  bool _assistPending = false;
 
   @override
   void initState() {
@@ -45,6 +51,9 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
     _links.setMethodCallHandler((call) async {
       if (call.method == 'link' && call.arguments is String) _pair(call.arguments as String);
     });
+    _assist.setMethodCallHandler((call) async {
+      if (call.method == 'assist') _listenNow();
+    });
     unawaited(_load());
   }
 
@@ -52,6 +61,11 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
       File('${(await getApplicationSupportDirectory()).path}/remote.json');
 
   Future<void> _load() async {
+    try {
+      if (await _assist.invokeMethod<bool>('initial') == true) _assistPending = true;
+    } on MissingPluginException {
+      // Not on Android.
+    }
     try {
       final initial = await _links.invokeMethod<String>('initial');
       if (initial != null && await _pair(initial)) return;
@@ -84,11 +98,24 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
   void _connect(String relay, String key) {
     _assistant?.dispose();
     final a = RemoteAssistant(relay: relay, key: key)..start();
+    if (_assistPending) {
+      _assistPending = false;
+      a.listenNow();
+    }
     if (!mounted) return;
     setState(() {
       _assistant = a;
       _loaded = true;
     });
+  }
+
+  void _listenNow() {
+    final a = _assistant;
+    if (a == null) {
+      _assistPending = true;
+    } else {
+      a.listenNow();
+    }
   }
 
   Future<void> _unpair() async {

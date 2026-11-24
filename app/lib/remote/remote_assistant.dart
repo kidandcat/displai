@@ -118,6 +118,10 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
         backgroundJobs = (m['jobs'] as num?)?.toInt() ?? 0;
         muted = m['muted'] == true;
         presence.muted = muted;
+        if (_unmuteOnState) {
+          _unmuteOnState = false;
+          if (muted) return toggleMute();
+        }
         notifyListeners();
       case 'stop':
         unawaited(audio.stop());
@@ -198,6 +202,17 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
 
   /// Back in the foreground: reconnect at once instead of waiting for the next retry.
   void resumed() => link.reconnectNow();
+
+  /// Opened as the phone's assistant: unmute and reconnect at once, so the mic streams to the
+  /// desktop as soon as it says hello.
+  void listenNow() {
+    if (!_hostReady) _unmuteOnState = true;
+    if (muted) toggleMute();
+    link.reconnectNow();
+  }
+
+  /// [listenNow] ran before the desktop was there: unmute once it tells its state.
+  bool _unmuteOnState = false;
 
   @override
   void dispose() {

@@ -14,16 +14,20 @@ import io.flutter.plugin.common.MethodChannel
  * Minerva on a phone is the remote of a desktop that does all the processing. This activity
  * gives Flutter the phone's echo-cancelled mic and its speaker ([VoiceAudio], channel
  * minerva/audio, the same contract as the macOS engine) and the pairing links it is opened
- * with (channel minerva/link).
+ * with (channel minerva/link), and tells it when it was opened as the phone's assistant
+ * (channel minerva/assist, see [AssistService]).
  */
 class MainActivity : FlutterActivity() {
     private var audio: VoiceAudio? = null
     private var links: MethodChannel? = null
     private var initialLink: String? = null
+    private var assist: MethodChannel? = null
+    private var initialAssist = false
     private var pendingStart: Pair<Int, MethodChannel.Result>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         initialLink = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString
+        initialAssist = isAssist(intent)
         super.onCreate(savedInstanceState)
         // A remote on the table: keep the screen on while Minerva is open.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -76,6 +80,16 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        assist = MethodChannel(messenger, "minerva/assist").also { ch ->
+            ch.setMethodCallHandler { call, result ->
+                if (call.method == "initial") {
+                    result.success(initialAssist)
+                    initialAssist = false
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
     }
 
     private fun startAudio(rate: Int, result: MethodChannel.Result) {
@@ -101,7 +115,13 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.action == Intent.ACTION_VIEW) intent.dataString?.let { links?.invokeMethod("link", it) }
+        if (isAssist(intent)) assist?.invokeMethod("assist", null)
     }
+
+    /** Opened by a long press on home or the assistant button: start listening. */
+    private fun isAssist(intent: Intent?) = intent != null &&
+        (intent.getBooleanExtra(EXTRA_ASSIST, false) ||
+            intent.action == Intent.ACTION_ASSIST || intent.action == Intent.ACTION_VOICE_COMMAND)
 
     override fun onDestroy() {
         audio?.release()
@@ -109,7 +129,8 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
-    private companion object {
-        const val MIC_REQUEST = 7
+    companion object {
+        const val EXTRA_ASSIST = "assist"
+        private const val MIC_REQUEST = 7
     }
 }
