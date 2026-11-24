@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../display/display_controller.dart' show VaultSubmission;
 import '../display/display_runner.dart';
 import 'protocol.dart';
 import 'remote_link.dart';
@@ -44,6 +45,9 @@ class PhoneHost extends ChangeNotifier {
   void Function(Float32List samples)? onMic;
   void Function(String text)? onEvent;
   void Function(bool on)? onMute;
+
+  /// A credential the user typed in a vault form on the phone (for the vault, not the brain).
+  void Function(VaultSubmission submission)? onVault;
 
   /// The phone finished playing everything it was sent.
   void Function()? onIdle;
@@ -98,6 +102,9 @@ class PhoneHost extends ChangeNotifier {
         if (active && text is String && text.isNotEmpty) onEvent?.call(text);
       case 'mute':
         if (active) onMute?.call(m['on'] == true);
+      case 'vault':
+        final submission = VaultSubmission.fromJson(m);
+        if (active && submission != null) onVault?.call(submission);
     }
   }
 

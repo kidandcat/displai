@@ -70,7 +70,9 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi {
       ..add(audio.mic.listen(_onMic))
       ..add(audio.output.listen((o) => presence.addAudio(o.$1, o.$2)))
       ..add(audio.idle.listen((_) => link.send({'t': 'idle', 'n': _received})))
-      ..add(display.userEvents.listen((text) => link.send({'t': 'event', 'text': text})));
+      ..add(display.userEvents.listen((text) => link.send({'t': 'event', 'text': text})))
+      // Typed credentials go to the desktop's vault, over the encrypted link only.
+      ..add(display.vaultSubmissions.listen((v) => link.send({'t': 'vault', ...v.toJson()})));
     link.addListener(notifyListeners);
     link.start();
     presence.mode = PresenceMode.idle;

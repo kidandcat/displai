@@ -157,7 +157,7 @@ at it. Tools (v0):
 |---|---|
 | `show` | Replace the main surface with a new view (high-level catalog items). Pushes the old view to the timeline. |
 | `update` | Patch components or data model of the current view (e.g. mark step done, fill a field). |
-| `form` | Show a form and **wait** for submit (by click or voice), return the values. |
+| `form` | Show a form and **wait** for submit (by click or voice), return the values. Fields of type `secret` are never returned (see 3.9). |
 | `video` | Play a video URL, with controls the agent can also drive (pause, seek). |
 | `html` | A page the brain programs itself (HTML/CSS/JS in a WebView) when no catalog item fits: games, simulations, custom charts. Theme CSS variables and a `minerva` bridge (`data`, `onData`, `send`, `state`) are injected; the call returns once loaded, with JS errors. Also an inline `html` node inside `show`. |
 | `clear` | Clear the surface. |
@@ -194,6 +194,7 @@ brain's built-ins), so any MCP-capable brain gets the same capabilities.
 | `click`, `type_text`, `press_key`, `scroll` | CGEvent / AX actions, by `[n]` target or coordinates. |
 | `open`, `activate`, `apps`, `windows` | Apps, URLs and files. |
 | `minerva_window` | Minerva's own window: `orb` or `full` (see 3.8, it also switches on its own). |
+| `vault_list`, `vault_request`, `vault_delete` | Saved credentials, used through `{{vault:name.field}}` placeholders (see 3.9). |
 
 The native side is `macos/Runner/ComputerControl.swift` (method channel `minerva/computer`); it needs
 the Accessibility and Screen Recording permissions.
@@ -256,7 +257,7 @@ speech recognition, the brain, the voice and all tools stay on the desktop. Same
   - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,muted}`, `stop`, `reset`,
     `tool{id?,name,args}` (no id = replay), `partial{name,json}`, `cancel_partial`;
   - phone→desktop: `hello{w,h,platform}`, `result{id,text,error,png?}`, `idle{n}`, `event{text}`,
-    `mute{on}`.
+    `mute{on}`, `vault{name,description,fields}` (a credential typed in a vault form, see 3.9).
 - **While the phone is connected the desktop is quiet**: its mic is ignored, the phone's mic feeds the VAD
   and STT, the voice and the earcon go to the phone, and display tools run on the phone (10 s timeout, then
   locally). Brain messages get a `[phone WxH]` prefix so it designs for the phone screen. Mutating display
@@ -311,6 +312,41 @@ quit). One window, three states (`MainFlutterWindow.swift`, `lib/app/desktop_win
   it from the menu bar, Spotlight or Finder. `screen` leaves Minerva's own windows out.
 - The Flutter engine starts headless, before any window is shown. A second launch asks the running
   instance to show its window and exits. App Nap is disabled so routines and the relay keep their timers.
+
+### 3.9 Credential vault
+
+Minerva keeps its own credential vault (not the macOS Keychain: no system dialogs) so the brain can
+log in, call APIs or fill passwords **without ever seeing a value** (`app/lib/vault/`).
+
+- **Storage**: `<dataDir>/vault/` (mode 0700). `vault.bin` is the JSON of all credentials sealed with
+  AES-256-GCM (`MNV1` magic, 12-byte nonce, ciphertext, tag; fixed AAD); `key` is a random 32-byte key
+  (mode 0600) created on the first save. Both are written atomically (temp file + rename). A credential
+  is a slug name, a description and named fields, each secret or not.
+- **Asking**: `vault_request {name, description, fields:[{name,label,secret}]}` shows a form (the normal
+  form renderer, with a `secret` field type: obscured, with a show/hide toggle). The call returns at
+  once. On submit the values go straight to the vault and the form is wiped; the brain only gets
+  `[display] saved credential <name> (fields …)` (or `… cancelled`). Vault forms cannot be changed with
+  `update`, and `get_state` shows their fields as `•••`. On the phone the submission travels as
+  `vault{…}` over the encrypted remote link, never as an `event`. `vault_list` gives names,
+  descriptions and field names; `vault_delete` removes one. The bottom bar's key button lists them
+  (no reveal) and deletes them.
+- **Placeholders**: the brain writes `{{vault:name.field}}`. `write_file` content and `type_text` get the
+  value in place. `run_command` instead gets each placeholder rewritten to an environment variable
+  reference (`"${MINERVA_VAULT_1}"`, adapted to the quoting around it) and the value passed in the
+  child's environment, so it is not in the command line (`ps`) or a shell history. An unknown
+  placeholder is a tool error naming it. Workers get `vault_list` and the same substitution.
+- **Redaction**: every result of Minerva's tools (brain and workers) is scrubbed: each stored secret
+  value of 4+ characters (also JSON-escaped and URL-encoded) becomes its placeholder. Values of deleted
+  credentials stay in the scrub list until restart. `type_text` does not report the typed length.
+  `snapshot` draws secret fields obscured even if the user revealed them.
+- **Threat model**: it keeps values out of what goes to Anthropic (prompts, tool results), the
+  conversation history (`minerva.db`), the logs and the display readback. It is not protection against
+  someone with the user's account: the key file sits next to the data, protected only by file
+  permissions, like the rest of Minerva's data. Nor against a brain that sets out to exfiltrate them
+  (e.g. a command that sends a placeholder's value somewhere, or decrypts the vault itself): the prompt
+  rules and scrubbing make leaks unlikely, not impossible. Not scrubbed: images (`screen` of another
+  app showing a password), the Claude built-ins `Read`/`Grep` of workers on a file that holds a value,
+  and values shorter than 4 characters.
 
 ## 4. Latency (measured)
 

@@ -11,6 +11,8 @@ import 'app/main_view.dart';
 import 'presence/presence.dart';
 import 'store/legacy_data.dart';
 import 'remote/remote_app.dart';
+import 'vault/vault.dart';
+import 'vault/vault_strings.dart';
 import 'voice/model_store.dart';
 import 'webhooks/webhooks.dart';
 
@@ -134,6 +136,7 @@ class _HomePageState extends State<HomePage> {
                 assistant: a,
                 actions: [
                   if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),
+                  if (a.ready) _VaultButton(vault: a.vault),
                   if (a.ready) _PhoneButton(assistant: a),
                 ],
               ),
@@ -323,6 +326,99 @@ class _WebhookDialog extends StatelessWidget {
               child: const Text('Copiar'),
             ),
             FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _VaultButton extends StatelessWidget {
+  const _VaultButton({required this.vault});
+
+  final Vault vault;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        tooltip: VaultStrings.button,
+        onPressed: () => showDialog<void>(context: context, builder: (_) => _VaultDialog(vault: vault)),
+        icon: const Icon(Icons.key, color: Colors.white54),
+      );
+}
+
+/// The saved credentials: names, descriptions and field names (values are never shown), and
+/// deleting them.
+class _VaultDialog extends StatelessWidget {
+  const _VaultDialog({required this.vault});
+
+  final Vault vault;
+
+  Future<void> _delete(BuildContext context, String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(VaultStrings.deleteConfirm(name)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text(VaultStrings.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text(VaultStrings.delete)),
+        ],
+      ),
+    );
+    if (ok == true) await vault.delete(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return ListenableBuilder(
+      listenable: vault,
+      builder: (context, _) {
+        final items = vault.credentials;
+        return AlertDialog(
+          title: const Text(VaultStrings.dialogTitle),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(VaultStrings.dialogIntro, style: t.bodyMedium),
+                const SizedBox(height: 16),
+                if (vault.loadError != null)
+                  Text(VaultStrings.unavailable(vault.loadError!), style: t.bodySmall?.copyWith(color: Colors.redAccent))
+                else if (items.isEmpty)
+                  Text(VaultStrings.empty, style: t.bodySmall?.copyWith(color: Colors.white54))
+                else
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final c in items)
+                          ListTile(
+                            key: ValueKey('vault-${c.name}'),
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(c.name, style: t.titleSmall?.copyWith(color: kAccent)),
+                            subtitle: Text(
+                              [
+                                if (c.description.isNotEmpty) c.description,
+                                VaultStrings.fields([for (final f in c.fields) f.name]),
+                              ].join('\n'),
+                              style: t.bodySmall?.copyWith(color: Colors.white54),
+                            ),
+                            trailing: IconButton(
+                              tooltip: VaultStrings.delete,
+                              icon: const Icon(Icons.delete_outline, color: Colors.white54),
+                              onPressed: () => _delete(context, c.name),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text(VaultStrings.close)),
           ],
         );
       },

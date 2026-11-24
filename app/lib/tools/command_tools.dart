@@ -3,15 +3,20 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../mcp/display_mcp_server.dart';
+import '../vault/vault.dart';
 import 'tool_provider.dart';
 
 /// Shell commands and files on the user's Mac.
 ///
 /// Everything runs at once, nothing is confirmed by the user (design §3.5).
+///
+/// With a [vault], `{{vault:name.field}}` placeholders in run_command and write_file are filled
+/// in (design §3.9) and command output is scrubbed of stored secrets.
 class CommandTools extends ToolProvider {
-  CommandTools({String? home}) : home = home ?? Platform.environment['HOME'] ?? '/';
+  CommandTools({String? home, this.vault}) : home = home ?? Platform.environment['HOME'] ?? '/';
 
   final String home;
+  final Vault? vault;
 
   static const _maxOutput = 12000;
 
@@ -20,7 +25,8 @@ class CommandTools extends ToolProvider {
     McpTool(
       'run_command',
       'Run a zsh command on the user\'s Mac (login shell, cwd = home unless given). Returns exit '
-          'code and output (truncated). Runs at once. Not for long-running servers.',
+          'code and output (truncated). Runs at once. Not for long-running servers. '
+          '{{vault:name.field}} placeholders are filled in (see vault_list).',
       {
         'type': 'object',
         'properties': {
@@ -46,7 +52,8 @@ class CommandTools extends ToolProvider {
     ),
     McpTool(
       'write_file',
-      'Create or overwrite a text file (append: true adds to the end).',
+      'Create or overwrite a text file (append: true adds to the end). {{vault:name.field}} '
+          'placeholders in content are filled in.',
       {
         'type': 'object',
         'properties': {
@@ -97,8 +104,18 @@ class CommandTools extends ToolProvider {
     final timeout = Duration(seconds: ((args['timeout_s'] as num?)?.toInt() ?? 60).clamp(1, 600));
     final cwd = _path(args['cwd'] as String?);
     if (!Directory(cwd).existsSync()) return ToolResult.error('error: cwd not found: $cwd');
+    // Credentials reach the command as environment variables, not in its text.
+    var script = command;
+    var env = const <String, String>{};
+    if (vault != null) {
+      try {
+        (script, env) = vault!.commandWithEnv(command);
+      } on VaultException catch (e) {
+        return ToolResult.error('error: $e');
+      }
+    }
     final shell = Platform.environment['SHELL'] ?? '/bin/zsh';
-    final p = await Process.start(shell, ['-lc', command], workingDirectory: cwd);
+    final p = await Process.start(shell, ['-lc', script], workingDirectory: cwd, environment: env);
     unawaited(p.stdin.close());
     final out = StringBuffer();
     final done = Future.wait([
@@ -111,10 +128,11 @@ class CommandTools extends ToolProvider {
       await done.timeout(const Duration(seconds: 2), onTimeout: () => []);
     } on TimeoutException {
       p.kill(ProcessSignal.sigkill);
-      return ToolResult('timeout after ${timeout.inSeconds}s; output so far:\n${_truncate(out.toString())}',
+      return ToolResult('timeout after ${timeout.inSeconds}s; output so far:\n${_truncate(_scrub(out.toString()))}',
           isError: true);
     }
-    final text = _truncate(out.toString());
+    // Scrubbed before truncating, so a cut can't leave part of a secret.
+    final text = _truncate(_scrub(out.toString()));
     return ToolResult('exit $code\n$text', isError: code != 0);
   }
 
@@ -134,8 +152,14 @@ class CommandTools extends ToolProvider {
     final f = File(_path(args['path'] as String?));
     final content = args['content'] as String? ?? '';
     final append = args['append'] == true;
+    String data;
+    try {
+      data = vault?.substitute(content) ?? content;
+    } on VaultException catch (e) {
+      return ToolResult.error('error: $e');
+    }
     await f.parent.create(recursive: true);
-    await f.writeAsString(content, mode: append ? FileMode.append : FileMode.write);
+    await f.writeAsString(data, mode: append ? FileMode.append : FileMode.write);
     return ToolResult('${append ? 'appended to' : 'wrote'} ${f.path} (${content.length} chars)');
   }
 
@@ -154,6 +178,8 @@ class CommandTools extends ToolProvider {
     if (entries.length > 300) b.writeln('[… ${entries.length - 300} more]');
     return ToolResult(b.toString());
   }
+
+  String _scrub(String s) => vault?.scrub(s) ?? s;
 
   static String _truncate(String s) {
     if (s.length <= _maxOutput) return s;

@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 
 import '../mcp/display_mcp_server.dart';
 import '../tools/tool_provider.dart';
+import '../vault/vault.dart';
 import 'computer.dart';
 
 /// Computer use: see the screen, read the accessibility tree, click, type, press keys, scroll,
@@ -13,10 +14,13 @@ import 'computer.dart';
 ///
 /// Every action runs at once; nothing is confirmed by the user (design §3.5).
 class ComputerTools extends ToolProvider {
-  ComputerTools({Computer? computer, this.settle = const Duration(milliseconds: 300)})
+  ComputerTools({Computer? computer, this.settle = const Duration(milliseconds: 300), this.vault})
       : computer = computer ?? Computer();
 
   final Computer computer;
+
+  /// Fills `{{vault:name.field}}` placeholders in type_text (design §3.9).
+  final Vault? vault;
 
   /// Wait after an action so the UI reacts before the model looks again.
   final Duration settle;
@@ -89,7 +93,7 @@ class ComputerTools extends ToolProvider {
     McpTool(
       'type_text',
       'Type text at the keyboard focus, or into element index after focusing it. "\\n" presses '
-          'Return.',
+          'Return. {{vault:name.field}} placeholders are filled in.',
       {
         'type': 'object',
         'properties': {
@@ -274,8 +278,16 @@ class ComputerTools extends ToolProvider {
     if (index != null && _tree?.line(index) == null) {
       return ToolResult.error('Unknown element [$index]: call ui_tree first.');
     }
-    final r = await computer.type(text, index: index);
+    String typed;
+    try {
+      typed = vault?.substitute(text) ?? text;
+    } on VaultException catch (e) {
+      return ToolResult.error('error: $e');
+    }
+    var r = await computer.type(typed, index: index);
     await Future<void>.delayed(settle);
+    // Not even the length of a credential goes back.
+    if (typed != text) r = r.replaceFirst(RegExp(r'typed \d+ characters'), 'typed the text with its vault values');
     return ToolResult(r);
   }
 
