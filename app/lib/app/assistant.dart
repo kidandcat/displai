@@ -162,6 +162,13 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   DateTime? _turnSpeechEnd;
   Float32List? _earcon;
 
+  /// Status lines ([activity]) are spoken too, so nobody has to read them: after
+  /// [statusDelay] (a status replaced sooner is skipped), only while the voice is silent, and
+  /// not the same one twice in a row. Their audio comes back under [_statusGeneration].
+  static const statusDelay = Duration(seconds: 1);
+  Timer? _statusTimer;
+  String _spokenStatus = '';
+
   /// The voice is playing, on the phone while it is connected, else on the Mac.
   bool get _playing => onPhone ? phone!.playing : audio.isPlaying;
 
@@ -547,6 +554,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
 
   void _say(String text) {
     if (Speaker.cleanForSpeech(text).isEmpty) return;
+    _spokenStatus = '';
     _pendingTts++;
     _speaker.say(_generation, text);
     _updatePresence();
@@ -632,6 +640,14 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   // ---------------------------------------------------------------- output
 
   void _onSpeech(Speech s) {
+    if (s.generation == _statusGeneration) {
+      // A status line: dropped once it is stale or the reply has started.
+      if (_statusQuiet && _statusSpeech(activity) == s.text) {
+        _play(s.samples);
+        _updatePresence();
+      }
+      return;
+    }
     if (s.generation != _generation) return; // interrupted turn
     _pendingTts = math.max(0, _pendingTts - 1);
     if (_firstAudioAt == null) {
@@ -678,7 +694,27 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   void _setActivity(String text) {
     if (activity == text) return;
     activity = text;
+    _statusTimer?.cancel();
+    if (text.isNotEmpty) _statusTimer = Timer(statusDelay, _speakStatus);
     notifyListeners();
+  }
+
+  void _speakStatus() {
+    final text = _statusSpeech(activity);
+    if (text.isEmpty || text == _spokenStatus || !_statusQuiet) return;
+    _spokenStatus = text;
+    _speaker.say(_statusGeneration, text);
+  }
+
+  int get _statusGeneration => -_generation - 1;
+
+  /// Nothing of the reply is queued or playing, and the user is not talking.
+  bool get _statusQuiet => ready && _pendingTts == 0 && !_playing && !_userSpeaking;
+
+  /// "Pensando…" → "Pensando." (as [Speaker] cleans it, to match its audio).
+  static String _statusSpeech(String status) {
+    final s = status.replaceAll('…', '').trim();
+    return s.isEmpty ? '' : Speaker.cleanForSpeech('$s.');
   }
 
   void _updatePresence() {
@@ -699,6 +735,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
       s.cancel();
     }
     _noticeTimer?.cancel();
+    _statusTimer?.cancel();
     window.removeListener(_syncAudio);
     window.dispose();
     presence.removeListener(_pushState);
