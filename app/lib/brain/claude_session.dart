@@ -32,6 +32,10 @@ class Compacting extends BrainEvent {
   final bool active;
 }
 
+/// Claude Code took a message sent with [ClaudeSession.send] into the conversation, either as
+/// a new turn or attached to the turn in progress (only with [ClaudeSession.replayUserMessages]).
+class MessageTaken extends BrainEvent {}
+
 class TurnDone extends BrainEvent {
   TurnDone({required this.interrupted, this.error, this.result = ''});
   final bool interrupted;
@@ -55,6 +59,7 @@ class ClaudeSession {
     this.effort = 'low',
     this.builtinTools = const ['WebSearch', 'WebFetch'],
     this.autocompact = '100k',
+    this.replayUserMessages = false,
   });
 
   final String model;
@@ -72,6 +77,11 @@ class ClaudeSession {
   /// Context size that triggers Claude Code's auto-compaction (kept low: a smaller context
   /// answers faster, and voice latency matters more than recall; search_history covers the rest).
   final String autocompact;
+
+  /// Emit [MessageTaken] for each sent message as Claude Code consumes it. A message sent while
+  /// a turn runs may be folded into that turn instead of getting its own, so counting turns
+  /// does not tell when all sent messages were answered.
+  final bool replayUserMessages;
 
   static const displayServer = 'minerva';
   static const _prefix = 'mcp__${displayServer}__';
@@ -109,6 +119,7 @@ class ClaudeSession {
       '--output-format', 'stream-json',
       '--include-partial-messages',
       '--verbose',
+      if (replayUserMessages) '--replay-user-messages',
       '--append-system-prompt', systemPrompt,
       '--mcp-config', mcpConfig,
       '--strict-mcp-config',
@@ -206,6 +217,8 @@ class ClaudeSession {
     switch (ev['type']) {
       case 'system' when ev['subtype'] == 'status':
         _events.add(Compacting(ev['status'] == 'compacting'));
+      case 'user' when replayUserMessages && _hasText(ev):
+        _events.add(MessageTaken());
       case 'stream_event':
         if (_discard) return;
         final e = ev['event'] as Map<String, dynamic>;
@@ -263,6 +276,12 @@ class ClaudeSession {
     b[8] = (b[8] & 0x3f) | 0x80;
     final h = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
     return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
+  }
+
+  static bool _hasText(Map<String, dynamic> ev) {
+    final content = (ev['message'] as Map<String, dynamic>?)?['content'];
+    if (content is String) return true;
+    return content is List && content.any((b) => b is Map && b['type'] == 'text');
   }
 
   static String _shortName(String name) => name.startsWith(_prefix) ? name.substring(_prefix.length) : name;

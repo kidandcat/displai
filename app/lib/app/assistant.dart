@@ -507,6 +507,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
             display.streamPartial(e.name, e.partialJson);
           }
         }
+      case MessageTaken():
+        break;
       case Compacting():
         // Takes a few seconds once the context is full; say why the answer is late.
         _setActivity(e.active ? 'Resumiendo la conversación…' : 'Pensando…');

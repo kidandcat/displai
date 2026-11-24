@@ -176,19 +176,22 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
       sessionId: sessionId,
       builtinTools: _builtins,
       autocompact: '200k',
+      replayUserMessages: true,
     );
     w
       ..mcp = mcp
       ..session = session
       ..sub = session.events.listen((e) {
-        // A follow-up sent mid-run gets its own turn: finish after the last one.
-        if (e is TurnDone && --w.pending <= 0) _finished(w, e);
+        // A follow-up sent mid-run is either folded into the running turn or gets its own:
+        // finish on the first turn end after Claude Code took every message sent.
+        if (e is MessageTaken) w.taken++;
+        if (e is TurnDone && (w.taken >= w.sent || e.error != null || e.interrupted)) _finished(w, e);
       });
     _running[id] = w;
     notifyListeners();
     try {
       await session.start();
-      w.pending++;
+      w.sent++;
       await session.send(text);
     } catch (e) {
       _finished(w, TurnDone(interrupted: false, error: '$e'));
@@ -236,7 +239,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     final running = _running[id];
     if (running != null) {
       // Claude Code queues it and answers it after the current turn.
-      running.pending++;
+      running.sent++;
       await running.session.send(text);
       return ToolResult('sent to worker $id');
     }
@@ -292,8 +295,9 @@ class _Worker {
   late final StreamSubscription<BrainEvent> sub;
   bool stopped = false;
 
-  /// Messages sent whose turn has not ended yet.
-  int pending = 0;
+  /// Messages sent to the session, and how many of them Claude Code has taken in.
+  int sent = 0;
+  int taken = 0;
 
   Future<void> dispose() async {
     await sub.cancel();
