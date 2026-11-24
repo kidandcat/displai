@@ -13,6 +13,7 @@ import 'package:genui/genui.dart';
 import 'package:json_schema_builder/json_schema_builder.dart';
 
 import 'form_widgets.dart';
+import 'html_widgets.dart';
 import 'theme.dart';
 import 'video_widgets.dart';
 import 'view_model.dart';
@@ -26,6 +27,9 @@ abstract final class DisplayActions {
   static const String tap = 'tap';
   static const String press = 'press';
   static const String submit = 'submit';
+
+  /// `minerva.send(...)` from a custom HTML page; context {text}.
+  static const String message = 'message';
 }
 
 void _dispatch(CatalogItemContext ctx, String name, [int index = 0]) {
@@ -73,6 +77,12 @@ final Catalog displayCatalog = Catalog([
   _item('progress', 'Progress bar.', ['value', 'label'], _progress),
   _item('image', 'Image.', ['url', 'caption', 'height'], _image),
   _item('video', 'Video player.', ['url', 'caption', 'loop', 'full'], _video),
+  _item('html', 'Custom HTML page.', [
+    'html',
+    'dataJson',
+    'height',
+    'fill',
+  ], _html),
   _item('divider', 'Divider.', [], _divider),
   _item('row', 'Horizontal layout.', ['children', 'cols'], _row),
   _item('column', 'Vertical layout.', ['children', 'fill'], _column),
@@ -1036,6 +1046,25 @@ Widget _video(CatalogItemContext ctx, _Json data) {
     caption: data['caption'] as String?,
     loop: data['loop'] == true,
     full: data['full'] == true,
+  );
+}
+
+Widget _html(CatalogItemContext ctx, _Json data) {
+  final String? html = data['html'] as String?;
+  if (html == null) return const SizedBox.shrink();
+  return DisplayHtml(
+    componentId: ctx.id,
+    html: html,
+    dataJson: data['dataJson'] as String?,
+    height: (data['height'] as num?)?.toDouble(),
+    fill: data['fill'] == true,
+    onMessage: (text) => ctx.dispatchEvent(
+      UserActionEvent(
+        name: DisplayActions.message,
+        sourceComponentId: ctx.id,
+        context: {'text': text},
+      ),
+    ),
   );
 }
 

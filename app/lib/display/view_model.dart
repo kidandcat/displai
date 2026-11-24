@@ -25,6 +25,7 @@ const Map<String, String> catalogNames = {
   'column': 'DColumn',
   'grid': 'DGrid',
   'form': 'DForm',
+  'html': 'DHtml',
 };
 
 const Set<String> layoutTypes = {'row', 'column', 'grid'};
@@ -54,6 +55,10 @@ const Map<String, String> _typeAliases = {
   'hr': 'divider',
   'col': 'column',
   'stack': 'column',
+  'web': 'html',
+  'webview': 'html',
+  'page': 'html',
+  'custom': 'html',
 };
 
 const Map<String, String> _idPrefixes = {
@@ -74,6 +79,8 @@ const Set<String> atomicJsonKeys = {
   'layout',
   'name',
   'control',
+  // A page reloads whenever its HTML changes: only complete HTML is rendered.
+  'html',
 };
 
 /// One node of a view.
@@ -343,6 +350,17 @@ class NodeParser {
       case 'grid':
         final num? cols = numOf(raw['cols'] ?? raw['columns']);
         if (cols != null) p['cols'] = cols.toInt().clamp(1, 6);
+      case 'html':
+        copyStr('html', ['content', 'code', 'source']);
+        // Kept as JSON text: genui would read a {"path": ...} object as a data binding.
+        if (raw.containsKey('data')) {
+          p['dataJson'] = jsonEncode(raw['data']);
+        } else if (raw['dataJson'] is String) {
+          p['dataJson'] = raw['dataJson'];
+        }
+        final num? h = numOf(raw['height']);
+        if (h != null) p['height'] = h.toDouble();
+        if (raw['fill'] == true) p['fill'] = true;
       case 'form':
         copyStr('title', []);
         copyStr('intro', ['text']);

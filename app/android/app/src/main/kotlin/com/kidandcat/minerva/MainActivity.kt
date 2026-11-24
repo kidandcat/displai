@@ -59,6 +59,13 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(messenger, "minerva/webview").setMethodCallHandler { call, result ->
+            if (call.method == "snapshot") {
+                PageSnapshots.capture(this) { pages -> result.success(pages) }
+            } else {
+                result.notImplemented()
+            }
+        }
         links = MethodChannel(messenger, "minerva/link").also { ch ->
             ch.setMethodCallHandler { call, result ->
                 if (call.method == "initial") {

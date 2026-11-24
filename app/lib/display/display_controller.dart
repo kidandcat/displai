@@ -4,6 +4,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:genui/genui.dart' show SurfaceContext;
@@ -17,14 +18,17 @@ import 'tool_specs.dart';
 import 'video_widgets.dart';
 import 'view_model.dart';
 
-/// One view of the timeline (a `show`, `form` or `video`).
+/// One view of the timeline (a `show`, `form`, `video` or `html`).
 class DisplayViewEntry {
   DisplayViewEntry._(this.seq, this.kind) : surfaceId = 'v$seq';
 
   final int seq;
 
-  /// 'view', 'form' or 'video'.
+  /// 'view', 'form', 'video' or 'html'.
   final String kind;
+
+  /// Drawn edge to edge, without the title (videos and full custom pages).
+  bool edgeToEdge = false;
 
   /// The A2UI surface rendering this view.
   final String surfaceId;
@@ -66,6 +70,7 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
 
   final ValueNotifier<VideoCommand?> _videoCommands = ValueNotifier(null);
   final Map<String, VideoStatus> _videoStatus = {};
+  final Map<String, HtmlStatus> _htmlStatus = {};
   int _videoSeq = 0;
 
   // Progressive rendering state.
@@ -112,6 +117,62 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
   void reportVideo(String componentId, VideoStatus status) {
     _videoStatus[componentId] = status;
   }
+
+  @override
+  void reportHtml(String componentId, HtmlStatus status) {
+    _htmlStatus[componentId] = status;
+  }
+
+  /// Waits (up to [timeout]) for the custom pages of the current view to load, then a moment
+  /// for their first errors, and describes them: what the tool result tells the model. Empty
+  /// when the view has no page.
+  Future<String> settleHtml({
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    List<DisplayNode> pages() => [
+      ...?current?.root.walk().where((n) => n.type == 'html'),
+    ];
+    if (pages().isEmpty) return '';
+    bool ready(DisplayNode n) {
+      final HtmlStatus? st = _htmlStatus[n.id];
+      return st != null && st.html == n.props['html'] && st.loaded;
+    }
+
+    final DateTime until = DateTime.now().add(timeout);
+    while (!pages().every(ready) && DateTime.now().isBefore(until)) {
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+    }
+    // Scripts that run after load (timers, module imports) fail a little later.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    return [for (final n in pages()) _htmlLine(n)].join('\n');
+  }
+
+  String _htmlLine(DisplayNode n) {
+    final HtmlStatus? st = _htmlStatus[n.id];
+    if (st == null || st.html != n.props['html']) {
+      return 'page ${n.id}: not rendered yet';
+    }
+    final parts = <String>[st.loaded ? 'loaded' : 'still loading'];
+    final Size? c = st.content, v = st.viewport;
+    if (c != null && v != null && v.height > 0) {
+      parts.add('viewport ${v.width.round()}x${v.height.round()}');
+      if (c.height > v.height + 4 || c.width > v.width + 4) {
+        parts.add(
+          'content ${c.width.round()}x${c.height.round()} does not fit (the page scrolls)',
+        );
+      }
+    }
+    if (st.state != null) parts.add('state ${_clipText(st.state!, 400)}');
+    if (st.errors.isNotEmpty) {
+      parts.add('JS ERRORS: ${st.errors.join(' | ')}');
+    } else if (st.loaded) {
+      parts.add('no errors');
+    }
+    return 'page ${n.id}: ${parts.join('; ')}';
+  }
+
+  static String _clipText(String s, int max) =>
+      s.length <= max ? s : '${s.substring(0, max - 1)}…';
 
   // -------------------------------------------------------------------------
   // Navigation.
@@ -163,6 +224,8 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
           return _form(args);
         case 'video':
           return _video(args);
+        case 'html':
+          return _html(args);
         case 'clear':
           return _clear();
         case 'back':
@@ -334,6 +397,37 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
     _notify();
     return 'ok: playing ${quote(title)} full-window as view ${_cursor + 1} '
         '(id video1)';
+  }
+
+  String _html(Map<String, dynamic> args) {
+    final String? html = str(args['html'] ?? args['content'] ?? args['code']);
+    if (html == null || html.trim().isEmpty) {
+      return 'error: html needs the page (html: HTML with its CSS and JS)';
+    }
+    _dropPartial();
+    final DisplayViewEntry e = _newEntry('html');
+    final bool full = args['full'] == true;
+    final DisplayNode page = DisplayNode(
+      id: str(args['id'])?.trim().isNotEmpty == true
+          ? str(args['id'])!.trim()
+          : 'page1',
+      type: 'html',
+      props: NodeParser.normalizeProps('html', {...args, 'fill': true}),
+    );
+    e
+      ..title = str(args['title']) ?? ''
+      ..edgeToEdge = full
+      ..root = DisplayNode(
+        id: 'root',
+        type: 'column',
+        props: {'fill': true},
+        children: [page],
+      )
+      ..shownAt = DateTime.now();
+    _render(e);
+    _notify();
+    return 'ok: page "${page.id}" shown as view ${_cursor + 1}'
+        '${full ? ' (edge to edge)' : ''}.';
   }
 
   /// Wipes the display and its timeline (before a replay of the display calls, when the
@@ -617,6 +711,11 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
         text =
             '$what ${ref.ordinal} ${quote(ref.label, 120)} in '
             '${quote(e.title)}';
+      case DisplayActions.message:
+        final String said = cellText(context['text']);
+        text =
+            'page ${quote(e.title.isEmpty ? node.id : e.title)} '
+            '(${node.id}) sent: ${_clipText(said, 2000)}';
       case DisplayActions.submit:
         final Map<String, Object?> values = _formValues(e, node);
         text =
@@ -762,6 +861,8 @@ class DisplayController extends ChangeNotifier implements DisplayRuntime {
         buf.writeln('${pad}video ${n.id} ${p['url']}$status');
       case 'divider':
         break;
+      case 'html':
+        buf.writeln('$pad${_htmlLine(n)}');
       case 'row':
       case 'column':
       case 'grid':

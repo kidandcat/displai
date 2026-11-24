@@ -6,28 +6,34 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart' show GlobalKey, WidgetsBinding;
 
 import 'display_controller.dart';
+import 'html_widgets.dart' show capturePages;
 
 /// Runs display tool calls against a [DisplayController] that is on screen, the same way on
 /// the desktop and on the phone remote.
 class DisplayRunner {
   /// The display tools whose call changes what is shown (replayed when the display moves).
-  static const mutating = {'show', 'update', 'form', 'video', 'clear', 'back'};
+  static const mutating = {'show', 'update', 'form', 'video', 'html', 'clear', 'back'};
 
   /// Runs [name] and, for calls that change the view, waits for it to lay out and adds a
   /// warning when it does not fit. Returns the result text (starting with "error:" on failure).
   static Future<String> run(DisplayController display, String name, Map<String, dynamic> args) async {
     final text = display.callTool(name, args);
     if (text.startsWith('error:')) return text;
-    if (const {'show', 'update', 'form', 'back'}.contains(name)) {
+    if (const {'show', 'update', 'form', 'back', 'html'}.contains(name)) {
       // Bounded: a hidden or minimised window produces no frames.
       await frame();
       await frame();
+      var out = text;
       final cut = display.overflow;
       if (cut > 0) {
-        return '$text\nwarning: the view does not fit the screen; about ${cut.round()} px '
+        out = '$out\nwarning: the view does not fit the screen; about ${cut.round()} px '
             'at the bottom are cut off (the display never scrolls). Update it to show less or split '
             'it into several views.';
       }
+      // Custom pages: wait for them to load and report their JS errors.
+      final pages = await display.settleHtml();
+      if (pages.isNotEmpty) out = '$out\n$pages';
+      return out;
     }
     return text;
   }
@@ -47,7 +53,29 @@ class DisplayRunner {
     if (boundary is! RenderRepaintBoundary) return null;
     final size = boundary.size;
     final ratio = math.min(2.0, 1280 / math.max(size.width, size.height));
-    final image = await boundary.toImage(pixelRatio: ratio);
+    var image = await boundary.toImage(pixelRatio: ratio);
+    // Custom pages are platform views, blank in Flutter's capture: draw their snapshots over it.
+    final pages = await capturePages();
+    if (pages.isNotEmpty && boundary.attached) {
+      final origin = boundary.localToGlobal(Offset.zero);
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)..drawImage(image, Offset.zero, Paint());
+      canvas
+        ..scale(ratio)
+        ..clipRect(Offset.zero & size);
+      for (final (rect, shot) in pages) {
+        canvas.drawImageRect(
+          shot,
+          Offset.zero & Size(shot.width.toDouble(), shot.height.toDouble()),
+          rect.shift(-origin),
+          Paint()..filterQuality = FilterQuality.medium,
+        );
+        shot.dispose();
+      }
+      final composed = await recorder.endRecording().toImage(image.width, image.height);
+      image.dispose();
+      image = composed;
+    }
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     if (data == null) return null;
@@ -78,7 +106,7 @@ class DisplayLog {
     }
   }
 
-  static bool _opensView(String name) => const {'show', 'form', 'video'}.contains(name);
+  static bool _opensView(String name) => const {'show', 'form', 'video', 'html'}.contains(name);
 
   /// Replays the logged calls through [run] (after a reset of that display).
   void replay(void Function(String name, Map<String, dynamic> args) run) {

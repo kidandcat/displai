@@ -41,7 +41,7 @@ flowchart LR
     Surface[Display - A2UI surface + timeline]
   end
   Brain <-->|stream-json stdin/stdout| CC[claude -p headless]
-  CC <-->|tools: show, update, form, video, clear, get_state| MCP
+  CC <-->|tools: show, update, form, video, html, clear, get_state| MCP
   MCP --> Surface
   Surface -->|user actions, state| MCP
   Brain -->|text deltas| Speaker --> Out[Audio out]
@@ -159,6 +159,7 @@ at it. Tools (v0):
 | `update` | Patch components or data model of the current view (e.g. mark step done, fill a field). |
 | `form` | Show a form and **wait** for submit (by click or voice), return the values. |
 | `video` | Play a video URL, with controls the agent can also drive (pause, seek). |
+| `html` | A page the brain programs itself (HTML/CSS/JS in a WebView) when no catalog item fits: games, simulations, custom charts. Theme CSS variables and a `minerva` bridge (`data`, `onData`, `send`, `state`) are injected; the call returns once loaded, with JS errors. Also an inline `html` node inside `show`. |
 | `clear` | Clear the surface. |
 | `back` | Return to the previous view. |
 | `get_state` | Compact widget tree of what is on screen, ordinals, form values, last user actions. |

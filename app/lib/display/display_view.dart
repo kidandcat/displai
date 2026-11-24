@@ -187,7 +187,7 @@ class _ViewPageState extends State<_ViewPage> {
       surfaceContext: controller.surfaceContext(entry.surfaceId),
       actionDelegate: _ActionDelegate(controller),
     );
-    if (entry.kind == 'video') return surface;
+    if (entry.kind == 'video' || entry.edgeToEdge) return surface;
 
     final double s = DisplayScale.of(context);
     return LayoutBuilder(
@@ -214,8 +214,8 @@ class _ViewPageState extends State<_ViewPage> {
           ),
         );
         // A form gets the page's height and scrolls its own fields, so its submit button is
-        // always visible; nothing is cut.
-        if (entry.kind == 'form') {
+        // always visible; nothing is cut. A custom page fills it too.
+        if (entry.kind == 'form' || entry.kind == 'html') {
           return Padding(
             padding: EdgeInsets.fromLTRB(hPad, 44 * s, hPad, 32 * s),
             child: Align(
@@ -363,6 +363,7 @@ class _TimelineStripState extends State<_TimelineStrip> {
   static IconData _icon(String kind) => switch (kind) {
     'form' => Icons.edit_note_rounded,
     'video' => Icons.play_circle_outline_rounded,
+    'html' => Icons.code_rounded,
     _ => Icons.dashboard_outlined,
   };
 

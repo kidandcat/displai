@@ -1,6 +1,8 @@
 import AVFoundation
 import Cocoa
 import FlutterMacOS
+import WebKit
+import webview_flutter_wkwebview
 
 /// Minerva's only window, in one of three states:
 ///   open     the normal window; the Mac listens and speaks
@@ -44,6 +46,30 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     RegisterGeneratedPlugins(registry: flutterViewController)
     audio = VoiceAudio(messenger: engine.binaryMessenger)
     computer = ComputerControl(messenger: engine.binaryMessenger)
+    let pages = FlutterMethodChannel(name: "minerva/webview", binaryMessenger: engine.binaryMessenger)
+    pages.setMethodCallHandler { [weak flutterViewController] call, result in
+      guard let controller = flutterViewController else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      switch call.method {
+      case "snapshot":
+        PageSnapshots.capture(in: controller.view, result)
+      case "transparent":
+        // The plugin's setBackgroundColor is UIKit only: let the display show through the page.
+        if let id = (call.arguments as? NSNumber)?.int64Value,
+          let page = FWFWebViewFlutterWKWebViewExternalAPI.webView(
+            forIdentifier: id, withPluginRegistry: controller)
+        {
+          page.setValue(false, forKey: "drawsBackground")
+          result(true)
+        } else {
+          result(false)
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
     let channel = FlutterMethodChannel(name: "minerva/window", binaryMessenger: engine.binaryMessenger)
     channel.setMethodCallHandler { [weak self] call, result in self?.handle(call, result) }
     self.channel = channel
@@ -439,3 +465,43 @@ final class VoiceAudio: NSObject, FlutterStreamHandler {
     send(["t": "idle"])
   }
 }
+
+/// Snapshots of the custom pages (WKWebViews) on the display: Flutter cannot capture platform
+/// views, so the display's snapshot tool draws these over its own capture.
+enum PageSnapshots {
+  /// Replies with [{x, y, w, h, png}], frames in points from the top-left of [root].
+  static func capture(in root: NSView, _ result: @escaping FlutterResult) {
+    var pages: [WKWebView] = []
+    func walk(_ v: NSView) {
+      if let w = v as? WKWebView {
+        if !w.isHiddenOrHasHiddenAncestor && w.bounds.width > 0 && w.bounds.height > 0 { pages.append(w) }
+        return
+      }
+      v.subviews.forEach(walk)
+    }
+    walk(root)
+    if pages.isEmpty {
+      result([])
+      return
+    }
+    var out: [[String: Any]] = []
+    var left = pages.count
+    for page in pages {
+      var r = page.convert(page.bounds, to: root)
+      if !root.isFlipped { r.origin.y = root.bounds.height - r.maxY }
+      page.takeSnapshot(with: nil) { image, _ in
+        if let image, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+          let png = rep.representation(using: .png, properties: [:])
+        {
+          out.append([
+            "x": r.origin.x, "y": r.origin.y, "w": r.width, "h": r.height,
+            "png": FlutterStandardTypedData(bytes: png),
+          ])
+        }
+        left -= 1
+        if left == 0 { result(out) }
+      }
+    }
+  }
+}
+

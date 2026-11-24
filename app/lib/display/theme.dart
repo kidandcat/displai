@@ -294,10 +294,29 @@ class VideoStatus {
   final String? error;
 }
 
+/// Status of a custom HTML page (for get_state and the tool results): reported by the page
+/// widget as it loads, fails and calls `minerva.state`.
+class HtmlStatus {
+  HtmlStatus({required this.html});
+
+  /// The HTML this status belongs to.
+  final String html;
+  bool loaded = false;
+  final List<String> errors = [];
+
+  /// The last `minerva.state(...)` of the page.
+  String? state;
+
+  /// Size of the document and of the page's viewport, in CSS pixels, once loaded.
+  Size? content;
+  Size? viewport;
+}
+
 /// What catalog widgets need from the display runtime.
 abstract interface class DisplayRuntime {
   ValueListenable<VideoCommand?> get videoCommands;
   void reportVideo(String componentId, VideoStatus status);
+  void reportHtml(String componentId, HtmlStatus status);
 }
 
 /// Gives catalog widgets access to the [DisplayRuntime].

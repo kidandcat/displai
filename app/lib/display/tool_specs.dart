@@ -29,7 +29,8 @@ const String _nodeTypesDoc =
     'table{columns:[..], rows:[[..]]} | stats{items:[{label,value,delta?}]} | '
     'kv{items:[[key,value]]} | chips{items:[str]} | buttons{items:[label]} | '
     'progress{value 0-1, label?} | image{url, caption?} | video{url, loop?} | '
-    'divider | row|column|grid{children:[nodes], cols?}.';
+    'divider | row|column|grid{children:[nodes], cols?} | '
+    'html{html, data?, height?} (a custom page inline, see the html tool).';
 
 final Map<String, dynamic> _nodeSchema = {
   'type': 'object',
@@ -48,6 +49,7 @@ final Map<String, dynamic> _nodeSchema = {
         'progress',
         'image',
         'video',
+        'html',
         'divider',
         'row',
         'column',
@@ -78,6 +80,9 @@ final Map<String, dynamic> _nodeSchema = {
     },
     'cols': {'type': 'integer'},
     'loop': {'type': 'boolean'},
+    'html': {'type': 'string'},
+    'data': {},
+    'height': {'type': 'number'},
     'children': {
       'type': 'array',
       'description': 'Nested nodes (row/column/grid).',
@@ -195,6 +200,37 @@ final List<DisplayToolSpec> displayToolSpecs = [
         },
         'seek': {'type': 'number'},
       },
+    },
+  ),
+  const DisplayToolSpec(
+    name: 'html',
+    description:
+        'Show a view you program yourself: an HTML page with its CSS and JS '
+        '(canvas, SVG, animations, games, 3D, charts, custom controls; load '
+        'libraries from a CDN). Use it when no show node fits. The page fills '
+        'the view under the title (full: edge to edge, no title; keep the '
+        'top-right corner free, the orb sits there). It gets the display theme '
+        'as CSS variables (--bg --surface --border --accent --accent2 --text '
+        '--muted --positive --negative; --s = scale, base font 22px*--s) and '
+        'a `minerva` object: minerva.data (the data arg); minerva.onData = '
+        'fn(data), called when update sets data (no reload); minerva.send(v) '
+        'reaches you as a "[display] page ... sent: v" message (use it for '
+        'clicks and results); minerva.state(v) shows v in get_state. Returns '
+        'once the page loads, with its JS errors: fix them at once. '
+        'update {id, set:{data}} pushes new data; set:{html} reloads it.',
+    inputSchema: {
+      'type': 'object',
+      'properties': {
+        'title': {'type': 'string'},
+        'html': {
+          'type': 'string',
+          'description': 'The page: a body fragment or a whole document.',
+        },
+        'data': {'description': 'JSON given to the page as minerva.data.'},
+        'full': {'type': 'boolean'},
+        'id': {'type': 'string', 'description': 'Default page1.'},
+      },
+      'required': ['html'],
     },
   ),
   const DisplayToolSpec(
