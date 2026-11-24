@@ -15,7 +15,8 @@ ThemeData minervaTheme() => ThemeData(
     );
 
 /// The main screen, the same on the desktop and on the phone: the presence orb, the display
-/// on top of it, and a status bar.
+/// on top of it, and a slim bar of status notes and actions (the transcript and the activity
+/// are spoken, not shown; the orb turns red when the mic is muted).
 class MainView extends StatelessWidget {
   const MainView({
     super.key,
@@ -114,34 +115,17 @@ class StatusBar extends StatelessWidget {
     final a = assistant;
     final t = Theme.of(context).textTheme;
     final narrow = MediaQuery.sizeOf(context).width < 600;
-    final line = !a.ready
-        ? (a.linkNote.isNotEmpty ? a.linkNote : 'Cargando la voz…')
-        : a.activity.isNotEmpty
-            ? a.activity
-            : a.lastHeard;
     return Container(
       height: 52,
       padding: EdgeInsets.symmetric(horizontal: narrow ? 4 : 16),
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0x1AFFFFFF)))),
       child: Row(
         children: [
-          IconButton(
-            tooltip: a.muted ? 'Activar micrófono (espacio)' : 'Silenciar micrófono (espacio)',
-            onPressed: a.ready ? a.toggleMute : null,
-            icon: Icon(a.muted ? Icons.mic_off : Icons.mic, color: a.muted ? Colors.redAccent : kAccent),
-          ),
-          SizedBox(width: narrow ? 4 : 12),
-          Expanded(
-            child: Text(
-              line,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: t.bodyMedium?.copyWith(
-                color: a.activity.isNotEmpty ? kAccent : Colors.white60,
-                fontStyle: a.activity.isNotEmpty ? FontStyle.italic : FontStyle.normal,
-              ),
-            ),
-          ),
+          const Spacer(),
+          if (!a.ready) ...[
+            Text(a.linkNote.isNotEmpty ? a.linkNote : 'Cargando la voz…',
+                style: t.bodySmall?.copyWith(color: kAccent, fontStyle: FontStyle.italic)),
+            const SizedBox(width: 16),
+          ],
           if (a.ready && a.backgroundJobs > 0) ...[
             const SizedBox(
               width: 14,
