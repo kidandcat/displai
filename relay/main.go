@@ -10,6 +10,9 @@
 // share through a QR code, and encrypt everything end to end with keys the relay cannot derive
 // (app/lib/remote/secure_channel.dart). Run with -tap to log what each forwarded frame looks like
 // from here.
+//
+// With -tls-addr it also carries the desktops' webhooks: TLS connections to <id>.<tunnel domain>
+// are passed through, still encrypted, to the desktop that owns the id (passthrough.go).
 package main
 
 import (
@@ -19,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -48,9 +52,13 @@ type relay struct {
 	mu    sync.Mutex
 	rooms map[string]*room
 	tap   bool // log what every forwarded frame looks like to the relay
+
+	pass *passthrough // webhooks for the desktops (passthrough.go)
 }
 
-func newRelay() *relay { return &relay{rooms: map[string]*room{}} }
+func newRelay(tunnelDomain string) *relay {
+	return &relay{rooms: map[string]*room{}, pass: newPassthrough(tunnelDomain)}
+}
 
 func (r *relay) routes() http.Handler {
 	mux := http.NewServeMux()
@@ -59,6 +67,7 @@ func (r *relay) routes() http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc("GET /ws", r.serveWS)
+	r.pass.routes(mux)
 	return mux
 }
 
@@ -235,9 +244,23 @@ func keepAlive(ctx context.Context, c *websocket.Conn) {
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8094", "listen address")
 	tap := flag.Bool("tap", false, "log every forwarded frame as the relay sees it (to check the encryption)")
+	tlsAddr := flag.String("tls-addr", "", "TLS passthrough listen address for the desktops' webhooks, e.g. :443 (empty: off)")
+	tunnelDomain := flag.String("tunnel-domain", "minerva.kidandcat.com", "webhook hosts are <id>.<this domain>")
+	fallback := flag.String("tls-fallback", "", "where -tls-addr sends every other TLS name, e.g. 127.0.0.1:8443 (empty: close them)")
+	proxyProto := flag.Bool("tls-fallback-proxy-protocol", false, "send a PROXY v2 header to -tls-fallback")
 	flag.Parse()
-	r := newRelay()
+	r := newRelay(*tunnelDomain)
 	r.tap = *tap
+	r.pass.fallback = *fallback
+	r.pass.proxyProtocol = *proxyProto
+	if *tlsAddr != "" {
+		ln, err := net.Listen("tcp", *tlsAddr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("tls passthrough for *.%s on %s", r.pass.domain, *tlsAddr)
+		go func() { log.Fatal(r.pass.serve(ln)) }()
+	}
 	srv := &http.Server{Addr: *addr, Handler: r.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("minerva-relay listening on %s", *addr)
 	log.Fatal(srv.ListenAndServe())

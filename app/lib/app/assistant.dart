@@ -29,6 +29,7 @@ import '../workers/workers.dart';
 import '../voice/listener.dart';
 import '../voice/model_store.dart';
 import '../voice/speaker.dart';
+import '../webhooks/webhooks.dart';
 import 'assistant_ui.dart';
 
 /// Wires voice, brain and display together (docs/design.md §2 and §5).
@@ -62,6 +63,9 @@ class Assistant extends ChangeNotifier implements AssistantUi {
 
   /// The paired phone remote, once a pairing key exists (see [pairingLink]).
   PhoneHost? phone;
+
+  /// Webhooks from third parties at this Mac's own address, through the relay.
+  Webhooks? webhooks;
 
   /// What built the display, so it can move to the phone and back.
   final _displayLog = DisplayLog();
@@ -213,10 +217,19 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         onCall: (name) => _setActivity(''),
       );
       await _mcp.start();
+      if (Platform.environment['MINERVA_NO_WEBHOOKS'] == null) {
+        webhooks = Webhooks(relay: _relay, dir: '${store.dir}/webhooks', onWebhook: (ev) => notify(Webhooks.describe(ev)))
+          ..addListener(notifyListeners);
+        await webhooks!.start();
+      }
       _claude = ClaudeSession(
         model: model,
         effort: effort,
-        systemPrompt: buildSystemPrompt([MemoryTools.promptSection(store), SkillTools.promptSection(_skillsDir)]),
+        systemPrompt: buildSystemPrompt([
+          MemoryTools.promptSection(store),
+          SkillTools.promptSection(_skillsDir),
+          webhooks?.promptSection() ?? '',
+        ]),
         mcpUrl: _mcp.url,
         workDir: '${store.dir}/brain',
         sessionId: sessionId,
@@ -450,7 +463,8 @@ class Assistant extends ChangeNotifier implements AssistantUi {
   }
 
   void _ask(String text) {
-    final event = text.startsWith('[display]') || text.startsWith('[worker') || text.startsWith('[routine');
+    final event = text.startsWith('[display]') || text.startsWith('[worker') || text.startsWith('[routine') ||
+        text.startsWith('[webhook');
     store.addMessage(event ? 'event' : 'user', text);
     _generation++;
     _pendingTts = 0;
@@ -739,6 +753,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     window.dispose();
     presence.removeListener(_pushState);
     unawaited(phone?.close());
+    webhooks?.dispose();
     if (ready) {
       routines.dispose();
       workers.dispose();

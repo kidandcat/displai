@@ -1,3 +1,28 @@
 minerva.kidandcat.com {
 	reverse_proxy 127.0.0.1:8094
 }
+
+# Webhooks for the desktops (relay/passthrough.go): TLS to <id>.minerva.kidandcat.com must reach
+# the relay still encrypted, so Caddy cannot reverse_proxy it. Caddy keeps :443 and hands those
+# names, by SNI and without terminating TLS, to the relay's -tls-addr. This needs Caddy built
+# with the layer4 module (github.com/mholt/caddy-l4):
+#   xcaddy build --with github.com/mholt/caddy-l4     (or: caddy add-package github.com/mholt/caddy-l4)
+# and this in the global options block at the top of the Caddyfile:
+#
+# {
+# 	servers :443 {
+# 		listener_wrappers {
+# 			layer4 {
+# 				@minerva_webhooks tls sni *.minerva.kidandcat.com
+# 				route @minerva_webhooks {
+# 					proxy 127.0.0.1:8444
+# 				}
+# 			}
+# 			tls
+# 		}
+# 	}
+# }
+#
+# Without caddy-l4, the relay can own :443 instead (-tls-addr :443 -tls-fallback 127.0.0.1:8443
+# -tls-fallback-proxy-protocol, with Caddy moved to https_port 8443 behind a proxy_protocol
+# listener wrapper), but then every site depends on the relay and Caddy's redirects carry :8443.

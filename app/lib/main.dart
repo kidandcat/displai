@@ -12,6 +12,7 @@ import 'presence/presence.dart';
 import 'store/legacy_data.dart';
 import 'remote/remote_app.dart';
 import 'voice/model_store.dart';
+import 'webhooks/webhooks.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -131,7 +132,10 @@ class _HomePageState extends State<HomePage> {
           : Scaffold(
               body: MainView(
                 assistant: a,
-                actions: [if (a.ready) _PhoneButton(assistant: a)],
+                actions: [
+                  if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),
+                  if (a.ready) _PhoneButton(assistant: a),
+                ],
               ),
             ),
     );
@@ -245,6 +249,78 @@ class _PairingDialogState extends State<_PairingDialog> {
                 if (mounted) setState(() => _link = link);
               },
               child: const Text('Nuevo código'),
+            ),
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Opens this Mac's webhook address; lit while it can receive them.
+class _WebhookButton extends StatelessWidget {
+  const _WebhookButton({required this.webhooks});
+
+  final Webhooks webhooks;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: webhooks,
+        builder: (context, _) {
+          final on = webhooks.online && webhooks.certOk;
+          return IconButton(
+            tooltip: on ? 'Webhooks activos' : 'Webhooks',
+            onPressed: () => showDialog<void>(context: context, builder: (_) => _WebhookDialog(webhooks: webhooks)),
+            icon: Icon(Icons.webhook, color: on ? kAccent : Colors.white54),
+          );
+        },
+      );
+}
+
+/// The address third parties can send webhooks to; the assistant hears about each one.
+class _WebhookDialog extends StatelessWidget {
+  const _WebhookDialog({required this.webhooks});
+
+  final Webhooks webhooks;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return ListenableBuilder(
+      listenable: webhooks,
+      builder: (context, _) {
+        final url = webhooks.url;
+        return AlertDialog(
+          title: const Text('Webhooks'),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Otros servicios pueden avisar a Minerva llamando a esta dirección (con cualquier ruta '
+                    'detrás). El cifrado termina en este Mac: el intermediario no ve lo que llega. '
+                    'Mantenla en privado: quien la tenga puede escribir a Minerva.',
+                    style: t.bodyMedium),
+                const SizedBox(height: 16),
+                SelectableText(url ?? '—', style: t.titleSmall?.copyWith(fontFamily: 'Menlo')),
+                const SizedBox(height: 12),
+                Text(webhooks.status, style: t.bodySmall?.copyWith(color: kAccent)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: url == null
+                  ? null
+                  : () async {
+                      await Clipboard.setData(ClipboardData(text: url));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dirección copiada')));
+                      }
+                    },
+              child: const Text('Copiar'),
             ),
             FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
           ],

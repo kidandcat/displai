@@ -44,7 +44,7 @@ func write(t *testing.T, c *websocket.Conn, typ websocket.MessageType, s string)
 }
 
 func TestPairsAndForwards(t *testing.T) {
-	srv := httptest.NewServer(newRelay().routes())
+	srv := httptest.NewServer(newRelay("minerva.test").routes())
 	defer srv.Close()
 
 	host := dial(t, srv.URL, "host", testKey)
@@ -93,7 +93,7 @@ func TestPairsAndForwards(t *testing.T) {
 }
 
 func TestRejectsShortKey(t *testing.T) {
-	srv := httptest.NewServer(newRelay().routes())
+	srv := httptest.NewServer(newRelay("minerva.test").routes())
 	defer srv.Close()
 	_, resp, err := websocket.Dial(context.Background(), strings.Replace(srv.URL, "http", "ws", 1)+"/ws?role=host",
 		&websocket.DialOptions{HTTPHeader: http.Header{"Authorization": {"Bearer short"}}})
