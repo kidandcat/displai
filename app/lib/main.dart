@@ -13,7 +13,6 @@ import 'presence/presence.dart';
 import 'store/legacy_data.dart';
 import 'remote/remote_app.dart';
 import 'vault/vault.dart';
-import 'vault/vault_strings.dart';
 import 'voice/model_store.dart';
 import 'webhooks/webhooks.dart';
 
@@ -344,7 +343,7 @@ class _VaultButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-        tooltip: VaultStrings.button,
+        tooltip: AppLocalizations.of(context).vaultCredentials,
         onPressed: () => showDialog<void>(context: context, builder: (_) => _VaultDialog(vault: vault)),
         icon: const Icon(Icons.key, color: Colors.white54),
       );
@@ -358,13 +357,14 @@ class _VaultDialog extends StatelessWidget {
   final Vault vault;
 
   Future<void> _delete(BuildContext context, String name) async {
+    final l = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        content: Text(VaultStrings.deleteConfirm(name)),
+        content: Text(l.vaultDeleteConfirm(name)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text(VaultStrings.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text(VaultStrings.delete)),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(l.delete)),
         ],
       ),
     );
@@ -374,24 +374,25 @@ class _VaultDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context);
     return ListenableBuilder(
       listenable: vault,
       builder: (context, _) {
         final items = vault.credentials;
         return AlertDialog(
-          title: const Text(VaultStrings.dialogTitle),
+          title: Text(l.vaultCredentials),
           content: SizedBox(
             width: 460,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(VaultStrings.dialogIntro, style: t.bodyMedium),
+                Text(l.vaultDialogIntro, style: t.bodyMedium),
                 const SizedBox(height: 16),
                 if (vault.loadError != null)
-                  Text(VaultStrings.unavailable(vault.loadError!), style: t.bodySmall?.copyWith(color: Colors.redAccent))
+                  Text(l.vaultUnavailable(vault.loadError!), style: t.bodySmall?.copyWith(color: Colors.redAccent))
                 else if (items.isEmpty)
-                  Text(VaultStrings.empty, style: t.bodySmall?.copyWith(color: Colors.white54))
+                  Text(l.vaultEmpty, style: t.bodySmall?.copyWith(color: Colors.white54))
                 else
                   Flexible(
                     child: ListView(
@@ -405,12 +406,12 @@ class _VaultDialog extends StatelessWidget {
                             subtitle: Text(
                               [
                                 if (c.description.isNotEmpty) c.description,
-                                VaultStrings.fields([for (final f in c.fields) f.name]),
+                                l.vaultFields([for (final f in c.fields) f.name].join(', ')),
                               ].join('\n'),
                               style: t.bodySmall?.copyWith(color: Colors.white54),
                             ),
                             trailing: IconButton(
-                              tooltip: VaultStrings.delete,
+                              tooltip: l.delete,
                               icon: const Icon(Icons.delete_outline, color: Colors.white54),
                               onPressed: () => _delete(context, c.name),
                             ),
@@ -422,7 +423,7 @@ class _VaultDialog extends StatelessWidget {
             ),
           ),
           actions: [
-            FilledButton(onPressed: () => Navigator.pop(context), child: const Text(VaultStrings.close)),
+            FilledButton(onPressed: () => Navigator.pop(context), child: Text(l.close)),
           ],
         );
       },

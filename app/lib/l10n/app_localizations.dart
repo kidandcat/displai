@@ -505,6 +505,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No'**
   String get displayNo;
+
+  /// Title of the form that asks for a credential.
+  ///
+  /// In en, this message translates to:
+  /// **'Credential: {name}'**
+  String vaultFormTitle(String name);
+
+  /// Note under the credential form's description.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved in Minerva\'s encrypted vault on this Mac. The assistant never sees what you type here.'**
+  String get vaultFormNote;
+
+  /// Credential form: submit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get vaultSave;
+
+  /// Credential form: after saving (followed by a check mark).
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get vaultSaved;
+
+  /// Cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
+
+  /// Tooltip: reveal a secret field.
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get vaultShowSecret;
+
+  /// Tooltip: hide a secret field.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get vaultHideSecret;
+
+  /// Vault button tooltip and dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Credentials'**
+  String get vaultCredentials;
+
+  /// Intro of the credentials dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Logins and tokens the assistant can use without seeing them. To add one, ask the assistant; it shows a form for it.'**
+  String get vaultDialogIntro;
+
+  /// Credentials dialog, no credentials.
+  ///
+  /// In en, this message translates to:
+  /// **'No credentials saved yet.'**
+  String get vaultEmpty;
+
+  /// Delete button / tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get delete;
+
+  /// Confirmation before deleting a credential.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the credential \"{name}\"?'**
+  String vaultDeleteConfirm(String name);
+
+  /// Field names of a saved credential, comma-separated.
+  ///
+  /// In en, this message translates to:
+  /// **'Fields: {names}'**
+  String vaultFields(String names);
+
+  /// Credentials dialog when the vault failed to open.
+  ///
+  /// In en, this message translates to:
+  /// **'The vault is not available: {error}'**
+  String vaultUnavailable(String error);
 }
 
 class _AppLocalizationsDelegate

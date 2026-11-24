@@ -244,4 +244,56 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get displayNo => 'No';
+
+  @override
+  String vaultFormTitle(String name) {
+    return 'Credencial: $name';
+  }
+
+  @override
+  String get vaultFormNote =>
+      'Se guarda en la caja fuerte cifrada de Minerva en este Mac. El asistente nunca ve lo que escribes aquí.';
+
+  @override
+  String get vaultSave => 'Guardar';
+
+  @override
+  String get vaultSaved => 'Guardado';
+
+  @override
+  String get cancel => 'Cancelar';
+
+  @override
+  String get vaultShowSecret => 'Mostrar';
+
+  @override
+  String get vaultHideSecret => 'Ocultar';
+
+  @override
+  String get vaultCredentials => 'Credenciales';
+
+  @override
+  String get vaultDialogIntro =>
+      'Accesos y tokens que el asistente puede usar sin verlos. Para añadir uno, pídeselo al asistente; te mostrará un formulario.';
+
+  @override
+  String get vaultEmpty => 'Aún no hay credenciales guardadas.';
+
+  @override
+  String get delete => 'Borrar';
+
+  @override
+  String vaultDeleteConfirm(String name) {
+    return '¿Borrar la credencial «$name»?';
+  }
+
+  @override
+  String vaultFields(String names) {
+    return 'Campos: $names';
+  }
+
+  @override
+  String vaultUnavailable(String error) {
+    return 'La caja fuerte no está disponible: $error';
+  }
 }

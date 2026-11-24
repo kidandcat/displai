@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:genui/genui.dart';
 
-import '../vault/vault_strings.dart';
+import '../l10n/l10n.dart';
 import 'theme.dart';
 import 'view_model.dart';
 
@@ -127,7 +127,7 @@ class _DisplayFormState extends State<DisplayForm> {
         (widget.data['submit'] as String?) ?? DisplayStrings.submit;
     final String? cancelLabel = widget.data['cancel'] as String?;
     final String submittedLabel = widget.data['vault'] != null
-        ? VaultStrings.saved
+        ? strings.vaultSaved
         : DisplayStrings.submitted;
 
     final List<Map<String, Object?>> fields = _fields;
@@ -650,7 +650,7 @@ class _SecretFieldState extends State<_SecretField> {
               padding: EdgeInsets.only(right: 6 * s),
               child: IconButton(
                 key: ValueKey('reveal-${widget.name}'),
-                tooltip: show ? VaultStrings.hide : VaultStrings.show,
+                tooltip: show ? strings.vaultHideSecret : strings.vaultShowSecret,
                 iconSize: 24 * s,
                 color: DisplayColors.textMuted,
                 icon: Icon(show ? Icons.visibility_off_outlined : Icons.visibility_outlined),

@@ -1,7 +1,7 @@
+import '../l10n/l10n.dart';
 import '../mcp/display_mcp_server.dart';
 import '../tools/tool_provider.dart';
 import 'vault.dart';
-import 'vault_strings.dart';
 
 /// The vault's brain tools: list and delete saved credentials. [requestTool] (ask the user for
 /// one on the display) is run by the assistant, because it shows a form; [requestForm] builds it.
@@ -84,11 +84,11 @@ class VaultTools extends ToolProvider {
       });
     }
     return <String, dynamic>{
-      'title': VaultStrings.formTitle(name),
+      'title': strings.vaultFormTitle(name),
       'id': 'vault-$name',
-      'intro': [if (description.isNotEmpty) description, VaultStrings.formNote].join('\n\n'),
-      'submit': VaultStrings.save,
-      'cancel': VaultStrings.cancel,
+      'intro': [if (description.isNotEmpty) description, strings.vaultFormNote].join('\n\n'),
+      'submit': strings.vaultSave,
+      'cancel': strings.cancel,
       'vault': name,
       'vaultDescription': description,
       'fields': fields,

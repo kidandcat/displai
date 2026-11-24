@@ -468,8 +468,8 @@ Minerva follows the OS language; there is no language setting.
 - **UI**: Flutter gen-l10n, `app/lib/l10n/app_en.arb` (template) and `app_es.arb`. The locale is
   the first OS language the app has (macOS: the preferred languages; Android: the phone's locales),
   else English (`resolveLocale` in `lib/l10n/l10n.dart`). Code without a `BuildContext` (the status
-  lines the voice speaks, webhook and pairing notes, errors, display chrome) uses `strings`, which
-  resolves the same locale. The phone UI follows the phone; the status lines it shows and hears
+  lines the voice speaks, webhook and pairing notes, errors, display chrome, the vault's credential
+  form) uses `strings`, which resolves the same locale. The phone UI follows the phone; the status lines it shows and hears
   come from the Mac, in the Mac's language.
 - **Native**: macOS menu bar item and main menu in `macos/Runner/{en,es}.lproj`
   (`Localizable.strings`, `MainMenu.strings`), the microphone prompt in `InfoPlist.strings`

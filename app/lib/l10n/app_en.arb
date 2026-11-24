@@ -311,5 +311,81 @@
   "displayNo": "No",
   "@displayNo": {
     "description": "Display form: switch off."
+  },
+  "vaultFormTitle": "Credential: {name}",
+  "@vaultFormTitle": {
+    "description": "Title of the form that asks for a credential.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "vaultFormNote": "Saved in Minerva's encrypted vault on this Mac. The assistant never sees what you type here.",
+  "@vaultFormNote": {
+    "description": "Note under the credential form's description."
+  },
+  "vaultSave": "Save",
+  "@vaultSave": {
+    "description": "Credential form: submit button."
+  },
+  "vaultSaved": "Saved",
+  "@vaultSaved": {
+    "description": "Credential form: after saving (followed by a check mark)."
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Cancel button."
+  },
+  "vaultShowSecret": "Show",
+  "@vaultShowSecret": {
+    "description": "Tooltip: reveal a secret field."
+  },
+  "vaultHideSecret": "Hide",
+  "@vaultHideSecret": {
+    "description": "Tooltip: hide a secret field."
+  },
+  "vaultCredentials": "Credentials",
+  "@vaultCredentials": {
+    "description": "Vault button tooltip and dialog title."
+  },
+  "vaultDialogIntro": "Logins and tokens the assistant can use without seeing them. To add one, ask the assistant; it shows a form for it.",
+  "@vaultDialogIntro": {
+    "description": "Intro of the credentials dialog."
+  },
+  "vaultEmpty": "No credentials saved yet.",
+  "@vaultEmpty": {
+    "description": "Credentials dialog, no credentials."
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "Delete button / tooltip."
+  },
+  "vaultDeleteConfirm": "Delete the credential \"{name}\"?",
+  "@vaultDeleteConfirm": {
+    "description": "Confirmation before deleting a credential.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "vaultFields": "Fields: {names}",
+  "@vaultFields": {
+    "description": "Field names of a saved credential, comma-separated.",
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "vaultUnavailable": "The vault is not available: {error}",
+  "@vaultUnavailable": {
+    "description": "Credentials dialog when the vault failed to open.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
   }
 }

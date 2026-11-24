@@ -243,4 +243,56 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get displayNo => 'No';
+
+  @override
+  String vaultFormTitle(String name) {
+    return 'Credential: $name';
+  }
+
+  @override
+  String get vaultFormNote =>
+      'Saved in Minerva\'s encrypted vault on this Mac. The assistant never sees what you type here.';
+
+  @override
+  String get vaultSave => 'Save';
+
+  @override
+  String get vaultSaved => 'Saved';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get vaultShowSecret => 'Show';
+
+  @override
+  String get vaultHideSecret => 'Hide';
+
+  @override
+  String get vaultCredentials => 'Credentials';
+
+  @override
+  String get vaultDialogIntro =>
+      'Logins and tokens the assistant can use without seeing them. To add one, ask the assistant; it shows a form for it.';
+
+  @override
+  String get vaultEmpty => 'No credentials saved yet.';
+
+  @override
+  String get delete => 'Delete';
+
+  @override
+  String vaultDeleteConfirm(String name) {
+    return 'Delete the credential \"$name\"?';
+  }
+
+  @override
+  String vaultFields(String names) {
+    return 'Fields: $names';
+  }
+
+  @override
+  String vaultUnavailable(String error) {
+    return 'The vault is not available: $error';
+  }
 }

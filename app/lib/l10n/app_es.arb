@@ -67,5 +67,19 @@
   "displayPickDate": "Elegir fecha",
   "displayVideoError": "No se puede reproducir el vídeo",
   "displayYes": "Sí",
-  "displayNo": "No"
+  "displayNo": "No",
+  "vaultFormTitle": "Credencial: {name}",
+  "vaultFormNote": "Se guarda en la caja fuerte cifrada de Minerva en este Mac. El asistente nunca ve lo que escribes aquí.",
+  "vaultSave": "Guardar",
+  "vaultSaved": "Guardado",
+  "cancel": "Cancelar",
+  "vaultShowSecret": "Mostrar",
+  "vaultHideSecret": "Ocultar",
+  "vaultCredentials": "Credenciales",
+  "vaultDialogIntro": "Accesos y tokens que el asistente puede usar sin verlos. Para añadir uno, pídeselo al asistente; te mostrará un formulario.",
+  "vaultEmpty": "Aún no hay credenciales guardadas.",
+  "delete": "Borrar",
+  "vaultDeleteConfirm": "¿Borrar la credencial «{name}»?",
+  "vaultFields": "Campos: {names}",
+  "vaultUnavailable": "La caja fuerte no está disponible: {error}"
 }

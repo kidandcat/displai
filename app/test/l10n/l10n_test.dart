@@ -41,6 +41,7 @@ void main() {
     debugOsLocales = const [Locale('es', 'ES')];
     expect(strings.activityThinking, 'Pensando…');
     expect(DisplayStrings.submit, 'Enviar');
+    expect(strings.vaultFormTitle('github'), 'Credencial: github');
     debugOsLocales = const [Locale('ja', 'JP')];
     expect(strings.activityThinking, 'Thinking…');
     expect(speechLanguage, 'ja');
