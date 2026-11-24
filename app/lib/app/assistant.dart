@@ -372,7 +372,7 @@ class Assistant extends ChangeNotifier implements AssistantUi {
     if (value == _muted) return;
     _muted = value;
     presence.muted = value;
-    if (value) _listener.reset();
+    if (value) _listener.flush();
     _updatePresence();
     notifyListeners();
   }
@@ -397,7 +397,6 @@ class Assistant extends ChangeNotifier implements AssistantUi {
         _userSpeaking = false;
         final wasBargeIn = _barged;
         _barged = false;
-        if (_muted) return;
         if (busy && !wasBargeIn) {
           debugPrint('ignored ${e.seconds.toStringAsFixed(1)}s of audio while speaking (no barge-in)');
           return;
