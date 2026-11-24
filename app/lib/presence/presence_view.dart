@@ -9,17 +9,40 @@ import 'package:flutter/widgets.dart';
 import 'presence_fallback_painter.dart';
 import 'presence_signal.dart';
 
-/// Default HUD accent: violet.
+/// Default HUD accent: violet. Minerva's own side of the palette (the core,
+/// her voice).
 const Color kPresenceAccent = Color(0xFFA87CFF);
+
+/// Second accent: ice blue. The "input" side of the palette (the user's voice,
+/// data being worked on).
+const Color kPresenceAccent2 = Color(0xFF4FD8FF);
 
 /// Accent the presence fades to while the microphone is muted.
 const Color kPresenceMutedAccent = Color(0xFFFF2A2A);
+
+/// What the second accent fades to while the microphone is muted.
+const Color kPresenceMutedAccent2 = Color(0xFFFF6A3C);
 
 /// Near-black background used behind the full-window presence.
 const Color kPresenceBackground = Color(0xFF040206);
 
 /// Per-frame values shared by the shader and fallback painters.
 class PresenceFrame extends ChangeNotifier {
+  /// [time] and [spin] wrap here, so they keep float precision however long
+  /// the app runs. A wrap is seamless for every `sin(x * k)` whose `k` has at
+  /// most three decimals (see the shader's header).
+  static const double wrap = 2000 * math.pi;
+
+  /// Number of orbits in the gyroscope.
+  static const int ringCount = 3;
+
+  // Per orbit: resting tilt away from the viewer (radians), starting heading,
+  // and how fast it precesses, nods and runs its comet (per unit of spin).
+  static const List<double> _ringTilt = [1.10, 0.86, 1.00];
+  static const List<double> _ringYaw = [0.5, 2.5, 4.3];
+  static const List<double> _ringPrecession = [0.05, -0.036, 0.06];
+  static const List<double> _ringComet = [0.30, -0.21, 0.16];
+
   double time = 0;
   double spin = 0;
   double level = 0;
@@ -32,15 +55,108 @@ class PresenceFrame extends ChangeNotifier {
   /// Mute blend, 0 (normal accent) .. 1 (muted red), eased over time.
   double muted = 0;
 
+  /// Rows of the shell's rotation matrix (view space -> the shell's own).
+  final Float64List rotation = Float64List(9);
+
+  /// Per orbit, two unit vectors spanning its plane (6 values: u.xyz, v.xyz),
+  /// already turned so the comet's head sits at `-u`.
+  final Float64List ringBasis = Float64List(ringCount * 6);
+
+  /// Per orbit, the inverse of its plane's 2x2 screen projection (4 values:
+  /// rows for the plane's two coordinates).
+  final Float64List ringInverse = Float64List(ringCount * 4);
+
+  /// The same inverse projection for the HUD plane.
+  final Float64List hudInverse = Float64List(4);
+
   /// [accent] blended toward [kPresenceMutedAccent] by [muted].
   Color tint(Color accent) =>
       muted <= 0 ? accent : Color.lerp(accent, kPresenceMutedAccent, muted)!;
+
+  /// [kPresenceAccent2] blended toward its muted color by [muted].
+  Color get tint2 => muted <= 0
+      ? kPresenceAccent2
+      : Color.lerp(kPresenceAccent2, kPresenceMutedAccent2, muted)!;
+
+  /// Advances the clock by [dt] seconds, [spinRate] times faster for [spin],
+  /// and recomputes the orientation of every moving part. All trigonometry
+  /// that is constant across a frame happens here, once, not per pixel.
+  void advance(double dt, double spinRate) {
+    time = (time + dt) % wrap;
+    spin = (spin + dt * spinRate) % wrap;
+
+    // The shell turns around its own axis, its north pole leaning to the viewer.
+    final pitch = 0.40 + 0.08 * math.sin(time * 0.11);
+    final yaw = time * 0.05 + spin * 0.03;
+    final cp = math.cos(pitch), sp = math.sin(pitch);
+    final cy = math.cos(yaw), sy = math.sin(yaw);
+    rotation
+      ..[0] = cy
+      ..[1] = sy * sp
+      ..[2] = -sy * cp
+      ..[3] = 0
+      ..[4] = cp
+      ..[5] = sp
+      ..[6] = sy
+      ..[7] = -cy * sp
+      ..[8] = cy * cp;
+
+    for (var i = 0; i < ringCount; i++) {
+      final tilt = _ringTilt[i] + 0.17 * math.sin(spin * 0.023 * (i + 1) + i * 2.1);
+      final heading = _ringYaw[i] + time * 0.03 + spin * _ringPrecession[i];
+      final phase = spin * _ringComet[i];
+      final st = math.sin(tilt), ct = math.cos(tilt);
+      final sh = math.sin(heading), ch = math.cos(heading);
+      // u0 is the line where the orbit's plane crosses the screen, v0 the
+      // direction that leans away from it; (u, v) is that pair turned by the
+      // comet's phase.
+      final c = math.cos(phase), s = math.sin(phase);
+      final ux = sh * c + ct * ch * s, uy = -ch * c + ct * sh * s, uz = -st * s;
+      final vx = -sh * s + ct * ch * c, vy = ch * s + ct * sh * c, vz = -st * c;
+      ringBasis
+        ..[i * 6] = ux
+        ..[i * 6 + 1] = uy
+        ..[i * 6 + 2] = uz
+        ..[i * 6 + 3] = vx
+        ..[i * 6 + 4] = vy
+        ..[i * 6 + 5] = vz;
+      // det = the plane normal's z = cos(tilt), never near zero by construction.
+      ringInverse
+        ..[i * 4] = vy / ct
+        ..[i * 4 + 1] = -vx / ct
+        ..[i * 4 + 2] = -uy / ct
+        ..[i * 4 + 3] = ux / ct;
+    }
+
+    // The HUD plane leans a little, and the lean slowly travels around.
+    const lean = 0.30;
+    final around = time * 0.07;
+    final nx = math.sin(lean) * math.cos(around);
+    final ny = math.sin(lean) * math.sin(around);
+    final nz = math.cos(lean);
+    // u = screen x projected onto the plane (so angles keep a fixed origin).
+    final ul = math.sqrt(1 - nx * nx);
+    final ux = (1 - nx * nx) / ul, uy = -nx * ny / ul, uz = -nx * nz / ul;
+    final vx = ny * uz - nz * uy, vy = nz * ux - nx * uz;
+    final det = ux * vy - vx * uy;
+    hudInverse
+      ..[0] = vy / det
+      ..[1] = -vx / det
+      ..[2] = -uy / det
+      ..[3] = ux / det;
+  }
 
   void markDirty() => notifyListeners();
 }
 
 /// The app's "face": a full-window audio-reactive HUD animation, or a small
 /// orb when [compact] is true. Driven by [signal].
+///
+/// It is on screen all day, so it is built to be cheap: it paints only a
+/// square around the orb, and redraws at [calmFps] ([compactCalmFps] for the
+/// small orb) while nothing happens and at [activeFps] while there is voice,
+/// thinking or a transition. It stops entirely while an ancestor [TickerMode]
+/// is disabled.
 class PresenceView extends StatefulWidget {
   const PresenceView({
     super.key,
@@ -58,6 +174,30 @@ class PresenceView extends StatefulWidget {
   final double compactSize;
 
   static const String shaderAsset = 'shaders/presence.frag';
+
+  /// Frames per second while the orb is calm (idle, or listening in silence).
+  static const int calmFps = 30;
+
+  /// The same for the small orb: its slow motion covers under a pixel a frame
+  /// at this rate, and a frame costs the same however small the orb is.
+  static const int compactCalmFps = 20;
+
+  /// Frames per second while there is voice, thinking, speaking or a fade.
+  static const int activeFps = 60;
+
+  /// Side of the square the full orb is painted in, as a fraction of the
+  /// shortest side of the view. The shell's radius is 0.19 of that square.
+  static const double fullExtent = 0.8;
+
+  /// The square the orb is painted in, for a view of [size].
+  static Rect orbRect(Size size, {required bool compact}) {
+    final side = size.shortestSide * (compact ? 1.0 : fullExtent);
+    return Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: side,
+      height: side,
+    );
+  }
 
   static Future<ui.FragmentProgram>? _program;
 
@@ -83,19 +223,29 @@ class PresenceView extends StatefulWidget {
 
 enum _RenderPath { loading, shader, fallback }
 
-class _PresenceViewState extends State<PresenceView>
-    with SingleTickerProviderStateMixin {
+class _PresenceViewState extends State<PresenceView> {
   // Seconds for a state cross-fade to get ~63% of the way.
   static const double _fadeTau = 0.28;
 
   // Seconds for the muted color fade to get ~63% of the way.
   static const double _muteTau = 0.3;
 
+  // The timer that asks for the next frame fires this long before the frame
+  // is due, so the request lands before that display refresh, not after it.
+  static const int _leadMicros = 4000;
+
   final PresenceFrame _frame = PresenceFrame();
-  late final Ticker _ticker;
-  Duration _lastElapsed = Duration.zero;
   ui.FragmentShader? _shader;
   _RenderPath _path = _RenderPath.loading;
+
+  // The frame loop: a timer waits out the frame interval, then one frame
+  // callback draws. Unlike a Ticker it never asks for a frame it will not
+  // draw (a Ticker would run the pipeline at the display's 120 Hz).
+  bool _running = false;
+  bool _busy = true;
+  Timer? _timer;
+  int? _frameCallback;
+  Duration? _lastStamp;
 
   @override
   void initState() {
@@ -104,8 +254,23 @@ class _PresenceViewState extends State<PresenceView>
       ..fillRange(0, 4, 0)
       ..[widget.signal.mode.index] = 1;
     _frame.muted = widget.signal.muted ? 1 : 0;
-    _ticker = createTicker(_onTick)..start();
+    _frame.advance(0, 0);
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Muted tickers (the window is hidden) stop the orb too.
+    final enabled = TickerMode.valuesOf(context).enabled;
+    if (enabled == _running) return;
+    _running = enabled;
+    if (enabled) {
+      _lastStamp = null;
+      _requestFrame();
+    } else {
+      _cancelPending();
+    }
   }
 
   Future<void> _load() async {
@@ -135,9 +300,41 @@ class _PresenceViewState extends State<PresenceView>
     }
   }
 
-  void _onTick(Duration elapsed) {
-    final dt = math.min((elapsed - _lastElapsed).inMicroseconds / 1e6, 0.1);
-    _lastElapsed = elapsed;
+  void _requestFrame() {
+    _frameCallback ??= SchedulerBinding.instance.scheduleFrameCallback(
+      _onFrame,
+    );
+  }
+
+  void _cancelPending() {
+    _timer?.cancel();
+    _timer = null;
+    final id = _frameCallback;
+    if (id != null) SchedulerBinding.instance.cancelFrameCallbackWithId(id);
+    _frameCallback = null;
+  }
+
+  void _onFrame(Duration stamp) {
+    _frameCallback = null;
+    if (!mounted || !_running) return;
+    final last = _lastStamp;
+    final dt = last == null
+        ? 0.0
+        : math.min((stamp - last).inMicroseconds / 1e6, 0.1);
+    _lastStamp = stamp;
+    _advance(dt);
+    final fps = _busy
+        ? PresenceView.activeFps
+        : widget.compact
+        ? PresenceView.compactCalmFps
+        : PresenceView.calmFps;
+    _timer = Timer(
+      Duration(microseconds: 1000000 ~/ fps - _leadMicros),
+      _requestFrame,
+    );
+  }
+
+  void _advance(double dt) {
     final signal = widget.signal..tick();
 
     // Cross-fade state weights toward the current mode (exponential approach,
@@ -163,28 +360,35 @@ class _PresenceViewState extends State<PresenceView>
 
     final react = w[1] + w[3];
     _frame
-      ..time = elapsed.inMicroseconds / 1e6
       ..level = signal.level
       ..activity = signal.activity
-      // Integrated rotation phase: speeding up never makes the rings jump.
-      ..spin +=
-          dt *
-          // Resting (idle, or listening in silence) turns slowly; voice, thinking and speaking
-          // make the rings spin and orbit visibly faster.
-          // Roughly 8x at rest -> speaking and 12x at rest -> thinking.
-          (1.0 +
-              0.3 * w[1] +
-              8.0 * w[3] +
-              12.0 * w[2] +
-              4.0 * w[2] * signal.activity +
-              6.0 * react * signal.level);
+      // Integrated rotation phase, so speeding up never makes anything jump.
+      // Resting (idle, or listening in silence) turns slowly; speaking is
+      // about 5x faster and thinking 13x to 17x, more with a loud voice.
+      ..advance(
+        dt,
+        1.0 +
+            0.3 * w[1] +
+            4.0 * w[3] +
+            12.0 * w[2] +
+            4.0 * w[2] * signal.activity +
+            5.0 * react * signal.level,
+      );
     _frame.bands.setAll(0, signal.bands);
+
+    // Calm = settled in idle or listening, in silence. Anything else moves
+    // fast enough to deserve the higher frame rate.
+    _busy =
+        w[target] < 0.985 ||
+        target >= PresenceMode.thinking.index ||
+        signal.level > 0.02 ||
+        _frame.muted != mutedTarget;
     _frame.markDirty();
   }
 
   @override
   void dispose() {
-    _ticker.dispose();
+    _cancelPending();
     _shader?.dispose();
     _frame.dispose();
     super.dispose();
@@ -198,6 +402,7 @@ class _PresenceViewState extends State<PresenceView>
         shader: _shader!,
         accent: widget.accent,
         compact: widget.compact,
+        pixelRatio: MediaQuery.devicePixelRatioOf(context),
       ),
       _RenderPath.fallback => PresenceFallbackPainter(
         frame: _frame,
@@ -222,46 +427,71 @@ class _ShaderPainter extends CustomPainter {
     required this.shader,
     required this.accent,
     required this.compact,
+    required this.pixelRatio,
   }) : super(repaint: frame);
 
   /// Number of float uniforms in shaders/presence.frag.
-  static const int floatCount = 22;
+  static const int floatCount = 58;
 
   final PresenceFrame frame;
   final ui.FragmentShader shader;
   final Color accent;
   final bool compact;
+  final double pixelRatio;
+
+  final Paint _paint = Paint();
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
+    if (!compact) {
+      canvas.drawRect(Offset.zero & size, Paint()..color = kPresenceBackground);
+    }
+    // Only the square around the orb runs the shader.
+    final rect = PresenceView.orbRect(size, compact: compact);
     final b = frame.bands;
     final s = frame.state;
     final accent = frame.tint(this.accent);
-    shader
-      ..setFloat(0, frame.time)
-      ..setFloat(1, size.width)
-      ..setFloat(2, size.height)
-      ..setFloat(3, frame.level)
-      ..setFloat(4, b[0])
-      ..setFloat(5, b[1])
-      ..setFloat(6, b[2])
-      ..setFloat(7, b[3])
-      ..setFloat(8, b[4])
-      ..setFloat(9, b[5])
-      ..setFloat(10, b[6])
-      ..setFloat(11, b[7])
-      ..setFloat(12, s[0])
-      ..setFloat(13, s[1])
-      ..setFloat(14, s[2])
-      ..setFloat(15, s[3])
-      ..setFloat(16, accent.r)
-      ..setFloat(17, accent.g)
-      ..setFloat(18, accent.b)
-      ..setFloat(19, frame.spin)
-      ..setFloat(20, frame.activity)
-      ..setFloat(21, compact ? 1 : 0);
-    canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
+    final accent2 = frame.tint2;
+    var i = 0;
+    void put(double v) => shader.setFloat(i++, v);
+    put(frame.time);
+    put(rect.left);
+    put(rect.top);
+    put(rect.width);
+    put(pixelRatio);
+    put(frame.level);
+    for (var n = 0; n < 8; n++) {
+      put(b[n]);
+    }
+    for (var n = 0; n < 4; n++) {
+      put(s[n]);
+    }
+    put(accent.r);
+    put(accent.g);
+    put(accent.b);
+    put(accent2.r);
+    put(accent2.g);
+    put(accent2.b);
+    put(frame.spin);
+    put(frame.activity);
+    put(compact ? 1 : 0);
+    for (var n = 0; n < 9; n++) {
+      put(frame.rotation[n]);
+    }
+    for (var r = 0; r < PresenceFrame.ringCount; r++) {
+      for (var n = 0; n < 4; n++) {
+        put(frame.ringInverse[r * 4 + n]);
+      }
+      // Depth of a point of the plane: the z of its two basis vectors.
+      put(frame.ringBasis[r * 6 + 2]);
+      put(frame.ringBasis[r * 6 + 5]);
+    }
+    for (var n = 0; n < 4; n++) {
+      put(frame.hudInverse[n]);
+    }
+    assert(i == floatCount);
+    canvas.drawRect(rect, _paint..shader = shader);
   }
 
   @override
@@ -269,6 +499,7 @@ class _ShaderPainter extends CustomPainter {
       old.shader != shader ||
       old.accent != accent ||
       old.compact != compact ||
+      old.pixelRatio != pixelRatio ||
       old.frame != frame;
 }
 

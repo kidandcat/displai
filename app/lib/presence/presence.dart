@@ -7,4 +7,9 @@ library;
 
 export 'presence_signal.dart' show PresenceMode, PresenceSignal;
 export 'presence_view.dart'
-    show PresenceView, PresenceFrame, kPresenceAccent, kPresenceBackground;
+    show
+        PresenceView,
+        PresenceFrame,
+        kPresenceAccent,
+        kPresenceAccent2,
+        kPresenceBackground;

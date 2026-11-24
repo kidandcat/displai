@@ -432,16 +432,36 @@ barge-in.
 When no view is shown (startup, after `clear`, or after a voice-only answer), the window shows a
 full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
 
-- **Rendering: a fragment shader** (GLSL `.frag` declared under `flutter: shaders:` in `pubspec.yaml`,
-  loaded with `FragmentProgram.fromAsset`, drawn by a `CustomPainter` that sets uniforms every frame).
-  Impeller is the renderer on macOS, so this runs on the GPU. A pure `CustomPainter` (Canvas paths,
-  blurs) is the fallback, but glow, noise fields and many particles are far cheaper in a shader.
-- **Look (first pass, to iterate with Jairo)**: a central core with concentric, segmented rings
-  rotating at different speeds, a soft bloom, a field of faint particles/scan lines, cyan on
-  near-black. Rings deform radially with the audio spectrum; the core brightness follows loudness.
-- **Uniforms**: `uTime`, `uResolution`, `uLevel` (smoothed RMS, 0–1), `uBands` (8 spectrum bands
-  passed as two `vec4`), `uState` (idle / listening / thinking / speaking, cross-faded),
-  `uAccent` (color).
+- **Rendering: a fragment shader** (`app/shaders/presence.frag`, declared under `flutter: shaders:`
+  in `pubspec.yaml`, loaded with `FragmentProgram.fromAsset`, drawn by a `CustomPainter` that sets
+  uniforms every frame). Impeller is the renderer on macOS, so this runs on the GPU. A pure
+  `CustomPainter` (`presence_fallback_painter.dart`) draws a simpler version of the same layout when
+  the shader cannot be loaded.
+- **Look: a holographic AI core.** From the inside out: a white-hot *nucleus*; a *plasma* ball of
+  energy filaments; a *shell* of data points (a sphere of dots in rows, each row turning at its own
+  rate, seen from the front and dimmer through to the back); a *gyroscope* of three tilted orbits
+  with comets that pass behind and in front of the shell; and a slightly tilted *HUD* plane with a
+  ring of spectrum bars, a tick dial with a radar sweep, a data track, bracket arcs and drifting
+  motes. Two colors on near-black: violet (`kPresenceAccent`) is Minerva's side, ice blue
+  (`kPresenceAccent2`) is the input side.
+- **States** (cross-faded, so a change never jumps):
+  - *Idle*: everything slow and dim, the nucleus breathes.
+  - *Listening*: the user's voice raises the spectrum bars and swells the shell's dot rows, in ice
+    blue. In silence the bars rest as a thin dashed ring.
+  - *Thinking*: dot rows spin against each other and fire at random, a scan sweeps the shell, the
+    gyroscope tumbles, chasers run around the HUD and the data track lights up. Everything goes
+    faster with stream activity (text and tool deltas arriving).
+  - *Speaking*: the nucleus and the plasma flare with Minerva's voice, ripples travel outward and a
+    voice contour blooms around the shell; the bars turn violet.
+  - *Muted*: both colors fade to red.
+- **Compact orb** (corner of a view, the always-on-top orb, the phone remote): the same core with
+  fewer, larger dots and only the spectrum bars of the HUD, so it reads at 96 to 180 px.
+- **Uniforms** (58 floats; the shader's header lists the indices): `uTime`, `uOrigin` + `uSize` (the
+  painted square), `uPx`, `uLevel` (smoothed RMS, 0-1), `uBandsLo`/`uBandsHi` (8 spectrum bands),
+  `uState` (idle / listening / thinking / speaking weights), `uAccent`, `uAccent2`, `uSpin`
+  (rotation phase that runs faster while busy), `uActivity`, `uCompact`, and the orientation of
+  every moving part, computed once per frame in Dart (`PresenceFrame.advance`): the shell's rotation
+  matrix and the inverse screen projection of each orbit and of the HUD plane.
 - **Audio sources**:
   - *Speaking*: level and FFT of the TTS samples, computed in Dart from the PCM we hand to the native
     audio engine and aligned with the engine's playback position, so the animation follows the voice
@@ -455,8 +475,26 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
   Values are smoothed with attack/release envelopes so motion feels organic, not jittery.
 - **Transitions**: when `show` arrives, the presence shrinks into a small orb in the status bar
   (it keeps reacting to the voice there) and the view fades in; on `clear` it expands back.
-- Budget: the shader must stay well under a frame at 60 fps on an M1 at full window size; measure
-  with the performance overlay during v0.
+- **Cost.** The orb is on screen all day, so it is built to be cheap, three ways:
+  - *Analytic shader*: no ray marching and no loops. The shell is one `sqrt`, the orbits and the
+    HUD are 2x2 projections, each part is skipped outside its own radius and all trigonometry that
+    is constant across a frame is done in Dart.
+  - *Small painted area*: the shader runs only on a square around the orb (`PresenceView.orbRect`,
+    0.8 of the window's shortest side), not on the whole window. The background is a plain rect.
+  - *Capped frame rate*: 30 fps while calm (idle, or listening in silence; 20 fps for the small
+    orb), 60 fps while there is voice, thinking, speaking or a fade. The loop is a one-shot timer
+    plus a single frame callback, not a `Ticker`: an active ticker makes Flutter composite at the
+    display's rate (120 Hz on ProMotion) even when nothing repaints. It stops while `TickerMode` is
+    disabled (window hidden).
+  Measured on an M1 Pro (window 1352x848 at 2x, 120 Hz display, release build, `powermetrics`): GPU
+  power about 0.3 W full-window while calm and 0.6 W while busy, against 8.5 to 11 W (GPU pinned
+  at 100%) for the first version of the orb, a ray-marched full-window shader. What is left is
+  mostly the cost of presenting a frame, which is why the corner orb costs about the same as the
+  full one: lower the frame rates before touching the shader.
+- **Preview**: `lib/presence_preview.dart` is a separate entrypoint that shows the orb in every
+  state with a synthetic voice, in every layout (full, corner, always-on-top disc, and a sheet with
+  all states at the compact sizes). Use it to work on the shader and to measure it:
+  `flutter run -d macos -t lib/presence_preview.dart` (keys and environment in its header).
 
 ## 7. UX
 

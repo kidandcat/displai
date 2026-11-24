@@ -73,6 +73,135 @@ void main() {
     }
   });
 
+  group('frame loop', () {
+    setUp(() {
+      PresenceView.debugResetProgramCache();
+      PresenceView.debugProgramLoader = () async =>
+          throw Exception('no shader in tests');
+    });
+
+    /// Frames the view draws in half a second of 5 ms display refreshes.
+    Future<int> framesInHalfSecond(WidgetTester tester) async {
+      final painter =
+          tester
+                  .widget<CustomPaint>(
+                    find.descendant(
+                      of: find.byType(PresenceView),
+                      matching: find.byType(CustomPaint),
+                    ),
+                  )
+                  .painter!
+              as PresenceFallbackPainter;
+      var frames = 0;
+      void count() => frames++;
+      painter.frame.addListener(count);
+      for (var i = 0; i < 100; i++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+      painter.frame.removeListener(count);
+      return frames;
+    }
+
+    testWidgets('draws at the calm rate at rest and the active rate when busy', (
+      tester,
+    ) async {
+      final signal = PresenceSignal();
+      await tester.pumpWidget(_host(signal, compact: false));
+      await tester.pump();
+
+      // Idle and settled: about calmFps, whatever the display's refresh rate.
+      final calm = await framesInHalfSecond(tester);
+      expect(calm, inInclusiveRange(13, PresenceView.calmFps ~/ 2 + 2));
+
+      signal.mode = PresenceMode.thinking;
+      final busy = await framesInHalfSecond(tester);
+      expect(busy, inInclusiveRange(26, PresenceView.activeFps ~/ 2 + 4));
+
+      await tester.pumpWidget(const SizedBox());
+      signal.dispose();
+    });
+
+    testWidgets('stops while tickers are muted and resumes after', (
+      tester,
+    ) async {
+      final signal = PresenceSignal();
+      final enabled = ValueNotifier(false);
+      await tester.pumpWidget(
+        ValueListenableBuilder<bool>(
+          valueListenable: enabled,
+          builder: (context, value, _) => TickerMode(
+            enabled: value,
+            child: _host(signal, compact: false),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(await framesInHalfSecond(tester), 0);
+      expect(tester.binding.transientCallbackCount, 0);
+
+      enabled.value = true;
+      await tester.pump();
+      expect(await framesInHalfSecond(tester), greaterThan(10));
+
+      enabled.value = false;
+      await tester.pump();
+      expect(await framesInHalfSecond(tester), 0);
+
+      await tester.pumpWidget(const SizedBox());
+      signal.dispose();
+      enabled.dispose();
+    });
+  });
+
+  group('PresenceFrame', () {
+    test('keeps every plane a valid projection as time and spin advance', () {
+      final frame = PresenceFrame();
+      for (var step = 0; step < 400; step++) {
+        frame.advance(0.37, 1 + (step % 17).toDouble());
+        final r = frame.rotation;
+        // The shell's rotation stays orthonormal.
+        for (var a = 0; a < 3; a++) {
+          for (var b = 0; b < 3; b++) {
+            var dot = 0.0;
+            for (var k = 0; k < 3; k++) {
+              dot += r[a * 3 + k] * r[b * 3 + k];
+            }
+            expect(dot, closeTo(a == b ? 1 : 0, 1e-9));
+          }
+        }
+        for (var i = 0; i < PresenceFrame.ringCount; i++) {
+          final ux = frame.ringBasis[i * 6], uy = frame.ringBasis[i * 6 + 1];
+          final vx = frame.ringBasis[i * 6 + 3], vy = frame.ringBasis[i * 6 + 4];
+          final m = frame.ringInverse;
+          // A point (a, b) of the orbit's plane lands on screen at a*u + b*v;
+          // the inverse must bring it back.
+          const a = 0.3, b = -0.8;
+          final x = a * ux + b * vx, y = a * uy + b * vy;
+          expect(m[i * 4] * x + m[i * 4 + 1] * y, closeTo(a, 1e-9));
+          expect(m[i * 4 + 2] * x + m[i * 4 + 3] * y, closeTo(b, 1e-9));
+        }
+        for (final v in frame.hudInverse) {
+          expect(v.isFinite, isTrue);
+        }
+        expect(frame.time, inInclusiveRange(0, PresenceFrame.wrap));
+        expect(frame.spin, inInclusiveRange(0, PresenceFrame.wrap));
+      }
+      frame.dispose();
+    });
+
+    test('the full orb is painted in a centered square, the compact one fills', () {
+      const size = Size(800, 500);
+      final full = PresenceView.orbRect(size, compact: false);
+      expect(full.center, const Offset(400, 250));
+      expect(full.width, 500 * PresenceView.fullExtent);
+      expect(full.height, full.width);
+      expect(
+        PresenceView.orbRect(const Size(122, 122), compact: true),
+        const Rect.fromLTWH(0, 0, 122, 122),
+      );
+    });
+  });
+
   group('default loader', () {
     for (final compact in [false, true]) {
       testWidgets('compact=$compact pumps without throwing', (tester) async {
