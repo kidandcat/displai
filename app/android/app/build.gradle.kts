@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -39,11 +41,31 @@ android {
         }
     }
 
+    // Release signing: android/key.properties (storeFile, storePassword, keyAlias, keyPassword) or
+    // the MINERVA_KEYSTORE* environment variables (CI). Without either, the release build is signed
+    // with the debug keys, so `flutter run --release` and forks' CI builds still work.
+    val keyProperties = Properties().apply {
+        val file = rootProject.file("key.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }
+    fun signingValue(property: String, env: String): String? =
+        keyProperties.getProperty(property) ?: System.getenv(env)?.takeIf { it.isNotEmpty() }
+    val releaseStoreFile = signingValue("storeFile", "MINERVA_KEYSTORE_FILE")
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = signingValue("storePassword", "MINERVA_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "MINERVA_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "MINERVA_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseStoreFile != null) "release" else "debug")
         }
     }
 }

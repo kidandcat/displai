@@ -1,0 +1,188 @@
+# Builds Minerva for macOS (Minerva.app, zipped) and Android (arm64 APK) and, for a v* tag, publishes
+# both on a GitHub Release. Run it by hand (workflow_dispatch) to get the builds as workflow artifacts.
+#
+# Works without any secret: the macOS app is then ad-hoc signed (see the README's Quick start for the
+# quarantine step) and the APK is signed with a throwaway debug key. Optional secrets:
+#   macOS, Developer ID signing:  MACOS_CERTIFICATE (base64 .p12), MACOS_CERTIFICATE_PASSWORD
+#   macOS, notarization:          APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD (app-specific password)
+#   Android, release key:         ANDROID_KEYSTORE (base64 .jks), ANDROID_KEYSTORE_PASSWORD,
+#                                 ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.1
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.v.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        # v1.2.3 → 1.2.3; otherwise the version in pubspec.yaml.
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            name="${GITHUB_REF_NAME#v}"
+          else
+            name=$(sed -n 's/^version: *\([^+]*\).*/\1/p' app/pubspec.yaml)
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    runs-on: macos-26
+    env:
+      HAS_CERT: ${{ secrets.MACOS_CERTIFICATE != '' }}
+      HAS_NOTARY: ${{ secrets.APPLE_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      # For the minerva-webhooks helper, built by an Xcode build phase (macos/build_webhooks_helper.sh).
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: relay/go.mod
+          cache-dependency-path: relay/go.sum
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build macos --release \
+            --build-name=${{ needs.version.outputs.name }} --build-number=${{ github.run_number }}
+          test -x build/macos/Build/Products/Release/Minerva.app/Contents/MacOS/minerva-webhooks
+
+      - name: Sign with Developer ID
+        if: env.HAS_CERT == 'true'
+        working-directory: app
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          kpass=$(openssl rand -hex 16)
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$kpass" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$kpass" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kpass" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          identity=$(security find-identity -v -p codesigning "$keychain" | grep -m1 'Developer ID Application' | awk '{print $2}')
+          app=build/macos/Build/Products/Release/Minerva.app
+          sign() { codesign --force --timestamp --options runtime --keychain "$keychain" --sign "$identity" "$@"; }
+          # Inside out: nested code first, then the app with its entitlements.
+          for f in "$app"/Contents/Frameworks/*; do sign "$f"; done
+          sign --identifier com.kidandcat.minerva.webhooks "$app/Contents/MacOS/minerva-webhooks"
+          sign --entitlements macos/Runner/Release.entitlements "$app"
+          codesign --verify --deep --strict "$app"
+
+      - name: Notarize
+        if: env.HAS_CERT == 'true' && env.HAS_NOTARY == 'true'
+        working-directory: app/build/macos/Build/Products/Release
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent Minerva.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --wait \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          xcrun stapler staple Minerva.app
+
+      - name: Zip
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent app/build/macos/Build/Products/Release/Minerva.app \
+            dist/Minerva-${{ needs.version.outputs.name }}-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+          if-no-files-found: error
+
+  android:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Release keystore
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          echo "$ANDROID_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "MINERVA_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+      - name: Build
+        working-directory: app
+        env:
+          MINERVA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MINERVA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MINERVA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # gradle.properties asks for 8 GB of heap; the runner has 16 GB in total.
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g
+        run: |
+          flutter pub get
+          flutter build apk --release --target-platform android-arm64 \
+            --build-name=${{ needs.version.outputs.name }} --build-number=${{ github.run_number }}
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            ../dist/Minerva-${{ needs.version.outputs.name }}-android-arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, macos, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          **macOS** (Apple Silicon and Intel, macOS 12+): unzip `Minerva-*-macos.zip` and drag
+          `Minerva.app` to Applications. If macOS says the app is damaged or can't be checked, run
+          `xattr -dr com.apple.quarantine /Applications/Minerva.app` once.
+
+          **Android**: install `Minerva-*-android-arm64.apk` and scan the QR code from the desktop's
+          phone button.
+
+          You also need one of Claude Code, Antigravity or Codex installed and signed in. See the
+          [Quick start](https://github.com/${{ github.repository }}#quick-start).
+          EOF
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "Minerva ${{ needs.version.outputs.name }}" --notes-file notes.md --generate-notes \
+            || gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
