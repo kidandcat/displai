@@ -253,7 +253,7 @@ waits for the answer. Workers get the same tools without confirmation too (see 3
 
 All of it belongs to Minerva, not to the brain, so another brain provider gets the same data and tools. Data
 lives in `~/Library/Application Support/com.kidandcat.minerva/` (`MINERVA_DATA_DIR` overrides it):
-`minerva.db` (SQLite, WAL, FTS5 with accent-insensitive tokenizing) and `skills/`.
+`minerva.db` (SQLite, WAL, FTS5 with accent-insensitive tokenizing), `skills/` and `projects/`.
 
 | Feature | Tools | How it works |
 |---|---|---|
@@ -261,6 +261,7 @@ lives in `~/Library/Application Support/com.kidandcat.minerva/` (`MINERVA_DATA_D
 | Memories | `remember`, `search_memories`, `forget_memory` | Short self-contained facts. `essential` ones (budget 4,000 chars) go into the system prompt at each start; the rest are searched. `remember` with `id` corrects one. |
 | Skills | `read_skill`, `save_skill`, `delete_skill` | `skills/<name>/SKILL.md` with name and description front matter. Only the index goes into the system prompt; the brain loads a skill before that kind of task. Deleting runs at once. |
 | Workers | `start_worker`, `list_workers`, `worker_status`, `message_worker`, `stop_worker` | Each worker is its own headless Claude Code process (the workers' model from the model picker, by default opus with effort medium, `--autocompact 200k`) with its own MCP endpoint: commands and files, read-only memories, history and skills, `report_progress`, plus `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`. No display and no mouse or keyboard. Nothing is confirmed: its prompt says to do destructive actions only when the task clearly asks for them, otherwise to leave them out and say so in the report. Its final message is the report, handed to the brain as a `[worker …]` message. Its session is saved, so `message_worker` can continue it later, also after a restart. The status bar shows how many are running. |
+| Projects | file tools, `start_worker` `project` | `projects/<name>/` is a plain folder whose `README.md` (else `AGENTS.md` or `CLAUDE.md`) says what it is, next to its notes and files. The system prompt lists them (name and the doc's first line) and says how to create one; the brain reads and writes them with the file tools. A worker started with `project` (a name or any folder path) runs in that folder with the main doc in its prompt, and resumes there. No per-project sessions or memories. |
 | Routines | `create_routine`, `list_routines`, `update_routine`, `delete_routine` | Schedules `once` (local time), `daily` (time, optional weekdays) or `interval` (minutes). Checked every 15 s while the app runs. At the due time the prompt is handed to the brain as a `[routine …]` message. A missed one-time reminder fires late at the next start; recurring runs missed by more than 2 h are skipped. |
 
 Worker reports and routine prompts wait in a queue until the brain is free: not thinking or talking,
