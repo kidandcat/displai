@@ -1,5 +1,7 @@
 # Minerva
 
+<p align="center"><img src="docs/orb.gif" width="220" alt="Minerva's presence orb"></p>
+
 A voice-first assistant for macOS. You talk; it answers with a short spoken sentence and shows the
 rest on screen. There is no chat window: when nothing is shown, the window is an audio-reactive
 "presence" orb.
@@ -15,6 +17,50 @@ brain use the phone too. Everything is still processed on the Mac.
 
 > Status: personal project under active development. macOS (Apple Silicon tested) and Android only.
 > UI and voice in English and Spanish.
+
+## Quick start
+
+1. **Install a brain.** Minerva runs on an agent CLI you already have a subscription for. Install
+   at least one and sign in once in a terminal:
+   - Claude Code: `npm i -g @anthropic-ai/claude-code`, then `claude` and `/login`.
+   - Codex: `brew install --cask codex` (or `npm i -g @openai/codex`), then `codex login`.
+   - Antigravity: install the `agy` CLI from [antigravity.google](https://antigravity.google), then
+     run `agy` and sign in with Google.
+
+   The CLI must be on your login shell's `PATH` (check with `which claude`, `which codex` or
+   `which agy`).
+2. **Install Minerva on the Mac.** Download `Minerva-<version>-macos.zip` from
+   [Releases](https://github.com/kidandcat/minerva/releases/latest), unzip it and drag `Minerva.app`
+   to Applications. Release builds are not notarized, so the first time remove the quarantine flag:
+
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/Minerva.app
+   ```
+
+   Open Minerva. It downloads the speech models (about 600 MB) and asks for the **Microphone**. For
+   computer use, allow it in System Settings → Privacy & Security → **Accessibility** and
+   **Screen Recording**, then reopen it. With an unsigned build, macOS may ask again after each update:
+   remove Minerva from those lists and add it back.
+3. **Pick the brain.** Click the model in the status bar. In **Conversation** (and **Workers**)
+   choose the provider and model; under **Fallbacks** add the other providers you have, in order.
+   The **Providers** tab shows which ones are ready.
+4. **Talk.** Just speak; you can interrupt Minerva while it answers.
+5. **Phone (optional).** Download `Minerva-<version>-android-arm64.apk` from the same release on an
+   Android phone (arm64) and install it (allow installing from your browser or file manager). Open it
+   and scan the QR code from the phone button on the Mac. For phone control, enable Minerva's
+   accessibility service and "display over other apps" from its settings screen. Release APKs are
+   not signed with a stable key yet, so to update, uninstall the old one first.
+
+**From source** instead: install Flutter (stable) and Xcode, and Go for the webhook helper, then
+
+```sh
+git clone https://github.com/kidandcat/minerva && cd minerva/app
+flutter pub get
+flutter build macos --release   # build/macos/Build/Products/Release/Minerva.app
+flutter build apk --release --target-platform android-arm64
+```
+
+See [Build and run](#build-and-run) for development, the login service and the relay.
 
 ## Features
 
@@ -156,6 +202,11 @@ flutter build apk --release --target-platform android-arm64
 Install the APK, open it and scan the QR code from the desktop's phone button. For phone control,
 enable Minerva's accessibility service and "display over other apps" from its settings screen.
 
+Release builds are signed with the debug key unless `android/key.properties` (`storeFile`,
+`storePassword`, `keyAlias`, `keyPassword`; git-ignored) or the `MINERVA_KEYSTORE_FILE`,
+`MINERVA_KEYSTORE_PASSWORD`, `MINERVA_KEY_ALIAS` and `MINERVA_KEY_PASSWORD` environment variables
+point to a release keystore.
+
 ### Relay
 
 The app uses a public relay at `wss://minerva.kidandcat.com` by default. To run your own:
@@ -168,6 +219,20 @@ go run . -addr 0.0.0.0:8094          # add -tap to log every frame as the relay 
 
 and start the desktop with `MINERVA_RELAY=ws://<host>:8094`. `relay/deploy/` has a systemd unit, a
 deploy script and the Caddy configuration (including SNI passthrough for webhooks).
+
+### Releases
+
+Pushing a `v*` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml): it builds
+`Minerva.app` (zipped) on a macOS runner and the arm64 APK on Linux, and publishes both on a GitHub
+Release, with the version taken from the tag (`git tag v1.2.3 && git push origin v1.2.3`). Running
+the workflow by hand only builds them, as workflow artifacts. It needs no secrets: without them the
+app is ad-hoc signed and the APK debug-signed. Optional repository secrets:
+
+| Secret | Effect |
+|---|---|
+| `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD` | Developer ID Application certificate (base64 `.p12`) to sign the app |
+| `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | Notarize and staple the signed app (app-specific password) |
+| `ANDROID_KEYSTORE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | Release keystore (base64 `.jks`) for the APK, so updates install over older versions |
 
 ### Tests
 
