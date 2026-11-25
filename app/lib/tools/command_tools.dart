@@ -39,7 +39,8 @@ class CommandTools extends ToolProvider {
     ),
     McpTool(
       'read_file',
-      'Read a text file (path absolute or relative to home). offset/limit in lines.',
+      'Read a text file (path absolute or relative to home). offset/limit in lines. On an image '
+          '(png, jpg, gif, webp, heic) it returns the image, to look at.',
       {
         'type': 'object',
         'properties': {
@@ -139,6 +140,7 @@ class CommandTools extends ToolProvider {
   Future<ToolResult> _read(Map<String, dynamic> args) async {
     final f = File(_path(args['path'] as String?));
     if (!f.existsSync()) return ToolResult.error('error: not found: ${f.path}');
+    if (_images.contains(f.path.split('.').last.toLowerCase())) return _readImage(f);
     final lines = await f.openRead().transform(utf8.decoder).transform(const LineSplitter()).toList();
     final offset = ((args['offset'] as num?)?.toInt() ?? 0).clamp(0, lines.length);
     final limit = ((args['limit'] as num?)?.toInt() ?? 400).clamp(1, 2000);
@@ -146,6 +148,23 @@ class CommandTools extends ToolProvider {
     final body = lines.sublist(offset, end).join('\n');
     final more = end < lines.length ? '\n[… ${lines.length - end} more lines; use offset]' : '';
     return ToolResult('${_truncate(body)}$more');
+  }
+
+  static const _images = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'tif', 'tiff', 'bmp'};
+
+  /// An image as PNG, scaled down to at most 1568 px a side (what the models look at anyway).
+  Future<ToolResult> _readImage(File f) async {
+    final tmp = await Directory.systemTemp.createTemp('minerva-image');
+    try {
+      final out = '${tmp.path}/image.png';
+      final r = await Process.run('/usr/bin/sips', ['-s', 'format', 'png', '-Z', '1568', f.path, '--out', out]);
+      if (r.exitCode != 0 || !File(out).existsSync()) {
+        return ToolResult.error('error: could not read the image ${f.path}: ${r.stderr}'.trim());
+      }
+      return ToolResult('image ${f.path}', png: await File(out).readAsBytes());
+    } finally {
+      await tmp.delete(recursive: true);
+    }
   }
 
   Future<ToolResult> _write(Map<String, dynamic> args) async {
