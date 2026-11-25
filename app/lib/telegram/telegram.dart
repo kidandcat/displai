@@ -34,6 +34,7 @@ class Telegram extends ChangeNotifier {
     required this.chatId,
     required this.dir,
     required this.onMessage,
+    this.transcribe,
     this.offset = 0,
     this.onOffset,
     this.api = 'https://api.telegram.org',
@@ -51,6 +52,10 @@ class Telegram extends ChangeNotifier {
 
   /// A message from the user, as the brain gets it (without the `[telegram]` tag).
   final void Function(String text) onMessage;
+
+  /// The transcript of a saved voice note or audio file (empty when there is no speech in it), by
+  /// the local speech recognizer. Null: audio gets the "not supported" answer.
+  final Future<String> Function(String path)? transcribe;
 
   /// The next update to ask for; [onOffset] is told each new one, to keep it across restarts.
   int offset;
@@ -160,15 +165,24 @@ class Telegram extends ChangeNotifier {
       return;
     }
     final text = '${m['text'] ?? m['caption'] ?? ''}'.trim();
+    final hearing = transcribe != null;
     String? saved;
     String? kind;
     try {
       if (m['photo'] is List && (m['photo'] as List).isNotEmpty) {
         kind = 'photo';
         saved = await _download(_bestPhoto(m['photo'] as List)['file_id'] as String, m, 'jpg');
+      } else if (m['voice'] is Map && hearing) {
+        kind = 'voice';
+        saved = await _download((m['voice'] as Map)['file_id'] as String, m, null);
+      } else if (m['audio'] is Map && hearing) {
+        final a = m['audio'] as Map;
+        kind = 'audio';
+        saved = await _download(a['file_id'] as String, m, null, name: a['file_name'] as String?);
       } else if (m['document'] is Map) {
         final d = m['document'] as Map;
-        kind = 'file';
+        // A recording sent as a file is still audio.
+        kind = hearing && '${d['mime_type']}'.startsWith('audio/') ? 'audio' : 'file';
         saved = await _download(d['file_id'] as String, m, null, name: d['file_name'] as String?);
       }
     } catch (e) {
@@ -177,11 +191,32 @@ class Telegram extends ChangeNotifier {
       return;
     }
     if (kind == null && text.isEmpty) {
-      // Voice notes, audio, video, stickers, locations…: nothing the brain can take yet.
+      // Video, stickers, locations… (and audio without a recognizer): nothing the brain can take yet.
       await send(strings.telegramUnsupported);
       return;
     }
     final b = StringBuffer();
+    if (kind == 'voice' || kind == 'audio') {
+      unawaited(typing());
+      final String transcript;
+      try {
+        transcript = (await transcribe!(saved!)).trim();
+      } catch (e) {
+        debugPrint('telegram: could not transcribe the $kind: $e');
+        await send(strings.telegramTranscribeFailed);
+        return;
+      }
+      if (transcript.isEmpty && text.isEmpty) {
+        await send(strings.telegramNoSpeech);
+        return;
+      }
+      b.write('(${kind == 'voice' ? 'voice note' : 'audio file'} transcribed by speech recognition, '
+          'so it may have recognition errors; audio saved at $saved) ');
+      if (text.isNotEmpty) b.write('$text\nTranscript: ');
+      b.write(transcript.isEmpty ? '(no speech in it)' : transcript);
+      onMessage(b.toString().trim());
+      return;
+    }
     if (saved != null) {
       b.write(kind == 'photo'
           ? '(photo saved at $saved; look at it with read_file) '
@@ -283,7 +318,8 @@ class Telegram extends ChangeNotifier {
     if (!configured) return '';
     return '''
 Telegram (the written channel):
-- "[telegram]" after the time means the user wrote to you on Telegram (typed, not transcribed): they can't talk or listen now. Your reply is sent back to them on Telegram as text, not spoken, so the voice rules don't apply: write it (Markdown allowed: **bold**, *italic*, `code`, lists, links), as long as the answer needs, still to the point.
+- "[telegram]" after the time means the user wrote to you on Telegram (typed, unless marked as a transcribed recording): they can't talk or listen now. Your reply is sent back to them on Telegram as text, not spoken, so the voice rules don't apply: write it (Markdown allowed: **bold**, *italic*, `code`, lists, links), as long as the answer needs, still to the point.
+- A Telegram message that starts "(voice note transcribed…" or "(audio file transcribed…" is a recording the user sent, transcribed locally: read past likely recognition errors as you do with speech, and ask if something important is unclear. Your reply is still written.
 - Don't use the display or Minerva's window for a Telegram message (the user is not at the Mac) unless they ask for it; put everything in the text. Don't ask for credentials with vault_request there: ask the user to save them in Minerva's settings.
 - A "[telegram]" in front of a worker report, routine or webhook means the user was last on Telegram: your reply goes there too.''';
   }

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:minerva/l10n/l10n.dart';
 import 'package:minerva/telegram/telegram.dart';
 
 void main() {
@@ -122,6 +123,121 @@ void main() {
       expect(sent, hasLength(1));
       expect(sent.single['chat_id'], 42);
       await bot.close();
+    });
+
+    /// A bot that gets [messages] (from the user's chat 42) once, serves their files, and records
+    /// what it sends back.
+    Future<(List<String>, List<String>, List<String>)> receive(
+      List<Map<String, dynamic>> messages, {
+      Future<String> Function(String path)? transcribe,
+      bool fileMissing = false,
+    }) async {
+      final sent = <String>[];
+      final transcribed = <String>[];
+      var polls = 0;
+      final client = MockClient((req) async {
+        if (req.url.path.startsWith('/file/botTOKEN/')) {
+          if (fileMissing) return http.Response('', 404);
+          return http.Response.bytes(utf8.encode('audio:${req.url.pathSegments.last}'), 200);
+        }
+        final method = req.url.pathSegments.last;
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        switch (method) {
+          case 'getUpdates':
+            if (polls++ > 0) return Completer<http.Response>().future;
+            return http.Response(
+                jsonEncode({
+                  'ok': true,
+                  'result': [for (var i = 0; i < messages.length; i++) update(20 + i, 42, messages[i])],
+                }),
+                200);
+          case 'getFile':
+            return http.Response(jsonEncode({'ok': true, 'result': {'file_path': 'voice/${body['file_id']}.oga'}}), 200);
+          case 'sendMessage':
+            sent.add(body['text'] as String);
+        }
+        return http.Response(jsonEncode({'ok': true, 'result': true}), 200);
+      });
+      final got = <String>[];
+      final bot = Telegram(
+        token: () => 'TOKEN',
+        chatId: () => 42,
+        dir: tmp.path,
+        onMessage: got.add,
+        transcribe: transcribe == null
+            ? null
+            : (path) {
+                transcribed.add(File(path).readAsStringSync());
+                return transcribe(path);
+              },
+        api: 'https://api.test',
+        client: () => client,
+      )..start();
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      await bot.close();
+      return (got, sent, transcribed);
+    }
+
+    test('a voice note reaches the brain transcribed and marked as such', () async {
+      final (got, sent, transcribed) = await receive([
+        {'voice': {'file_id': 'v1', 'duration': 3, 'mime_type': 'audio/ogg'}},
+      ], transcribe: (_) async => ' remind me to buy bread ');
+      expect(transcribed, ['audio:v1.oga']);
+      expect(sent, isEmpty);
+      expect(got, hasLength(1));
+      expect(got.single, startsWith('(voice note transcribed by speech recognition, so it may have recognition errors; audio saved at ${tmp.path}/files/'));
+      expect(got.single, endsWith('v1.oga) remind me to buy bread'));
+    });
+
+    test('audio files and recordings sent as files are transcribed, with their caption', () async {
+      final (got, _, transcribed) = await receive([
+        {'audio': {'file_id': 'a1', 'file_name': 'meeting notes.mp3', 'mime_type': 'audio/mpeg'}, 'caption': 'summarize this'},
+        {'document': {'file_id': 'd1', 'file_name': 'memo.m4a', 'mime_type': 'audio/mp4'}},
+        {'document': {'file_id': 'd2', 'file_name': 'report.pdf', 'mime_type': 'application/pdf'}},
+      ], transcribe: (path) async => 'words of ${path.split('-').last}');
+      expect(transcribed, ['audio:a1.oga', 'audio:d1.oga']);
+      expect(got, hasLength(3));
+      expect(got[0], startsWith('(audio file transcribed by speech recognition'));
+      expect(got[0], endsWith('meeting_notes.mp3) summarize this\nTranscript: words of meeting_notes.mp3'));
+      expect(got[1], startsWith('(audio file transcribed'));
+      expect(got[1], endsWith('memo.m4a) words of memo.m4a'));
+      expect(got[2], startsWith('(file saved at '));
+    });
+
+    test('a failed transcription, silence or a failed download get a short answer', () async {
+      var (got, sent, _) = await receive([
+        {'voice': {'file_id': 'v1'}},
+      ], transcribe: (_) async => throw Exception('no converter'));
+      expect(got, isEmpty);
+      expect(sent, [strings.telegramTranscribeFailed]);
+
+      (got, sent, _) = await receive([
+        {'voice': {'file_id': 'v2'}},
+      ], transcribe: (_) async => '  ');
+      expect(got, isEmpty);
+      expect(sent, [strings.telegramNoSpeech]);
+
+      final (got3, sent3, transcribed3) = await receive([
+        {'voice': {'file_id': 'v3'}},
+      ], transcribe: (_) async => 'never', fileMissing: true);
+      expect(got3, isEmpty);
+      expect(transcribed3, isEmpty);
+      expect(sent3, [strings.telegramDownloadFailed]);
+    });
+
+    test('without a recognizer, audio gets the "not supported" answer', () async {
+      final (got, sent, _) = await receive([
+        {'voice': {'file_id': 'v1'}},
+        {'audio': {'file_id': 'a1'}},
+      ]);
+      expect(got, isEmpty);
+      expect(sent, [strings.telegramUnsupported, strings.telegramUnsupported]);
+    });
+
+    test('the prompt tells the brain about transcribed recordings', () {
+      final bot = Telegram(token: () => 'TOKEN', chatId: () => 42, dir: tmp.path, onMessage: (_) {});
+      expect(bot.promptSection(), contains('(voice note transcribed'));
+      expect(bot.promptSection(), contains('recognition errors'));
     });
 
     test('sends HTML, and plain text when Telegram rejects the formatting', () async {

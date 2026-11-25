@@ -36,6 +36,7 @@ import '../tools/tool_provider.dart';
 import '../vault/vault.dart';
 import '../vault/vault_tools.dart';
 import '../workers/workers.dart';
+import '../voice/audio_file.dart';
 import '../voice/listener.dart';
 import '../voice/model_store.dart';
 import '../voice/speaker.dart';
@@ -361,6 +362,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
           offset: int.tryParse(store.get('telegram_offset') ?? '') ?? 0,
           onOffset: (o) => store.set('telegram_offset', '$o'),
           onMessage: _onTelegram,
+          // Same recognizer as the mic (started before polling begins).
+          transcribe: (path) async => _listener.transcribe(await AudioFile.decode(path)),
         )..addListener(notifyListeners);
         vault.addListener(t.restart);
       }

@@ -35,7 +35,8 @@ brain use the phone too. Everything is still processed on the Mac.
   ciphertext. With the accessibility service enabled, the brain can also read and operate the phone's
   apps (`phone_ui_tree`, `phone_click`, `phone_type`, `phone_screen`…). Minerva can be the phone's
   default digital assistant and show a floating orb over other apps.
-- **Telegram**: chat with Minerva by text through your own bot when you can't talk. Answers in a
+- **Telegram**: chat with Minerva by text through your own bot when you can't talk. Voice notes and
+  audio files you send there are transcribed locally by the same speech recognizer. Answers in a
   Telegram turn are written, not spoken.
 - **Webhooks**: third parties (GitHub, Stripe, home automation…) can call your Mac at a per-webhook
   secret URL; each request reaches the brain as a message. TLS is terminated on the Mac, not on the

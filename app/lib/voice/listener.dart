@@ -29,9 +29,9 @@ class Utterance extends HeardEvent {
 /// Voice activity detection + speech recognition (Silero VAD + Parakeet v3) in a background isolate.
 ///
 /// Feed it echo-cancelled 16 kHz mic audio with [add]; it emits [SpeechStarted], then [Utterance]
-/// or [SpeechDropped].
+/// or [SpeechDropped]. The same recognizer also transcribes recorded audio ([transcribe]).
 class Listener {
-  Listener._(this._isolate, this._send, this.events);
+  Listener._(this._isolate, this._send, this.events, this._transcripts);
 
   static const double endSilence = 0.4;
   static const double bargeInSeconds = 0.3;
@@ -39,6 +39,8 @@ class Listener {
   final Isolate _isolate;
   final SendPort _send;
   final Stream<HeardEvent> events;
+  final Map<int, Completer<String>> _transcripts;
+  int _nextTranscript = 0;
 
   static Future<Listener> start({
     required String vadModel,
@@ -52,8 +54,17 @@ class Listener {
     ]);
     final ready = Completer<SendPort>();
     final ctrl = StreamController<HeardEvent>.broadcast();
+    final transcripts = <int, Completer<String>>{};
     rx.listen((m) {
-      if (m is SendPort) {
+      if (m is Map) {
+        // A recording's transcript ([transcribe]).
+        final c = transcripts.remove(m['id'] as int);
+        if (m['error'] != null) {
+          c?.completeError(Exception(m['error'] as String));
+        } else {
+          c?.complete(m['text'] as String);
+        }
+      } else if (m is SendPort) {
         ready.complete(m);
       } else if (m is String && m.startsWith('error:')) {
         if (!ready.isCompleted) ready.completeError(m);
@@ -72,7 +83,7 @@ class Listener {
         );
       }
     });
-    return Listener._(isolate, await ready.future, ctrl.stream);
+    return Listener._(isolate, await ready.future, ctrl.stream, transcripts);
   }
 
   void add(Float32List samples) =>
@@ -84,7 +95,23 @@ class Listener {
   /// Ends the utterance in progress now (as if silence followed) so it is still transcribed.
   void flush() => _send.send('flush');
 
-  void dispose() => _isolate.kill(priority: Isolate.immediate);
+  /// The transcript of recorded audio ([samples]: 16 kHz mono, any length), empty when there is no
+  /// speech in it. Its own VAD cuts it into utterances, as for the mic, so long audio fits the
+  /// recognizer; the mic is still heard between them.
+  Future<String> transcribe(Float32List samples) {
+    final id = _nextTranscript++;
+    final c = _transcripts[id] = Completer<String>();
+    _send.send(['transcribe', id, TransferableTypedData.fromList([samples])]);
+    return c.future;
+  }
+
+  void dispose() {
+    _isolate.kill(priority: Isolate.immediate);
+    for (final c in _transcripts.values) {
+      c.completeError(StateError('the listener stopped'));
+    }
+    _transcripts.clear();
+  }
 
   static void _main(List<Object> args) {
     final out = args[0] as SendPort;
@@ -124,6 +151,56 @@ class Listener {
         ),
       );
       const win = 512;
+      String recognize(Float32List samples) {
+        final stream = asr.createStream();
+        stream.acceptWaveform(samples: samples, sampleRate: 16000);
+        asr.decode(stream);
+        final text = asr.getResult(stream).text.trim();
+        stream.free();
+        return text;
+      }
+
+      // Recorded audio, one file at a time; it yields after each utterance so mic chunks queued
+      // meanwhile are still taken.
+      var files = Future<void>.value();
+      Future<void> transcribe(int id, Float32List samples) async {
+        final fileVad = so.VoiceActivityDetector(config: vadConfig, bufferSizeInSeconds: 60);
+        try {
+          final parts = <String>[];
+          var found = false;
+          Future<void> take() async {
+            while (!fileVad.isEmpty()) {
+              final seg = fileVad.front().samples;
+              fileVad.pop();
+              found = true;
+              final text = recognize(seg);
+              if (text.isNotEmpty) parts.add(text);
+              await Future<void>.delayed(Duration.zero);
+            }
+          }
+
+          for (var i = 0; i < samples.length; i += win) {
+            final end = i + win;
+            fileVad.acceptWaveform(end <= samples.length
+                ? Float32List.sublistView(samples, i, end)
+                : (Float32List(win)..setAll(0, Float32List.sublistView(samples, i))));
+            await take();
+          }
+          fileVad.flush();
+          await take();
+          // Speech the VAD missed (noise, music under it): a short clip is still worth a try.
+          if (!found && samples.length <= 30 * 16000 && samples.isNotEmpty) {
+            final text = recognize(samples);
+            if (text.isNotEmpty) parts.add(text);
+          }
+          out.send({'id': id, 'text': parts.join(' ')});
+        } catch (e) {
+          out.send({'id': id, 'error': '$e'});
+        } finally {
+          fileVad.free();
+        }
+      }
+
       var buf = Float32List(0);
       var speechRun = 0;
       var announced = false;
@@ -133,11 +210,7 @@ class Listener {
           final seg = vad.front().samples;
           vad.pop();
           announced = false;
-          final stream = asr.createStream();
-          stream.acceptWaveform(samples: seg, sampleRate: 16000);
-          asr.decode(stream);
-          final text = asr.getResult(stream).text.trim();
-          stream.free();
+          final text = recognize(seg);
           final speechEnd = closedAt.subtract(
             Duration(milliseconds: (endSilence * 1000).round()),
           );
@@ -153,6 +226,14 @@ class Listener {
       final rx = ReceivePort();
       out.send(rx.sendPort);
       rx.listen((m) {
+        if (m is List && m.first == 'transcribe') {
+          final id = m[1] as int;
+          final samples = (m[2] as TransferableTypedData).materialize().asFloat32List();
+          files = files
+              .then((_) => transcribe(id, samples))
+              .catchError((Object e) => out.send({'id': id, 'error': '$e'}));
+          return;
+        }
         if (m == 'flush') {
           vad.flush();
           drain();

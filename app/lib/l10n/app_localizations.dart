@@ -1013,7 +1013,7 @@ abstract class AppLocalizations {
   /// Telegram reply to a message Minerva can't read.
   ///
   /// In en, this message translates to:
-  /// **'I can\'t take voice notes, audio, video or stickers here yet. Write it to me, please.'**
+  /// **'I can\'t take video, stickers or locations here yet. Write it to me, please.'**
   String get telegramUnsupported;
 
   /// Telegram reply when a photo or file fails to download.
@@ -1021,6 +1021,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'I couldn\'t download that from Telegram. Try sending it again.'**
   String get telegramDownloadFailed;
+
+  /// Telegram reply when a voice note or audio file can't be decoded or transcribed.
+  ///
+  /// In en, this message translates to:
+  /// **'I couldn\'t transcribe that audio. Try again, or write it to me.'**
+  String get telegramTranscribeFailed;
+
+  /// Telegram reply when a voice note or audio file has no recognizable speech.
+  ///
+  /// In en, this message translates to:
+  /// **'I couldn\'t make out any speech in that audio.'**
+  String get telegramNoSpeech;
 
   /// Telegram channel status.
   ///

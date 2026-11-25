@@ -551,11 +551,18 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get telegramUnsupported =>
-      'Aquí todavía no puedo con notas de voz, audio, vídeo ni stickers. Escríbemelo, por favor.';
+      'Aquí todavía no puedo con vídeo, stickers ni ubicaciones. Escríbemelo, por favor.';
 
   @override
   String get telegramDownloadFailed =>
       'No he podido descargar eso de Telegram. Prueba a enviarlo otra vez.';
+
+  @override
+  String get telegramTranscribeFailed =>
+      'No he podido transcribir ese audio. Prueba otra vez o escríbemelo.';
+
+  @override
+  String get telegramNoSpeech => 'No he entendido ninguna voz en ese audio.';
 
   @override
   String get telegramBadToken =>

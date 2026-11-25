@@ -631,13 +631,21 @@
   "@openAppInfo": {
     "description": "Button: open Minerva's app info in the phone's settings."
   },
-  "telegramUnsupported": "I can't take voice notes, audio, video or stickers here yet. Write it to me, please.",
+  "telegramUnsupported": "I can't take video, stickers or locations here yet. Write it to me, please.",
   "@telegramUnsupported": {
     "description": "Telegram reply to a message Minerva can't read."
   },
   "telegramDownloadFailed": "I couldn't download that from Telegram. Try sending it again.",
   "@telegramDownloadFailed": {
     "description": "Telegram reply when a photo or file fails to download."
+  },
+  "telegramTranscribeFailed": "I couldn't transcribe that audio. Try again, or write it to me.",
+  "@telegramTranscribeFailed": {
+    "description": "Telegram reply when a voice note or audio file can't be decoded or transcribed."
+  },
+  "telegramNoSpeech": "I couldn't make out any speech in that audio.",
+  "@telegramNoSpeech": {
+    "description": "Telegram reply when a voice note or audio file has no recognizable speech."
   },
   "telegramBadToken": "Telegram rejected the bot token: save a valid one as the credential telegram (field token).",
   "@telegramBadToken": {

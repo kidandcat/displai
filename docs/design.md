@@ -508,8 +508,14 @@ own (`app/lib/telegram/`).
   token waits until it changes.
 - **In**: text goes to the brain as `[<time>] [telegram] <text>` (queued before notices while the brain
   is busy). Photos and documents are saved under `<data>/telegram/files/` and their path is given
-  (`read_file` shows an image); voice notes, audio, video and stickers get a short "not supported, write
-  it" reply.
+  (`read_file` shows an image). Voice notes, audio files and documents with an `audio/*` type are saved
+  there too, decoded to 16 kHz mono (`afconvert`, which reads Ogg Opus on current macOS; `ffmpeg` for
+  anything it can't; `app/lib/voice/audio_file.dart`) and transcribed by the mic's own Parakeet
+  recognizer in the listener isolate, cut into utterances by a separate VAD and yielding between them
+  so the mic is still heard. The brain gets `(voice note transcribed by speech recognition, so it may
+  have recognition errors; audio saved at <path>) <transcript>` (with `Transcript:` after a caption),
+  and its prompt says to read past recognition errors. A failed download or transcription, or audio with
+  no speech, gets a short reply; video and stickers get "not supported, write it".
 - **Out**: a Telegram turn is not spoken (no TTS, no spoken status lines); its text goes to the chat as
   it is written, one message per text block (before each tool call and at the end), converted from
   Markdown to Telegram's HTML subset, split under 4096 characters (code blocks closed and reopened), and

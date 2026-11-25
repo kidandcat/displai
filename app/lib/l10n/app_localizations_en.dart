@@ -544,11 +544,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get telegramUnsupported =>
-      'I can\'t take voice notes, audio, video or stickers here yet. Write it to me, please.';
+      'I can\'t take video, stickers or locations here yet. Write it to me, please.';
 
   @override
   String get telegramDownloadFailed =>
       'I couldn\'t download that from Telegram. Try sending it again.';
+
+  @override
+  String get telegramTranscribeFailed =>
+      'I couldn\'t transcribe that audio. Try again, or write it to me.';
+
+  @override
+  String get telegramNoSpeech =>
+      'I couldn\'t make out any speech in that audio.';
 
   @override
   String get telegramBadToken =>
