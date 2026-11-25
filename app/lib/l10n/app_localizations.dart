@@ -665,7 +665,7 @@ abstract class AppLocalizations {
   /// No description provided for @modelUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'{agent} is not installed or not signed in. Install it and sign in from a terminal (for Antigravity: run agy).'**
+  /// **'{agent} is not installed or not signed in. Install it and sign in from a terminal (for Antigravity: run agy; for Codex: run codex login).'**
   String modelUnavailable(String agent);
 
   /// No description provided for @modelProviderNote.
@@ -710,6 +710,12 @@ abstract class AppLocalizations {
   /// **'Max'**
   String get effortMax;
 
+  /// No description provided for @effortUltra.
+  ///
+  /// In en, this message translates to:
+  /// **'Ultra'**
+  String get effortUltra;
+
   /// No description provided for @modelSpeed.
   ///
   /// In en, this message translates to:
@@ -751,6 +757,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Applies to workers started from now on.'**
   String get modelWorkersNote;
+
+  /// Model picker tab: the AI providers (Claude, Antigravity, Codex) and their status.
+  ///
+  /// In en, this message translates to:
+  /// **'Providers'**
+  String get modelProviders;
+
+  /// No description provided for @providerReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get providerReady;
+
+  /// No description provided for @providerChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get providerChecking;
+
+  /// No description provided for @providerUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not installed or not signed in'**
+  String get providerUnavailable;
+
+  /// No description provided for @providerLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Usage limit until {time}'**
+  String providerLimited(String time);
+
+  /// No description provided for @providerSignedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed out: sign in again from a terminal (retrying at {time})'**
+  String providerSignedOut(String time);
+
+  /// No description provided for @providerUsedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'In use: {uses}'**
+  String providerUsedBy(String uses);
+
+  /// No description provided for @providersNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Minerva runs on the subscriptions of the agents installed on this Mac: Claude Code (claude), Antigravity (agy) and Codex (codex login). Connect several and add backups: when one hits its usage limit, Minerva goes on with the next.'**
+  String get providersNote;
+
+  /// No description provided for @fallbacks.
+  ///
+  /// In en, this message translates to:
+  /// **'Backups, in order'**
+  String get fallbacks;
+
+  /// No description provided for @fallbacksNote.
+  ///
+  /// In en, this message translates to:
+  /// **'When a provider hits its usage limit, Minerva goes on with the next backup, and back to the first choice once the limit is over.'**
+  String get fallbacksNote;
+
+  /// No description provided for @fallbacksNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No backups: if the provider is out, Minerva says so and waits.'**
+  String get fallbacksNone;
+
+  /// No description provided for @fallbackAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add backup'**
+  String get fallbackAdd;
+
+  /// No description provided for @fallbackRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get fallbackRemove;
+
+  /// No description provided for @fallbackUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Move up'**
+  String get fallbackUp;
+
+  /// No description provided for @fallbackDown.
+  ///
+  /// In en, this message translates to:
+  /// **'Move down'**
+  String get fallbackDown;
+
+  /// No description provided for @modelOnBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'{provider} is out: the conversation is on {model} until it is back.'**
+  String modelOnBackup(String provider, String model);
+
+  /// Spoken (or sent on Telegram) when the brain's provider hits its usage limit and Minerva moves to the next backup.
+  ///
+  /// In en, this message translates to:
+  /// **'{from} can\'t answer right now. I\'ll go on with {to}.'**
+  String providerFellBack(String from, String to);
 
   /// Phone: title of the settings screen and tooltip of its button.
   ///

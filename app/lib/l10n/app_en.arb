@@ -429,7 +429,7 @@
       }
     }
   },
-  "modelUnavailable": "{agent} is not installed or not signed in. Install it and sign in from a terminal (for Antigravity: run agy).",
+  "modelUnavailable": "{agent} is not installed or not signed in. Install it and sign in from a terminal (for Antigravity: run agy; for Codex: run codex login).",
   "@modelUnavailable": {
     "placeholders": {
       "agent": {
@@ -444,6 +444,7 @@
   "effortHigh": "High",
   "effortXhigh": "Very high",
   "effortMax": "Max",
+  "effortUltra": "Ultra",
   "modelSpeed": "Speed",
   "speedStandard": "Standard",
   "speedFast": "Fast",
@@ -458,6 +459,68 @@
   "fastExtraUsageDisabled": "extra usage is turned off on your Claude account",
   "modelConversationNote": "The conversation goes on with the new model.",
   "modelWorkersNote": "Applies to workers started from now on.",
+  "modelProviders": "Providers",
+  "@modelProviders": {
+    "description": "Model picker tab: the AI providers (Claude, Antigravity, Codex) and their status."
+  },
+  "providerReady": "Ready",
+  "providerChecking": "Checking…",
+  "providerUnavailable": "Not installed or not signed in",
+  "providerLimited": "Usage limit until {time}",
+  "@providerLimited": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "providerSignedOut": "Signed out: sign in again from a terminal (retrying at {time})",
+  "@providerSignedOut": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "providerUsedBy": "In use: {uses}",
+  "@providerUsedBy": {
+    "placeholders": {
+      "uses": {
+        "type": "String"
+      }
+    }
+  },
+  "providersNote": "Minerva runs on the subscriptions of the agents installed on this Mac: Claude Code (claude), Antigravity (agy) and Codex (codex login). Connect several and add backups: when one hits its usage limit, Minerva goes on with the next.",
+  "fallbacks": "Backups, in order",
+  "fallbacksNote": "When a provider hits its usage limit, Minerva goes on with the next backup, and back to the first choice once the limit is over.",
+  "fallbacksNone": "No backups: if the provider is out, Minerva says so and waits.",
+  "fallbackAdd": "Add backup",
+  "fallbackRemove": "Remove",
+  "fallbackUp": "Move up",
+  "fallbackDown": "Move down",
+  "modelOnBackup": "{provider} is out: the conversation is on {model} until it is back.",
+  "@modelOnBackup": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "providerFellBack": "{from} can't answer right now. I'll go on with {to}.",
+  "@providerFellBack": {
+    "description": "Spoken (or sent on Telegram) when the brain's provider hits its usage limit and Minerva moves to the next backup.",
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
   "settings": "Settings",
   "@settings": {
     "description": "Phone: title of the settings screen and tooltip of its button."

@@ -338,7 +338,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String modelUnavailable(String agent) {
-    return '$agent is not installed or not signed in. Install it and sign in from a terminal (for Antigravity: run agy).';
+    return '$agent is not installed or not signed in. Install it and sign in from a terminal (for Antigravity: run agy; for Codex: run codex login).';
   }
 
   @override
@@ -361,6 +361,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get effortMax => 'Max';
+
+  @override
+  String get effortUltra => 'Ultra';
 
   @override
   String get modelSpeed => 'Speed';
@@ -386,6 +389,70 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get modelWorkersNote => 'Applies to workers started from now on.';
+
+  @override
+  String get modelProviders => 'Providers';
+
+  @override
+  String get providerReady => 'Ready';
+
+  @override
+  String get providerChecking => 'Checking…';
+
+  @override
+  String get providerUnavailable => 'Not installed or not signed in';
+
+  @override
+  String providerLimited(String time) {
+    return 'Usage limit until $time';
+  }
+
+  @override
+  String providerSignedOut(String time) {
+    return 'Signed out: sign in again from a terminal (retrying at $time)';
+  }
+
+  @override
+  String providerUsedBy(String uses) {
+    return 'In use: $uses';
+  }
+
+  @override
+  String get providersNote =>
+      'Minerva runs on the subscriptions of the agents installed on this Mac: Claude Code (claude), Antigravity (agy) and Codex (codex login). Connect several and add backups: when one hits its usage limit, Minerva goes on with the next.';
+
+  @override
+  String get fallbacks => 'Backups, in order';
+
+  @override
+  String get fallbacksNote =>
+      'When a provider hits its usage limit, Minerva goes on with the next backup, and back to the first choice once the limit is over.';
+
+  @override
+  String get fallbacksNone =>
+      'No backups: if the provider is out, Minerva says so and waits.';
+
+  @override
+  String get fallbackAdd => 'Add backup';
+
+  @override
+  String get fallbackRemove => 'Remove';
+
+  @override
+  String get fallbackUp => 'Move up';
+
+  @override
+  String get fallbackDown => 'Move down';
+
+  @override
+  String modelOnBackup(String provider, String model) {
+    return '$provider is out: the conversation is on $model until it is back.';
+  }
+
+  @override
+  String providerFellBack(String from, String to) {
+    return '$from can\'t answer right now. I\'ll go on with $to.';
+  }
 
   @override
   String get settings => 'Settings';

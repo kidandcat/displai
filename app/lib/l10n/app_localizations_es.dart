@@ -340,7 +340,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String modelUnavailable(String agent) {
-    return '$agent no está instalado o no tiene la sesión iniciada. Instálalo e inicia sesión desde una terminal (para Antigravity: ejecuta agy).';
+    return '$agent no está instalado o no tiene la sesión iniciada. Instálalo e inicia sesión desde una terminal (para Antigravity: ejecuta agy; para Codex: ejecuta codex login).';
   }
 
   @override
@@ -364,6 +364,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get effortMax => 'Máximo';
+
+  @override
+  String get effortUltra => 'Ultra';
 
   @override
   String get modelSpeed => 'Velocidad';
@@ -390,6 +393,70 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get modelWorkersNote =>
       'Se aplica a los workers que empiecen a partir de ahora.';
+
+  @override
+  String get modelProviders => 'Proveedores';
+
+  @override
+  String get providerReady => 'Listo';
+
+  @override
+  String get providerChecking => 'Comprobando…';
+
+  @override
+  String get providerUnavailable => 'No instalado o sin sesión iniciada';
+
+  @override
+  String providerLimited(String time) {
+    return 'Límite de uso hasta las $time';
+  }
+
+  @override
+  String providerSignedOut(String time) {
+    return 'Sin sesión: vuelve a iniciarla desde una terminal (reintento a las $time)';
+  }
+
+  @override
+  String providerUsedBy(String uses) {
+    return 'En uso: $uses';
+  }
+
+  @override
+  String get providersNote =>
+      'Minerva usa las suscripciones de los agentes instalados en este Mac: Claude Code (claude), Antigravity (agy) y Codex (codex login). Conecta varios y añade respaldos: cuando uno llega a su límite de uso, Minerva sigue con el siguiente.';
+
+  @override
+  String get fallbacks => 'Respaldos, por orden';
+
+  @override
+  String get fallbacksNote =>
+      'Cuando un proveedor llega a su límite de uso, Minerva sigue con el siguiente respaldo, y vuelve a la primera opción cuando el límite termina.';
+
+  @override
+  String get fallbacksNone =>
+      'Sin respaldos: si el proveedor no está disponible, Minerva lo dice y espera.';
+
+  @override
+  String get fallbackAdd => 'Añadir respaldo';
+
+  @override
+  String get fallbackRemove => 'Quitar';
+
+  @override
+  String get fallbackUp => 'Subir';
+
+  @override
+  String get fallbackDown => 'Bajar';
+
+  @override
+  String modelOnBackup(String provider, String model) {
+    return '$provider no está disponible: la conversación sigue con $model hasta que vuelva.';
+  }
+
+  @override
+  String providerFellBack(String from, String to) {
+    return '$from no puede responder ahora. Sigo con $to.';
+  }
 
   @override
   String get settings => 'Ajustes';

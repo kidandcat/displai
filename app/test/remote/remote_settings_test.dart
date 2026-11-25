@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:minerva/brain/fallback.dart';
 import 'package:minerva/brain/models.dart';
 import 'package:minerva/l10n/l10n.dart';
 import 'package:minerva/remote/remote_assistant.dart';
@@ -135,6 +136,84 @@ void main() {
     await tester.tap(find.text('Gemini Pro Orchestrator'));
     await tester.pumpAndSettle();
     expect(a.brainModel.model, 'gemini-pro-orchestrator');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the phone shows each provider, and orders the backups', (tester) async {
+    tester.view.physicalSize = const Size(377, 702);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final a = RemoteAssistant(relay: 'wss://example.invalid', key: 'k' * 43);
+    final until = DateTime.now().add(const Duration(hours: 1));
+    final settings = _settings()
+      ..['catalogs'] = {
+        'claude': _settings()['catalog'],
+        'codex': {
+          'provider': 'codex',
+          'version': '0.154.0',
+          'models': [
+            {
+              'value': 'gpt-6-astra',
+              'displayName': 'GPT-6 Astra',
+              'supportsEffort': true,
+              'supportedEffortLevels': ['low', 'medium', 'high', 'ultra'],
+              'supportsFastMode': true,
+            },
+          ],
+        },
+      }
+      ..['unavailable'] = ['antigravity']
+      ..['brain_fallbacks'] = [codexBrainModel.toJson()]
+      ..['active_brain'] = codexBrainModel.toJson()
+      ..['limits'] = {
+        'claude': {'until': until.millisecondsSinceEpoch, 'reason': 'usage'},
+      };
+    a
+      ..handleMessage({'t': 'hello'})
+      ..handleMessage(settings);
+    expect(a.brainFallbacks, [codexBrainModel]);
+    expect(a.activeBrainModel, codexBrainModel);
+    expect(a.providerOut(BrainProvider.claude)?.reason, LimitReason.usage);
+    expect(a.providerOut(BrainProvider.codex), isNull);
+
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('es'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: RemoteSettingsPage(assistant: a),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Conversación'));
+    await tester.pumpAndSettle();
+    expect(find.text('Claude no está disponible: la conversación sigue con GPT-6 Astra hasta que vuelva.'),
+        findsOneWidget);
+
+    await tester.tap(find.text('Respaldos, por orden (1)'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('GPT-6 Astra'), findsOneWidget);
+    // Antigravity is not installed: no other provider to add.
+    await tester.ensureVisible(find.byTooltip('Quitar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Quitar'));
+    await tester.pumpAndSettle();
+    expect(a.brainFallbacks, isEmpty);
+    await tester.ensureVisible(find.text('Añadir respaldo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Añadir respaldo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Codex').last);
+    await tester.pumpAndSettle();
+    expect(a.brainFallbacks, [codexBrainModel]);
+
+    await tester.tap(find.text('Proveedores'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('Límite de uso hasta las'), findsOneWidget);
+    expect(find.text('Listo · En uso: Conversación'), findsOneWidget);
+    expect(find.text('No instalado o sin sesión iniciada'), findsOneWidget);
+    expect(find.text('Codex CLI 0.154.0'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
