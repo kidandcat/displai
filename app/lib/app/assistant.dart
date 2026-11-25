@@ -25,6 +25,7 @@ import '../remote/protocol.dart';
 import '../computer/computer_tools.dart';
 import '../routines/routines.dart';
 import '../store/store.dart';
+import '../telegram/telegram.dart';
 import '../tools/command_tools.dart';
 import '../tools/history_tools.dart';
 import '../tools/memory_tools.dart';
@@ -98,6 +99,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// Webhooks from third parties at this Mac's own address, through the relay.
   Webhooks? webhooks;
 
+  /// The written channel: the user's chat with a Telegram bot (token in the vault).
+  Telegram? telegram;
+
   /// What built the display, so it can move to the phone and back.
   final _displayLog = DisplayLog();
 
@@ -131,6 +135,18 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   /// Worker reports and routine prompts waiting for the brain to be free.
   final _notices = <String>[];
+
+  /// Telegram messages waiting for the brain to be free (they go before the notices).
+  final _telegramInbox = <String>[];
+
+  /// The user last talked to Minerva on Telegram (not by voice or on the display): worker
+  /// reports, routines and webhooks are answered there too, until they talk again.
+  bool _lastOnTelegram = false;
+
+  /// The turn in progress answers on Telegram: its text is sent there, not spoken.
+  bool _telegramTurn = false;
+  final _telegramText = StringBuffer();
+  Timer? _typingTimer;
   Timer? _noticeTimer;
   bool _userSpeaking = false;
 
@@ -302,6 +318,17 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         webhooks = Webhooks(relay: _relay, dir: '${store.dir}/webhooks', onWebhook: (ev) => notify(Webhooks.describe(ev)))
           ..addListener(notifyListeners);
       }
+      if (Platform.environment['MINERVA_NO_TELEGRAM'] == null) {
+        final t = telegram = Telegram(
+          token: () => vault.value('telegram', 'token'),
+          chatId: () => int.tryParse(vault.value('telegram', 'chat_id') ?? store.get('telegram_chat') ?? ''),
+          dir: '${store.dir}/telegram',
+          offset: int.tryParse(store.get('telegram_offset') ?? '') ?? 0,
+          onOffset: (o) => store.set('telegram_offset', '$o'),
+          onMessage: _onTelegram,
+        )..addListener(notifyListeners);
+        vault.addListener(t.restart);
+      }
       providers = [
         CommandTools(vault: vault),
         ComputerTools(vault: vault),
@@ -361,6 +388,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       ready = true;
       _updatePresence();
       routines.start();
+      telegram?.start();
       _noticeTimer = Timer.periodic(const Duration(seconds: 2), (_) => _drainNotices());
     } catch (e, st) {
       error = '$e';
@@ -444,6 +472,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         SkillTools.promptSection(_skillsDir),
         projects.promptSection(),
         webhooks?.promptSection() ?? '',
+        telegram?.promptSection() ?? '',
       ]),
       mcpUrl: _mcp.url,
       workDir: '${store.dir}/brain',
@@ -710,7 +739,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     switch (e) {
       case SpeechStarted():
         _userSpeaking = true;
-        if (busy && !_barged) _bargeIn();
+        // A Telegram answer is not spoken: nothing to talk over (a real utterance takes over below).
+        if (busy && !_barged && !_telegramTurn) _bargeIn();
       case SpeechDropped():
         _heardNothing();
       case Utterance():
@@ -718,8 +748,12 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         final wasBargeIn = _barged;
         _barged = false;
         if (busy && !wasBargeIn) {
-          debugPrint('ignored ${e.seconds.toStringAsFixed(1)}s of audio while speaking (no barge-in)');
-          return;
+          if (!_telegramTurn || e.text.isEmpty) {
+            debugPrint('ignored ${e.seconds.toStringAsFixed(1)}s of audio while speaking (no barge-in)');
+            return;
+          }
+          // The user talks at the Mac while a Telegram answer is being written: they are back.
+          _stopTurn();
         }
         var text = e.text;
         if (text.isEmpty) {
@@ -789,6 +823,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   void _stopTurn() {
     _logReply(interrupted: true);
+    _endTelegramTurn();
     _generation++;
     _pendingTts = 0;
     _sentence.clear();
@@ -800,17 +835,27 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     _updatePresence();
   }
 
-  void _ask(String text) {
+  /// Starts a turn. [telegram]: it is answered on Telegram; [notice]: a worker report, routine or
+  /// webhook (not something the user did, so it does not change where they are).
+  void _ask(String text, {bool telegram = false, bool notice = false}) {
     final event = text.startsWith('[display]') || text.startsWith('[worker') || text.startsWith('[routine') ||
         text.startsWith('[webhook');
-    store.addMessage(event ? 'event' : 'user', text);
+    store.addMessage(event ? 'event' : 'user', telegram && !notice ? '[telegram] $text' : text);
+    if (!notice) _lastOnTelegram = telegram;
     _generation++;
     _pendingTts = 0;
     _sentence.clear();
     _firstAudioAt = null;
+    _telegramTurn = telegram;
+    _telegramText.clear();
+    if (telegram) _startTyping();
     _setActivity(strings.activityThinking);
     final p = phone;
-    final where = p != null && p.active ? ' [phone ${p.width.round()}x${p.height.round()}]' : '';
+    final where = telegram
+        ? ' [telegram]'
+        : p != null && p.active
+            ? ' [phone ${p.width.round()}x${p.height.round()}]'
+            : '';
     unawaited(_brain.send('[${formatStamp(DateTime.now())}]$where $text'));
     _updatePresence();
     notifyListeners();
@@ -825,11 +870,20 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       case TextDelta():
         _reply.write(e.text);
         if (activity.isNotEmpty) _setActivity('');
-        _sentence.write(e.text);
-        _flushSentences(final_: false);
+        if (_telegramTurn) {
+          _telegramText.write(e.text);
+        } else {
+          _sentence.write(e.text);
+          _flushSentences(final_: false);
+        }
       case ToolStart():
         if (_reply.isNotEmpty) _reply.write(' ');
-        _flushSentences(final_: true);
+        if (_telegramTurn) {
+          // What it wrote before the tool ("let me check") goes out now.
+          _sendTelegramText();
+        } else {
+          _flushSentences(final_: true);
+        }
         final l = strings;
         _setActivity(switch (e.name) {
           'WebSearch' || 'web_search' => l.activityWebSearch,
@@ -867,17 +921,26 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         _setActivity(e.active ? strings.activityCompacting : strings.activityThinking);
       case TurnDone():
         _logReply(interrupted: e.interrupted);
+        // An interrupted Telegram turn was ended by _stopTurn (a new turn may have started since).
+        final toTelegram = _telegramTurn && !e.interrupted;
         if (e.interrupted) {
           display.cancelPartial();
           phone?.cancelPartial();
+        } else if (toTelegram) {
+          _sendTelegramText();
         } else {
           _flushSentences(final_: true);
         }
         _setActivity('');
         if (e.error != null) {
           debugPrint('turn error: ${e.error}');
-          _say(strings.brainError, lang: appLocale.languageCode);
+          if (toTelegram) {
+            unawaited(telegram?.send(strings.brainError));
+          } else {
+            _say(strings.brainError, lang: appLocale.languageCode);
+          }
         }
+        if (toTelegram) _endTelegramTurn();
         _updatePresence();
         _drainNotices();
     }
@@ -897,9 +960,45 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   }
 
   void _drainNotices() {
-    if (!ready || _notices.isEmpty || busy || _userSpeaking) return;
+    if (!ready || busy || _userSpeaking) return;
+    if (_telegramInbox.isNotEmpty) {
+      _turnSpeechEnd = null;
+      _ask(_telegramInbox.removeAt(0), telegram: true);
+      return;
+    }
+    if (_notices.isEmpty) return;
     _turnSpeechEnd = null;
-    _ask(_notices.removeAt(0));
+    _ask(_notices.removeAt(0), telegram: _lastOnTelegram && telegram?.configured == true, notice: true);
+  }
+
+  // ---------------------------------------------------------------- telegram
+
+  /// A message from the user on Telegram: answered there as soon as the brain is free.
+  void _onTelegram(String text) {
+    _telegramInbox.add(text);
+    unawaited(telegram?.typing());
+    _drainNotices();
+  }
+
+  /// Sends what the brain wrote since the last send.
+  void _sendTelegramText() {
+    final text = _telegramText.toString().trim();
+    _telegramText.clear();
+    if (text.isNotEmpty) unawaited(telegram?.send(text));
+  }
+
+  /// "typing…" in the chat while the brain works (it lasts about five seconds each time).
+  void _startTyping() {
+    _typingTimer?.cancel();
+    unawaited(telegram?.typing());
+    _typingTimer = Timer.periodic(const Duration(seconds: 4), (_) => unawaited(telegram?.typing()));
+  }
+
+  void _endTelegramTurn() {
+    _telegramTurn = false;
+    _telegramText.clear();
+    _typingTimer?.cancel();
+    _typingTimer = null;
   }
 
   bool _isDisplayTool(String name) => DisplayController.toolSpecs.any((t) => t.name == name);
@@ -1102,6 +1201,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   }
 
   void _speakStatus() {
+    if (_telegramTurn) return;
     final text = _statusSpeech(activity);
     if (text.isEmpty || text == _spokenStatus || !_statusQuiet) return;
     _spokenStatus = text;
@@ -1138,6 +1238,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     }
     _noticeTimer?.cancel();
     _statusTimer?.cancel();
+    _typingTimer?.cancel();
+    telegram?.dispose();
     window.removeListener(_syncAudio);
     window.dispose();
     presence.removeListener(_pushState);

@@ -410,6 +410,36 @@ log in, call APIs or fill passwords **without ever seeing a value** (`app/lib/va
   app showing a password), the Claude built-ins `Read`/`Grep` of workers on a file that holds a value,
   and values shorter than 4 characters.
 
+### 3.10 Telegram (the written channel)
+
+For when the user can't talk or listen, they chat with Minerva by text through a Telegram bot of their
+own (`app/lib/telegram/`).
+
+- **Setup**: the bot's token is the vault credential `telegram` (field `token`), read at each request,
+  so saving or replacing it takes effect at once. Only one chat is taken: the vault field
+  `telegram.chat_id`, else the store key `telegram_chat` (the user's id, which is their private chat
+  with any bot). Messages from anyone else are ignored without an answer (and logged with their chat
+  id). `MINERVA_NO_TELEGRAM` turns it off (test instances on the same data).
+- **Polling**: long-poll `getUpdates` (50 s) from the Mac, no public URL; the offset is kept in the store
+  (`telegram_offset`). A token with a webhook set, or that another program polls, gets 409: Minerva
+  never deletes the webhook (it belongs to something else) and retries every five minutes; a rejected
+  token waits until it changes.
+- **In**: text goes to the brain as `[<time>] [telegram] <text>` (queued before notices while the brain
+  is busy). Photos and documents are saved under `<data>/telegram/files/` and their path is given
+  (`read_file` shows an image); voice notes, audio, video and stickers get a short "not supported, write
+  it" reply.
+- **Out**: a Telegram turn is not spoken (no TTS, no spoken status lines); its text goes to the chat as
+  it is written, one message per text block (before each tool call and at the end), converted from
+  Markdown to Telegram's HTML subset, split under 4096 characters (code blocks closed and reopened), and
+  resent as plain text if Telegram rejects the markup. "typing…" shows while the brain works. The prompt
+  section tells the brain to write (Markdown, as long as needed) and to leave the display alone.
+- **Where proactive messages go**: the last channel the user used wins. A Telegram message makes it
+  Telegram; speaking to Minerva (Mac or phone) or using the display makes it voice again. Worker
+  reports, routines and webhooks that fire while it is Telegram are tagged `[telegram]` and answered
+  there. It is not kept across restarts (it starts as voice).
+- **Voice at the same time**: a Telegram answer has nothing to talk over, so speech starting does not
+  barge in; a real utterance stops it and the voice takes over.
+
 ## 4. Latency (measured)
 
 Spike: `spike/e2e.py`. A recorded utterance is fed to the VAD in real time; Parakeet transcribes;
