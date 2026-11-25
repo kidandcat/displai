@@ -31,6 +31,11 @@ class RemoteLink extends ChangeNotifier {
   int _failures = 0;
   bool _closed = false;
 
+  /// A connection attempt is in flight. A second one would open another socket with the same
+  /// role, and the relay would close the first with "replaced" (an assist launch asks to
+  /// reconnect from both the resume and the listen request).
+  bool _connecting = false;
+
   /// Connected to the relay.
   bool get online => _socket != null;
 
@@ -49,7 +54,8 @@ class RemoteLink extends ChangeNotifier {
   void start() => unawaited(_connect());
 
   Future<void> _connect() async {
-    if (_closed || _socket != null) return;
+    if (_closed || _socket != null || _connecting) return;
+    _connecting = true;
     try {
       final secrets = _secrets ??= await PairingSecrets.derive(key);
       _channel ??= SecureChannel(
@@ -87,6 +93,8 @@ class RemoteLink extends ChangeNotifier {
       lastError = '$e';
       _scheduleRetry();
       notifyListeners();
+    } finally {
+      _connecting = false;
     }
   }
 
@@ -121,7 +129,7 @@ class RemoteLink extends ChangeNotifier {
 
   /// Reconnects at once (e.g. after the app comes back to the foreground).
   void reconnectNow() {
-    if (_closed || _socket != null) return;
+    if (_closed || _socket != null || _connecting) return;
     _retry?.cancel();
     unawaited(_connect());
   }
