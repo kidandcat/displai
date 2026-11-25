@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart' show AppLifecycleState, GlobalKey, Size, W
 import '../app/assistant_ui.dart';
 import '../app/settings.dart';
 import '../audio/native_audio.dart';
+import '../brain/fallback.dart';
 import '../brain/models.dart';
 import '../display/display.dart';
 import '../display/display_runner.dart';
@@ -73,6 +74,19 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
   ModelChoice brainModel = defaultBrainModel;
   @override
   ModelChoice workerModel = defaultWorkerModel;
+  @override
+  List<ModelChoice> brainFallbacks = const [];
+  @override
+  List<ModelChoice> workerFallbacks = const [];
+  @override
+  ModelChoice activeBrainModel = defaultBrainModel;
+  Map<BrainProvider, ProviderOut> _out = const {};
+  @override
+  ProviderOut? providerOut(BrainProvider provider) {
+    final o = _out[provider];
+    return o != null && o.until.isAfter(DateTime.now()) ? o : null;
+  }
+
   final _catalogs = <BrainProvider, ModelCatalog>{};
   @override
   ModelCatalog? catalogFor(BrainProvider provider) => _catalogs[provider];
@@ -211,6 +225,19 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     settingsKnown = true;
     brainModel = ModelChoice.fromJson(m['brain']) ?? brainModel;
     workerModel = ModelChoice.fromJson(m['workers']) ?? workerModel;
+    brainFallbacks = fallbacksFromJson(m['brain_fallbacks']) ?? brainFallbacks;
+    workerFallbacks = fallbacksFromJson(m['worker_fallbacks']) ?? workerFallbacks;
+    // A desktop from before there were backups runs on the conversation's model.
+    activeBrainModel = ModelChoice.fromJson(m['active_brain']) ?? brainModel;
+    final limits = m['limits'] is Map ? m['limits'] as Map : const {};
+    _out = {
+      for (final p in BrainProvider.values)
+        if (limits[p.name] case {'until': final int until, 'reason': final String reason})
+          p: (
+            until: DateTime.fromMillisecondsSinceEpoch(until),
+            reason: LimitReason.values.where((r) => r.name == reason).firstOrNull ?? LimitReason.usage,
+          ),
+    };
     // Each provider's models; a desktop from before there was a choice sends Claude's alone.
     final catalogs = m['catalogs'] is Map ? m['catalogs'] as Map : {'claude': m['catalog']};
     final unavailable = m['unavailable'] is List ? m['unavailable'] as List : const [];
@@ -268,6 +295,18 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
   void setWorkerModel(ModelChoice choice) {
     workerModel = choice;
     _set({'workers': choice.toJson()});
+  }
+
+  @override
+  void setBrainFallbacks(List<ModelChoice> fallbacks) {
+    brainFallbacks = fallbacks;
+    _set({'brain_fallbacks': [for (final f in fallbacks) f.toJson()]});
+  }
+
+  @override
+  void setWorkerFallbacks(List<ModelChoice> fallbacks) {
+    workerFallbacks = fallbacks;
+    _set({'worker_fallbacks': [for (final f in fallbacks) f.toJson()]});
   }
 
   @override

@@ -11,6 +11,8 @@ import '../audio/native_audio.dart';
 import 'desktop_window.dart';
 import '../brain/antigravity_session.dart';
 import '../brain/brain_session.dart';
+import '../brain/codex_session.dart';
+import '../brain/fallback.dart';
 import '../brain/models.dart';
 import '../brain/system_prompt.dart';
 import '../display/display.dart';
@@ -58,6 +60,32 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   ModelChoice brainModel = defaultBrainModel;
   @override
   ModelChoice workerModel = defaultWorkerModel;
+
+  /// Their backups, in order (see [AssistantSettings.brainFallbacks]).
+  @override
+  List<ModelChoice> brainFallbacks = const [];
+  @override
+  List<ModelChoice> workerFallbacks = const [];
+
+  /// The conversation's choices in order: [brainModel] then its backups.
+  List<ModelChoice> get brainChain => fallbackChain(brainModel, brainFallbacks);
+
+  /// What the conversation runs on now: [brainModel], or a backup while its provider is out.
+  @override
+  ModelChoice activeBrainModel = defaultBrainModel;
+
+  /// Providers out for now (usage limit or signed out), shared with the workers.
+  late final ProviderLimits limits;
+
+  @override
+  ProviderOut? providerOut(BrainProvider provider) => limits.out(provider);
+
+  /// Said to the brain with the next message after it moved to another provider (that
+  /// conversation does not have what was said on the other one).
+  String? _switchNote;
+
+  /// The last message sent to the brain, sent again on the next provider when its own is out.
+  String? _lastSent;
 
   /// The models of each provider's installed agent (absent until it first reported them).
   final _catalogs = <BrainProvider, ModelCatalog>{};
@@ -293,6 +321,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       }
       brainModel = ModelChoice.load(store, 'brain', defaultBrainModel);
       workerModel = ModelChoice.load(store, 'workers', defaultWorkerModel);
+      brainFallbacks = loadFallbacks(store, 'brain');
+      workerFallbacks = loadFallbacks(store, 'workers');
+      limits = ProviderLimits(store: store, onChange: notifyListeners);
+      activeBrainModel = limits.pick(brainChain);
       voice = validVoice(int.tryParse(store.get('voice') ?? '')) ?? voice;
       vault = await Vault.open('${store.dir}/vault');
       vault.addListener(_pushSettings);
@@ -309,6 +341,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         projects: projects,
         scrub: vault.scrubResult,
         notify: notify,
+        limits: limits,
+        unavailable: unavailableProviders,
+        resolve: (c) => c.resolve(_catalogs[c.provider]),
       )
         ..addListener(notifyListeners)
         ..addListener(() => presence.workers = workers.runningIds);
@@ -363,12 +398,13 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       try {
         await _brain.start();
       } catch (e) {
-        // Antigravity missing or signed out: Minerva still starts (so the user can switch back to
-        // Claude), and each turn says the brain failed until it is fixed.
-        if (brainModel.provider == BrainProvider.claude) rethrow;
+        // Antigravity or Codex missing or signed out: Minerva still starts (so the user can switch
+        // back to Claude), and each turn goes to a backup or says the brain failed until it is fixed.
+        if (activeBrainModel.provider == BrainProvider.claude) rethrow;
         debugPrint('brain start failed: $e');
       }
-      unawaited(_listAntigravityModels());
+      unawaited(_listModels(BrainProvider.antigravity, AntigravitySession.listModels));
+      unawaited(_listModels(BrainProvider.codex, CodexSession.listModels));
       window.onOpenRequested = () => unawaited(_useMac(false));
       await window.init();
       window.addListener(_syncAudio);
@@ -434,30 +470,53 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   /// Switches the conversation's model, effort or speed: the brain goes on with the same
   /// conversation, at once or when the answer in progress ends. Switching the provider stops the
-  /// answer in progress and goes on with that provider's own conversation.
+  /// answer in progress and goes on with that provider's own conversation. While the provider is
+  /// out (its usage limit), the conversation stays on a backup until it is back.
   @override
   void setBrainModel(ModelChoice choice) {
-    final switched = choice.provider != brainModel.provider;
     brainModel = choice;
     choice.save(store, 'brain');
-    if (switched) {
+    // Picked by hand after signing in again: try it rather than wait.
+    if (limits.reason(choice.provider) == LimitReason.signIn) limits.clear(choice.provider);
+    _runBrainOn(limits.pick(brainChain, unavailable: unavailableProviders));
+    notifyListeners();
+  }
+
+  @override
+  void setBrainFallbacks(List<ModelChoice> fallbacks) {
+    brainFallbacks = List.unmodifiable(fallbacks);
+    saveFallbacks(store, 'brain', fallbacks);
+    if (!_brain.busy) _runBrainOn(limits.pick(brainChain, unavailable: unavailableProviders));
+    notifyListeners();
+  }
+
+  /// Runs the conversation on [choice]: on another provider, the answer in progress stops and
+  /// that provider's own conversation goes on; else the model, effort or speed change.
+  void _runBrainOn(ModelChoice choice) {
+    final from = activeBrainModel;
+    activeBrainModel = choice;
+    if (choice.provider != from.provider) {
+      debugPrint('brain: ${from.provider.name} → ${choice.provider.name}');
       if (_brain.busy) _stopTurn();
       _brainSub?.cancel();
       _brain.dispose();
       _brain = _newBrain();
       _brainSub = _brain.events.listen(_onBrain);
+      _switchNote =
+          '[note] This conversation was on ${from.provider.agent} until now and moved to '
+          '${choice.provider.agent}${limits.out(from.provider) == null ? '' : ' (${from.provider.label} is out: usage limit or sign-in)'}. '
+          'You do not have what was said there: the history tools have it.';
       unawaited(_brain.start().catchError((Object e) => debugPrint('brain start failed: $e')));
     } else {
       final r = choice.resolve(_catalogs[choice.provider]);
       _brain.reconfigure(model: r.model, effort: r.effort, fast: r.fast);
     }
-    notifyListeners();
   }
 
-  /// The conversation's session on [brainModel]'s provider. Each provider keeps its own
+  /// The conversation's session on [activeBrainModel]'s provider. Each provider keeps its own
   /// conversation, resumed from its id in the store.
   BrainSession _newBrain() {
-    final choice = brainModel;
+    final choice = activeBrainModel;
     final key = choice.provider == BrainProvider.claude ? 'brain_session' : 'brain_session.${choice.provider.name}';
     final r = choice.resolve(_catalogs[choice.provider]);
     return BrainSession.create(
@@ -490,14 +549,15 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     notifyListeners();
   }
 
-  void _applyWorkerModel() {
-    final r = workerModel.resolve(_catalogs[workerModel.provider]);
-    workers
-      ..provider = workerModel.provider
-      ..model = r.model
-      ..effort = r.effort
-      ..fast = r.fast;
+  @override
+  void setWorkerFallbacks(List<ModelChoice> fallbacks) {
+    workerFallbacks = List.unmodifiable(fallbacks);
+    saveFallbacks(store, 'workers', fallbacks);
+    _applyWorkerModel();
+    notifyListeners();
   }
+
+  void _applyWorkerModel() => workers.chain = fallbackChain(workerModel, workerFallbacks);
 
   /// The brain (re)started: keep its model list, and (Claude Code) note whether the account can
   /// use fast mode.
@@ -521,13 +581,13 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     _applyWorkerModel();
   }
 
-  /// Antigravity's models, for the pickers, whatever the conversation runs on.
-  Future<void> _listAntigravityModels() async {
-    final c = await AntigravitySession.listModels();
+  /// The models of Antigravity or Codex, for the pickers, whatever the conversation runs on.
+  Future<void> _listModels(BrainProvider provider, Future<ModelCatalog?> Function() list) async {
+    final c = await list();
     if (c != null && c.all.isNotEmpty) {
       _saveCatalog(c);
-    } else if (_catalogs[BrainProvider.antigravity] == null) {
-      unavailableProviders.add(BrainProvider.antigravity);
+    } else if (_catalogs[provider] == null) {
+      unavailableProviders.add(provider);
     }
     notifyListeners();
   }
@@ -657,6 +717,13 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     p.pushSettings({
       'brain': brainModel.toJson(),
       'workers': workerModel.toJson(),
+      'brain_fallbacks': [for (final f in brainFallbacks) f.toJson()],
+      'worker_fallbacks': [for (final f in workerFallbacks) f.toJson()],
+      'active_brain': activeBrainModel.toJson(),
+      'limits': {
+        for (final e in limits.all().entries)
+          e.key.name: {'until': e.value.until.millisecondsSinceEpoch, 'reason': e.value.reason.name},
+      },
       'catalogs': {for (final e in _catalogs.entries) e.key.name: e.value.toJson()},
       // Claude's alone, as phone apps from before there was a choice of provider read it.
       'catalog': _catalogs[BrainProvider.claude]?.toJson(),
@@ -690,6 +757,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     if (brain != null && brain != brainModel) setBrainModel(brain);
     final workers = ModelChoice.fromJson(m['workers']);
     if (workers != null && workers != workerModel) setWorkerModel(workers);
+    final brainBackups = fallbacksFromJson(m['brain_fallbacks']);
+    if (brainBackups != null && !listEquals(brainBackups, brainFallbacks)) setBrainFallbacks(brainBackups);
+    final workerBackups = fallbacksFromJson(m['worker_fallbacks']);
+    if (workerBackups != null && !listEquals(workerBackups, workerFallbacks)) setWorkerFallbacks(workerBackups);
     if (m.containsKey('language')) {
       final code = m['language'] is String ? m['language'] as String : null;
       if (validLanguage(code) != languageSetting.value) unawaited(setLanguage(code));
@@ -856,12 +927,52 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         : p != null && p.active
             ? ' [phone ${p.width.round()}x${p.height.round()}]'
             : '';
-    unawaited(_brain.send('[${formatStamp(DateTime.now())}]$where $text'));
+    // Back to the first choice whose provider is not out (the preferred one once its limit is over).
+    final want = limits.pick(brainChain, unavailable: unavailableProviders);
+    if (want != activeBrainModel && !_brain.busy) _runBrainOn(want);
+    _lastSent = '[${formatStamp(DateTime.now())}]$where $text';
+    _sendToBrain(_lastSent!);
     _updatePresence();
     notifyListeners();
   }
 
   // ---------------------------------------------------------------- brain
+
+  /// Sends [text] to the brain, after the note about a provider switch if one is due.
+  void _sendToBrain(String text) {
+    final note = _switchNote;
+    _switchNote = null;
+    unawaited(_brain.send(note == null ? text : '$note\n$text'));
+  }
+
+  /// The brain's turn ended: its provider answered (any limit is over), or it is out (usage
+  /// limit, signed out) and the message goes again to the next of [brainChain]. True when it did.
+  bool _fallBack(TurnDone e) {
+    final from = activeBrainModel;
+    final limit = e.limit;
+    if (e.interrupted) return false;
+    if (limit == null) {
+      if (e.error == null) limits.clear(from.provider);
+      return false;
+    }
+    limits.hit(from.provider, limit);
+    final to = limits.next(brainChain, from.provider, unavailable: unavailableProviders);
+    final sent = _lastSent;
+    debugPrint('brain: ${from.provider.name} is out ($limit)'
+        '${to == null ? '' : ', going on with ${to.provider.name}'}');
+    if (to == null || sent == null) return false;
+    _logReply(interrupted: false);
+    _runBrainOn(to);
+    final notice = strings.providerFellBack(from.provider.label, to.provider.label);
+    if (_telegramTurn) {
+      unawaited(telegram?.send(notice));
+    } else {
+      _say(notice, lang: appLocale.languageCode);
+    }
+    _sendToBrain(sent);
+    notifyListeners();
+    return true;
+  }
 
   static final _sentenceEnd = RegExp(r'[.!?…:;](\s|$)');
 
@@ -920,6 +1031,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         // Takes a few seconds once the context is full; say why the answer is late.
         _setActivity(e.active ? strings.activityCompacting : strings.activityThinking);
       case TurnDone():
+        if (_fallBack(e)) return;
         _logReply(interrupted: e.interrupted);
         // An interrupted Telegram turn was ended by _stopTurn (a new turn may have started since).
         final toTelegram = _telegramTurn && !e.interrupted;

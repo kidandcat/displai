@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../brain/fallback.dart';
 import '../brain/models.dart';
 import '../l10n/l10n.dart';
 
@@ -23,6 +24,20 @@ abstract interface class AssistantSettings implements Listenable {
 
   void setBrainModel(ModelChoice choice);
   void setWorkerModel(ModelChoice choice);
+
+  /// Backups of the conversation's model and the workers', in order: when a provider hits its
+  /// usage limit, Minerva goes on with the next one whose provider is not out, and back to the
+  /// first once its limit is over (see lib/brain/fallback.dart).
+  List<ModelChoice> get brainFallbacks;
+  List<ModelChoice> get workerFallbacks;
+  void setBrainFallbacks(List<ModelChoice> fallbacks);
+  void setWorkerFallbacks(List<ModelChoice> fallbacks);
+
+  /// What the conversation runs on now: [brainModel], or a backup while its provider is out.
+  ModelChoice get activeBrainModel;
+
+  /// Until when [provider] is out (usage limit, or signed out) and why; null when it can be used.
+  ProviderOut? providerOut(BrainProvider provider);
 
   /// [code] one of [languageChoices], or null to follow the OS.
   Future<void> setLanguage(String? code);
