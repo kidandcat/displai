@@ -96,6 +96,13 @@ class Store {
         PRAGMA user_version = 1;
       ''');
     }
+    if (version < 2) {
+      // The folder a worker runs in (null: the workers' own), to resume it there.
+      db.execute('''
+        ALTER TABLE workers ADD COLUMN cwd TEXT;
+        PRAGMA user_version = 2;
+      ''');
+    }
   }
 
   static int now() => DateTime.now().millisecondsSinceEpoch;

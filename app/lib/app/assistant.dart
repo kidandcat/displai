@@ -290,6 +290,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
           SkillTools(_skillsDir, readOnly: true),
           VaultTools(vault, readOnly: true),
         ],
+        projects: projects,
         scrub: vault.scrubResult,
         notify: notify,
       )

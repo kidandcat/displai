@@ -7,6 +7,7 @@ import '../brain/claude_session.dart';
 import '../brain/models.dart';
 import '../l10n/l10n.dart';
 import '../mcp/display_mcp_server.dart';
+import '../projects/projects.dart';
 import '../store/store.dart';
 import '../tools/tool_provider.dart';
 
@@ -22,6 +23,7 @@ class Workers extends ToolProvider with ChangeNotifier {
   Workers({
     required this.store,
     required this.hostTools,
+    required this.projects,
     required this.notify,
     this.scrub,
     this.model = 'opus',
@@ -35,6 +37,9 @@ class Workers extends ToolProvider with ChangeNotifier {
 
   /// Tools served to workers (host tools; no display, no computer use).
   final List<ToolProvider> hostTools;
+
+  /// Folders a worker can start in, with their main doc as context.
+  final Projects projects;
 
   /// Hands a message to the main brain (queued until it is free).
   final void Function(String text) notify;
@@ -93,6 +98,11 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
         'properties': {
           'title': {'type': 'string', 'description': 'A few words, in the user\'s language, for the user.'},
           'task': {'type': 'string'},
+          'project': {
+            'type': 'string',
+            'description': 'Optional: a project\'s name or a folder path. The worker starts in that '
+                'folder with its README.md as context.',
+          },
         },
         'required': ['title', 'task'],
       },
@@ -147,8 +157,14 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
         final title = (args['title'] as String? ?? '').trim();
         final task = (args['task'] as String? ?? '').trim();
         if (title.isEmpty || task.isEmpty) return const ToolResult.error('error: title and task are required');
-        final wid = await start(title, task);
-        return ToolResult('started worker $wid');
+        final project = (args['project'] as String? ?? '').trim();
+        final cwd = project.isEmpty ? null : projects.resolve(project);
+        if (project.isNotEmpty && cwd == null) {
+          return ToolResult.error('error: no project or folder "$project". Projects: '
+              '${projects.list().map((p) => p.name).join(', ')}');
+        }
+        final wid = await start(title, task, cwd: cwd);
+        return ToolResult('started worker $wid${cwd == null ? '' : ' in $cwd'}');
       case 'list_workers':
         return ToolResult(_list());
       case 'worker_status':
@@ -164,15 +180,16 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     return ToolResult.error('error: unknown tool $name');
   }
 
-  Future<int> start(String title, String task) async {
+  /// Starts a worker on [task], in the folder [cwd] (a project) or else the workers' own.
+  Future<int> start(String title, String task, {String? cwd}) async {
     // Claude Code takes the id it is given; Antigravity picks its own once started.
     final sessionId = provider == BrainProvider.claude ? ClaudeSession.newSessionId() : _storedId(provider, null);
     store.db.execute(
-      "INSERT INTO workers(title, task, status, session_id, started) VALUES (?, ?, 'running', ?, ?)",
-      [title, task, sessionId, Store.now()],
+      "INSERT INTO workers(title, task, status, session_id, started, cwd) VALUES (?, ?, 'running', ?, ?, ?)",
+      [title, task, sessionId, Store.now(), cwd],
     );
     final id = store.db.lastInsertRowId;
-    await _launch(id, title, sessionId, task, model: model, effort: effort, fast: fast);
+    await _launch(id, title, sessionId, task, cwd: cwd, model: model, effort: effort, fast: fast);
     return id;
   }
 
@@ -192,7 +209,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
   }
 
   Future<void> _launch(int id, String title, String storedId, String text,
-      {required String model, required String? effort, required bool fast}) async {
+      {required String? cwd, required String model, required String? effort, required bool fast}) async {
     final w = _Worker(id, title);
     final mcp = DisplayMcpServer(
       tools: [for (final p in hostTools) ...p.tools, _progressTool],
@@ -205,9 +222,10 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
       model: model,
       effort: effort,
       fast: fast,
-      systemPrompt: _systemPrompt(provider),
+      // A project's doc is read again at each launch, so a resumed worker sees its latest version.
+      systemPrompt: [_systemPrompt(provider), if (cwd != null) projects.workerSection(cwd)].join('\n'),
       mcpUrl: mcp.url,
-      workDir: '${store.dir}/workers',
+      workDir: cwd ?? '${store.dir}/workers',
       sessionId: sessionId,
       onSessionId: (sid) =>
           store.db.execute('UPDATE workers SET session_id = ? WHERE id = ?', [_storedId(provider, sid), id]),
@@ -281,7 +299,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
       await running.session.send(text);
       return ToolResult('sent to worker $id');
     }
-    final rows = store.db.select('SELECT title, session_id FROM workers WHERE id = ?', [id]);
+    final rows = store.db.select('SELECT title, session_id, cwd FROM workers WHERE id = ?', [id]);
     if (rows.isEmpty) return ToolResult.error('error: no worker $id');
     store.db.execute("UPDATE workers SET status = 'running', finished = NULL WHERE id = ?", [id]);
     // Resumed on the provider it started on, with that provider's model when the workers' one
@@ -289,18 +307,20 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     final stored = rows.first['session_id'] as String;
     final (was, _) = _parseStoredId(stored);
     final r = was == provider ? (model: model, effort: effort, fast: fast) : defaultModel(was, workers: true).resolve(null);
-    await _launch(id, rows.first['title'] as String, stored, text, model: r.model, effort: r.effort, fast: r.fast);
+    await _launch(id, rows.first['title'] as String, stored, text,
+        cwd: rows.first['cwd'] as String?, model: r.model, effort: r.effort, fast: r.fast);
     return ToolResult('worker $id resumed with the new message');
   }
 
   String _list() {
     final rows = store.db.select(
-      "SELECT id, title, status, progress FROM workers WHERE status = 'running' "
+      "SELECT id, title, status, progress, cwd FROM workers WHERE status = 'running' "
       'OR id IN (SELECT id FROM workers ORDER BY id DESC LIMIT 8) ORDER BY id DESC',
     );
     if (rows.isEmpty) return 'no workers';
     return rows
         .map((r) => '${r['id']} «${r['title']}» ${r['status']}'
+            '${r['cwd'] == null ? '' : ' (in ${r['cwd']})'}'
             '${r['progress'] == null ? '' : ' — ${r['progress']}'}')
         .join('\n');
   }
@@ -313,6 +333,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     final mins = DateTime.now().difference(started).inMinutes;
     return ToolResult([
       'worker $id «${r['title']}»: ${r['status']} (started $mins min ago)',
+      if (r['cwd'] != null) 'folder: ${r['cwd']}',
       if (r['progress'] != null) 'progress: ${r['progress']}',
       if (r['result'] != null) 'report:\n${r['result']}',
     ].join('\n'));

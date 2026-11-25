@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minerva/projects/projects.dart';
+import 'package:minerva/store/store.dart';
 
 void main() {
   late Directory tmp;
@@ -52,4 +53,11 @@ void main() {
     expect(projects.workerSection('${tmp.path}/code'), isNot(contains('up to date')));
   });
 
+  test('workers keep their folder', () {
+    final store = Store.memory(tmp.path);
+    store.db.execute(
+        "INSERT INTO workers(title, task, status, session_id, started, cwd) VALUES ('t', 'x', 'done', 's', 0, '/a')");
+    expect(store.db.select('SELECT cwd FROM workers').single['cwd'], '/a');
+    store.close();
+  });
 }
