@@ -901,6 +901,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'App info'**
   String get openAppInfo;
+
+  /// Telegram reply to a message Minerva can't read.
+  ///
+  /// In en, this message translates to:
+  /// **'I can\'t take voice notes, audio, video or stickers here yet. Write it to me, please.'**
+  String get telegramUnsupported;
+
+  /// Telegram reply when a photo or file fails to download.
+  ///
+  /// In en, this message translates to:
+  /// **'I couldn\'t download that from Telegram. Try sending it again.'**
+  String get telegramDownloadFailed;
+
+  /// Telegram channel status.
+  ///
+  /// In en, this message translates to:
+  /// **'Telegram rejected the bot token: save a valid one as the credential telegram (field token).'**
+  String get telegramBadToken;
+
+  /// Telegram channel status.
+  ///
+  /// In en, this message translates to:
+  /// **'This Telegram bot has a webhook set or another program reads it: Minerva needs a bot of its own.'**
+  String get telegramConflict;
 }
 
 class _AppLocalizationsDelegate

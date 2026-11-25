@@ -567,5 +567,21 @@
   "openAppInfo": "App info",
   "@openAppInfo": {
     "description": "Button: open Minerva's app info in the phone's settings."
+  },
+  "telegramUnsupported": "I can't take voice notes, audio, video or stickers here yet. Write it to me, please.",
+  "@telegramUnsupported": {
+    "description": "Telegram reply to a message Minerva can't read."
+  },
+  "telegramDownloadFailed": "I couldn't download that from Telegram. Try sending it again.",
+  "@telegramDownloadFailed": {
+    "description": "Telegram reply when a photo or file fails to download."
+  },
+  "telegramBadToken": "Telegram rejected the bot token: save a valid one as the credential telegram (field token).",
+  "@telegramBadToken": {
+    "description": "Telegram channel status."
+  },
+  "telegramConflict": "This Telegram bot has a webhook set or another program reads it: Minerva needs a bot of its own.",
+  "@telegramConflict": {
+    "description": "Telegram channel status."
   }
 }

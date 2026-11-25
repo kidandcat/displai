@@ -133,5 +133,9 @@
   "statusOn": "Activado",
   "statusOff": "Desactivado",
   "openSettings": "Abrir ajustes",
-  "openAppInfo": "Info de la app"
+  "openAppInfo": "Info de la app",
+  "telegramUnsupported": "Aquí todavía no puedo con notas de voz, audio, vídeo ni stickers. Escríbemelo, por favor.",
+  "telegramDownloadFailed": "No he podido descargar eso de Telegram. Prueba a enviarlo otra vez.",
+  "telegramBadToken": "Telegram ha rechazado el token del bot: guarda uno válido como credencial telegram (campo token).",
+  "telegramConflict": "Este bot de Telegram tiene un webhook o lo lee otro programa: Minerva necesita un bot propio."
 }

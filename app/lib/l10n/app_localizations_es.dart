@@ -481,4 +481,20 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get openAppInfo => 'Info de la app';
+
+  @override
+  String get telegramUnsupported =>
+      'Aquí todavía no puedo con notas de voz, audio, vídeo ni stickers. Escríbemelo, por favor.';
+
+  @override
+  String get telegramDownloadFailed =>
+      'No he podido descargar eso de Telegram. Prueba a enviarlo otra vez.';
+
+  @override
+  String get telegramBadToken =>
+      'Telegram ha rechazado el token del bot: guarda uno válido como credencial telegram (campo token).';
+
+  @override
+  String get telegramConflict =>
+      'Este bot de Telegram tiene un webhook o lo lee otro programa: Minerva necesita un bot propio.';
 }
