@@ -9,8 +9,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../app/main_view.dart';
 import '../l10n/l10n.dart';
-import 'phone_control.dart';
-import 'phone_control_page.dart';
 import 'protocol.dart';
 import 'remote_assistant.dart';
 import 'remote_settings.dart';
@@ -178,15 +176,8 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
                             icon: const Icon(Icons.more_vert, color: Colors.white54),
                             onSelected: (v) {
                               if (v == 'unpair') _unpair();
-                              if (v == 'control') {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<void>(builder: (_) => PhoneControlPage(assistant: a)),
-                                );
-                              }
                             },
                             itemBuilder: (context) => [
-                              if (PhoneControl.supported)
-                                PopupMenuItem(value: 'control', child: Text(AppLocalizations.of(context).phoneControl)),
                               PopupMenuItem(value: 'unpair', child: Text(AppLocalizations.of(context).unpair)),
                             ],
                           ),

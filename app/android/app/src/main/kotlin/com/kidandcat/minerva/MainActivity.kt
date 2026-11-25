@@ -3,7 +3,10 @@ package com.kidandcat.minerva
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -15,9 +18,9 @@ import io.flutter.plugin.common.MethodChannel
  * gives Flutter the phone's echo-cancelled mic and its speaker ([VoiceAudio], channel
  * minerva/audio, the same contract as the macOS engine) and the pairing links it is opened
  * with (channel minerva/link), tells it when it was opened as the phone's assistant
- * (channel minerva/assist, see [AssistService]), and runs the brain's phone tools (channel
- * minerva/phone, see [PhoneControl]). While the audio runs, [LinkService] keeps it going behind
- * other apps.
+ * (channel minerva/assist, see [AssistService]), and runs the orb over other apps (channel
+ * minerva/overlay, see [OrbOverlay]). While the audio runs, [LinkService] keeps it going behind
+ * other apps. Every action happens on the desktop: the phone only listens, speaks and shows.
  */
 class MainActivity : FlutterActivity() {
     private var audio: VoiceAudio? = null
@@ -65,7 +68,29 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-        MethodChannel(messenger, "minerva/phone").setMethodCallHandler(PhoneControl(this))
+        MethodChannel(messenger, "minerva/overlay").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "allowed" -> result.success(OrbOverlay.allowed(this))
+                "openSettings" -> {
+                    if (Build.VERSION.SDK_INT >= 23) {
+                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                    }
+                    result.success(null)
+                }
+                "front" -> {
+                    try {
+                        OrbOverlay.front(this)
+                    } catch (_: Exception) {
+                    }
+                    result.success(null)
+                }
+                "orb" -> {
+                    OrbOverlay.setState(this, call.arguments as? Map<*, *> ?: emptyMap<String, Any>())
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(messenger, "minerva/webview").setMethodCallHandler { call, result ->
             if (call.method == "snapshot") {
                 PageSnapshots.capture(this) { pages -> result.success(pages) }

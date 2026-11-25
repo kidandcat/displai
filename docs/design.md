@@ -353,6 +353,7 @@ and the user not speaking.
 
 The same Flutter app runs on Android as a remote: the phone is the mic, the speaker and the display;
 speech recognition, the brain, the voice and all tools stay on the desktop. Same conversation, same memory.
+The phone has no tools of its own and the brain never acts on it: every action happens on the desktop.
 
 - **Relay** (`relay/`, Go, `wss://minerva.kidandcat.com/ws?role=host|remote`): both sides dial out, so neither
   needs a public address. `Authorization: Bearer <room token>` (≥ 32 chars); the room is `sha256(token)`. It
@@ -388,7 +389,11 @@ speech recognition, the brain, the voice and all tools stay on the desktop. Same
 - **Settings on the phone**: the phone's settings screen (tune button) has what the desktop's status bar has
   (conversation and worker models with effort and speed, voice, language, credentials, webhooks). They are
   the desktop's: the phone shows the last `settings` it got and sends changes with `set`, which the desktop
-  applies as if made there. The phone's screens follow the desktop's language setting.
+  applies as if made there. The phone's screens follow the desktop's language setting. On top, the phone's own:
+  "display over other apps", for the orb below.
+- **Behind other apps** (`LinkService.kt`, `OrbOverlay.kt`): a microphone foreground service keeps the mic and
+  the link alive when the user leaves the app, and the orb floats over other apps (tap: back to Minerva). A
+  view the brain shows meanwhile brings the app back to the front.
 - **While the phone is connected the desktop is quiet**: its mic is ignored, the phone's mic feeds the VAD
   and STT, the voice and the earcon go to the phone, and display tools run on the phone (10 s timeout, then
   locally). Brain messages get a `[phone WxH]` prefix so it designs for the phone screen. Mutating display

@@ -6,13 +6,12 @@ import '../app/model_picker.dart';
 import '../app/settings.dart';
 import '../brain/models.dart';
 import '../l10n/l10n.dart';
-import 'phone_control.dart';
-import 'phone_control_page.dart';
+import 'phone_overlay.dart';
 import 'remote_assistant.dart';
 
 /// The desktop's settings on the phone: the same ones its status bar has (the models, the
 /// language, the voice, the credentials and the webhooks), in one scrolling screen. Every change
-/// goes to the desktop, which applies it. On top, this phone's own: letting Minerva use it.
+/// goes to the desktop, which applies it. On top, this phone's own: the orb over other apps.
 class RemoteSettingsPage extends StatelessWidget {
   const RemoteSettingsPage({super.key, required this.assistant});
 
@@ -26,7 +25,7 @@ class RemoteSettingsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(l.settings), backgroundColor: kBackground),
       body: ListenableBuilder(
-        listenable: Listenable.merge([assistant, assistant.phoneControl]),
+        listenable: Listenable.merge([assistant, assistant.overlay]),
         builder: (context, _) {
           final a = assistant;
           final t = Theme.of(context).textTheme;
@@ -39,18 +38,16 @@ class RemoteSettingsPage extends StatelessWidget {
                 child: Text(on ? l.settingsAppliedOnComputer : l.settingsOffline,
                     style: t.bodySmall?.copyWith(color: on ? Colors.white54 : kAccent)),
               ),
-              if (PhoneControl.supported) ...[
+              if (PhoneOverlay.supported) ...[
                 ListTile(
-                  leading: const Icon(Icons.touch_app_outlined),
-                  title: Text(l.phoneControl),
+                  leading: const Icon(Icons.bubble_chart_outlined),
+                  title: Text(l.phoneOverlay),
                   subtitle: Text(
-                    a.phoneControl.running ? l.phoneControlOn : l.phoneControlOff,
-                    style: TextStyle(color: a.phoneControl.running ? Colors.white54 : kAccent),
+                    a.overlay.allowed ? l.phoneOverlayOn : l.phoneOverlayOff,
+                    style: TextStyle(color: a.overlay.allowed ? Colors.white54 : kAccent),
                   ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => PhoneControlPage(assistant: a)),
-                  ),
+                  trailing: const Icon(Icons.open_in_new, size: 18),
+                  onTap: a.overlay.openSettings,
                 ),
                 const Divider(height: 24, color: Colors.white12),
               ],

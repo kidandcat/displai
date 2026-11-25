@@ -12,8 +12,8 @@ your Mac's tools and its own long-term memory through an MCP server embedded in 
 connect several of them and set a fallback order: when one hits its usage limit, Minerva carries on
 with the next and comes back when the limit resets. Speech recognition and synthesis run locally.
 
-The same Flutter app on Android turns your phone into Minerva's mic, speaker and screen, and lets the
-brain use the phone too. Everything is still processed on the Mac.
+The same Flutter app on Android turns your phone into Minerva's mic, speaker and screen. Everything is
+still processed and done on the Mac.
 
 > Status: personal project under active development. macOS (Apple Silicon tested) and Android only.
 > UI and voice in English and Spanish.
@@ -47,9 +47,9 @@ brain use the phone too. Everything is still processed on the Mac.
 4. **Talk.** Just speak; you can interrupt Minerva while it answers.
 5. **Phone (optional).** Download `Minerva-<version>-android-arm64.apk` from the same release on an
    Android phone (arm64) and install it (allow installing from your browser or file manager). Open it
-   and scan the QR code from the phone button on the Mac. For phone control, enable Minerva's
-   accessibility service and "display over other apps" from its settings screen. Release APKs are
-   not signed with a stable key yet, so to update, uninstall the old one first.
+   and scan the QR code from the phone button on the Mac. To see Minerva's orb over other apps, allow
+   "display over other apps" from its settings screen. Release APKs are not signed with a stable key
+   yet, so to update, uninstall the old one first.
 
 **From source** instead: install Flutter (stable) and Xcode, and Go for the webhook helper, then
 
@@ -78,9 +78,8 @@ See [Build and run](#build-and-run) for development, the login service and the r
   and windows. While it works in other apps, Minerva shrinks to a floating orb.
 - **Phone remote (Android)**: pair with a QR code; the phone becomes the mic, speaker and display.
   Desktop and phone talk through a small relay with end-to-end encryption, so the relay only forwards
-  ciphertext. With the accessibility service enabled, the brain can also read and operate the phone's
-  apps (`phone_ui_tree`, `phone_click`, `phone_type`, `phone_screen`…). Minerva can be the phone's
-  default digital assistant and show a floating orb over other apps.
+  ciphertext. The phone only listens, speaks and shows: every action still happens on the Mac.
+  Minerva can be the phone's default digital assistant and show a floating orb over other apps.
 - **Telegram**: chat with Minerva by text through your own bot when you can't talk. Voice notes and
   audio files you send there are transcribed locally by the same speech recognizer. Answers in a
   Telegram turn are written, not spoken.
@@ -108,7 +107,7 @@ See [Build and run](#build-and-run) for development, the login service and the r
                               │ E2E-encrypted        │ TLS passthrough
                          relay (Go) ─────────── minerva-webhooks helper
                               │
-                       Android app (mic, speaker, display, phone control)
+                       Android app (mic, speaker, display)
 ```
 
 Minerva is both the reader of the brain's output stream and the MCP server that runs its tools, so it
@@ -199,8 +198,8 @@ cd app
 flutter build apk --release --target-platform android-arm64
 ```
 
-Install the APK, open it and scan the QR code from the desktop's phone button. For phone control,
-enable Minerva's accessibility service and "display over other apps" from its settings screen.
+Install the APK, open it and scan the QR code from the desktop's phone button. To see Minerva's orb
+over other apps, allow "display over other apps" from its settings screen.
 
 Release builds are signed with the debug key unless `android/key.properties` (`storeFile`,
 `storePassword`, `keyAlias`, `keyPassword`; git-ignored) or the `MINERVA_KEYSTORE_FILE`,
@@ -265,8 +264,8 @@ Environment variables:
 
 Read this before you run it.
 
-- **Minerva acts without confirmations.** Every tool (shell commands, files, mouse and keyboard,
-  phone control) runs at once. Safety rules live in the system prompt: destructive or irreversible
+- **Minerva acts without confirmations.** Every tool (shell commands, files, mouse and keyboard)
+  runs at once. Safety rules live in the system prompt: destructive or irreversible
   actions only when the request is unmistakable, otherwise it asks first. Speech recognition can
   mishear. Run it only on a machine and accounts where you accept that.
 - **What leaves your Mac**: your transcribed words, tool results and screenshots go to the brain's

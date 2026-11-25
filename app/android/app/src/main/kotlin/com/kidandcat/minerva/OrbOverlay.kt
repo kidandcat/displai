@@ -3,11 +3,13 @@ package com.kidandcat.minerva
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.graphics.Point
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -23,13 +25,10 @@ import io.flutter.plugin.common.MethodChannel
 import kotlin.math.abs
 
 /**
- * Minerva's orb over every app while the phone is linked to the desktop and Minerva is not in
- * front (it acts on other apps, or the user left it): the same orb as on the Mac, drawn by a
- * second Flutter engine (`orbMain` in lib/main.dart, lib/remote/phone_orb.dart) on a transparent
- * window. Tap: back to Minerva; drag: move it.
- *
- * The window is an accessibility overlay while [PhoneControlService] is on (no permission
- * needed), else an app overlay (needs "display over other apps").
+ * Minerva's orb over every app while the phone is linked to the desktop and the user left
+ * Minerva: the same orb as on the Mac, drawn by a second Flutter engine (`orbMain` in
+ * lib/main.dart, lib/remote/phone_orb.dart) on a transparent window. Tap: back to Minerva; drag:
+ * move it. The window is an app overlay: it needs "display over other apps" ([allowed]).
  */
 @SuppressLint("StaticFieldLeak")
 object OrbOverlay {
@@ -43,7 +42,6 @@ object OrbOverlay {
     private var view: FlutterView? = null
     private var params: WindowManager.LayoutParams? = null
     private var wm: WindowManager? = null
-    private var asAccessibility = false
 
     /** The phone is linked to the desktop (from Dart, with the orb's state). */
     private var connected = false
@@ -66,34 +64,32 @@ object OrbOverlay {
         update(context)
     }
 
+    /** The app may draw over other apps. */
+    fun allowed(context: Context): Boolean = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)
+
     fun update(context: Context) {
-        val service = PhoneControlService.instance
-        val can = service != null || PhoneControl.overlayOn(context)
-        val want = connected && !appVisible && can
-        // The service came or went: the window changes kind.
-        if (frame != null && (service != null) != asAccessibility) hide()
+        val want = connected && !appVisible && allowed(context)
         if (want) show(context) else hide()
         if (!connected) release()
     }
 
     private fun show(context: Context) {
         if (frame != null) return
-        val service = PhoneControlService.instance
-        val owner: Context = service ?: context.applicationContext
-        val type = when {
-            service != null -> WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-            Build.VERSION.SDK_INT >= 26 -> WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else -> @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+        val owner: Context = context.applicationContext
+        val type = if (Build.VERSION.SDK_INT >= 26) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
         }
         val manager = owner.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val eng = engine ?: createEngine(context.applicationContext)
         val density = owner.resources.displayMetrics.density
         val size = (SIZE_DP * density).toInt()
         val margin = (MARGIN_DP * density).toInt()
-        val (screenW, _) = PhoneControl.screenSize(owner)
+        val screenW = screenWidth(manager)
         val statusId = owner.resources.getIdentifier("status_bar_height", "dimen", "android")
         val statusBar = if (statusId > 0) owner.resources.getDimensionPixelSize(statusId) else 0
-        val (x, y) = position ?: (screenW.toInt() - size - margin to statusBar + margin)
+        val (x, y) = position ?: (screenW - size - margin to statusBar + margin)
         val p = WindowManager.LayoutParams(
             size, size, type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -124,7 +120,6 @@ object OrbOverlay {
         frame = f
         view = flutter
         params = p
-        asAccessibility = service != null
         channel?.invokeMethod("state", state)
     }
 
@@ -206,32 +201,24 @@ object OrbOverlay {
         return true
     }
 
+    private fun screenWidth(wm: WindowManager): Int = if (Build.VERSION.SDK_INT >= 30) {
+        wm.currentWindowMetrics.bounds.width()
+    } else {
+        val p = Point()
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealSize(p)
+        p.x
+    }
+
     /**
-     * Brings Minerva's app back to the front. From the background this works through the
-     * accessibility service's context (or the overlay permission).
+     * Brings Minerva's app back to the front. From the background this needs the overlay
+     * permission.
      */
     fun front(context: Context) {
-        val from: Context = PhoneControlService.instance ?: context
-        from.startActivity(
-            Intent(from, MainActivity::class.java)
+        context.startActivity(
+            Intent(context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
         )
-    }
-
-    /** While Minerva's gestures run, touches go through the orb to the app under it. */
-    fun passTouches(on: Boolean) {
-        val p = params ?: return
-        val flag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        p.flags = if (on) p.flags or flag else p.flags and flag.inv()
-        try {
-            wm?.updateViewLayout(frame, p)
-        } catch (_: Exception) {
-        }
-    }
-
-    /** Out of the way of a screenshot. */
-    fun hidden(on: Boolean) {
-        frame?.visibility = if (on) View.INVISIBLE else View.VISIBLE
     }
 
     /** The voice engine's events ([VoiceAudio]), so the orb moves with the voices. */

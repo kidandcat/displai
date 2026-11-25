@@ -483,71 +483,15 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String get activityUsingPhone => 'Usando el móvil…';
+  String get phoneOverlay => 'Orbe sobre otras apps';
 
   @override
-  String get phoneControl => 'Control del móvil';
+  String get phoneOverlayOn =>
+      'Activado: el orbe de Minerva flota sobre las demás apps mientras está conectada';
 
   @override
-  String get phoneControlOn =>
-      'Activado: Minerva puede usar las apps de este móvil';
-
-  @override
-  String get phoneControlOff =>
-      'Desactivado: deja que Minerva use las apps de este móvil';
-
-  @override
-  String get phoneControlIntro =>
-      'Mientras hablas con Minerva desde este móvil, puede usarlo por ti: leer la pantalla de la app que tienes delante, tocar, escribir, desplazar, abrir apps y hacer capturas. Todo lo demás (recuerdos, rutinas, webhooks, credenciales, trabajadores) sigue funcionando en el ordenador.';
-
-  @override
-  String get phoneControlAccessibility => 'Servicio de accesibilidad';
-
-  @override
-  String get phoneControlAccessibilityHelp =>
-      'Permite a Minerva leer la pantalla y actuar en ella. En la lista que se abre, toca Minerva (en apps descargadas o instaladas) y actívalo.';
-
-  @override
-  String get phoneControlAccessibilityStopped =>
-      'Está activado, pero Android no lo ha arrancado: desactívalo y vuelve a activarlo.';
-
-  @override
-  String get phoneControlRestricted =>
-      'Si Android dice que el ajuste está restringido (Android 13 o posterior, en apps que no vienen de una tienda): abre la información de la app, toca ⋮ > Permitir ajustes restringidos y vuelve a intentarlo.';
-
-  @override
-  String get phoneControlOverlay => 'Mostrar sobre otras apps';
-
-  @override
-  String get phoneControlOverlayHelp =>
-      'Muestra el orbe de Minerva sobre las demás apps mientras trabaja en ellas. No hace falta con el servicio de accesibilidad activado, que ya muestra el orbe.';
-
-  @override
-  String get phoneControlScreenshots => 'Capturas de pantalla';
-
-  @override
-  String get phoneControlScreenshotsAuto =>
-      'Incluidas con el servicio de accesibilidad en esta versión de Android.';
-
-  @override
-  String get phoneControlScreenshotsAsk =>
-      'La primera vez que Minerva haga una captura, el móvil te preguntará: toca Empezar ahora (y marca No volver a mostrar si aparece).';
-
-  @override
-  String get phoneControlScreenshotsReady =>
-      'Permitidas hasta que Minerva se cierre.';
-
-  @override
-  String get statusOn => 'Activado';
-
-  @override
-  String get statusOff => 'Desactivado';
-
-  @override
-  String get openSettings => 'Abrir ajustes';
-
-  @override
-  String get openAppInfo => 'Info de la app';
+  String get phoneOverlayOff =>
+      'Desactivado: permite mostrar sobre otras apps para ver el orbe de Minerva fuera de la app';
 
   @override
   String get telegramUnsupported =>

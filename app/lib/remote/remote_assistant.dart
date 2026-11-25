@@ -14,7 +14,7 @@ import '../display/display.dart';
 import '../display/display_runner.dart';
 import '../l10n/l10n.dart';
 import '../presence/presence.dart';
-import 'phone_control.dart';
+import 'phone_overlay.dart';
 import 'protocol.dart';
 import 'remote_link.dart';
 
@@ -22,7 +22,7 @@ import 'remote_link.dart';
 /// the processing (speech recognition, the brain, the voice). See [RemoteProtocol].
 ///
 /// Its settings are the desktop's: shown as the desktop last sent them, and changed by asking it.
-/// The desktop's brain can also use the phone itself ([PhoneControl], tools phone_*).
+/// Every action runs on the desktop; the phone only listens, speaks and shows.
 class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSettings {
   RemoteAssistant({required this.relay, required this.key});
 
@@ -39,8 +39,8 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
 
   late final RemoteLink link = RemoteLink(relay: relay, key: key, role: 'remote');
 
-  /// The brain's hands on this phone, and the orb over other apps.
-  final phoneControl = PhoneControl();
+  /// The orb over other apps, and bringing Minerva back to show a view.
+  final overlay = PhoneOverlay();
   final _subs = <StreamSubscription<Object?>>[];
 
   /// The desktop is connected and has said hello.
@@ -131,7 +131,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     link.addListener(notifyListeners);
     link.start();
     presence.mode = PresenceMode.idle;
-    unawaited(phoneControl.refresh());
+    unawaited(overlay.refresh());
   }
 
   /// The size of the display area changed (first layout, rotation).
@@ -146,12 +146,11 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
         'w': _size.width.round(),
         'h': _size.height.round(),
         'platform': Platform.operatingSystem,
-        if (PhoneControl.supported) 'control': phoneControl.status,
       });
 
   /// Tells the phone's orb what the desktop's presence is doing (it shows while Minerva is not in
   /// front).
-  void _pushOrb() => unawaited(phoneControl.orb(
+  void _pushOrb() => unawaited(overlay.orb(
         connected: _hostReady,
         mode: presence.mode.name,
         muted: muted,
@@ -351,17 +350,11 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     final id = m['id'];
     final name = '${m['name']}';
     final args = (m['args'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
-    if (name.startsWith('phone_')) {
-      if (id == null) return;
-      final (text, error, png) = await phoneControl.run(name, args);
-      link.send({'t': 'result', 'id': id, 'text': text, 'error': error, if (png != null) 'png': base64Encode(png)});
-      return;
-    }
-    // A view the brain shows while it used other apps: bring Minerva back to show it.
+    // A view the brain shows while the user is in other apps: bring Minerva back to show it.
     if (id != null &&
         const {'show', 'html', 'form', 'video'}.contains(name) &&
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
-      await phoneControl.front();
+      await overlay.front();
     }
     if (name == 'snapshot') {
       final shot = await DisplayRunner.capture(screenKey);
@@ -407,16 +400,11 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     notifyListeners();
   }
 
-  /// Back in the foreground: reconnect at once instead of waiting for the next retry, and tell the
-  /// desktop when the phone control's setup changed (the user may come back from its settings).
+  /// Back in the foreground: reconnect at once instead of waiting for the next retry, and read the
+  /// overlay permission again (the user may come back from its settings).
   void resumed() {
     link.reconnectNow();
-    unawaited(refreshControl());
-  }
-
-  /// Reads the phone control's setup again, and sends it to the desktop when it changed.
-  Future<void> refreshControl() async {
-    if (await phoneControl.refresh() && _hostReady) link.send({'t': 'control', ...phoneControl.status});
+    unawaited(overlay.refresh());
   }
 
   /// Opened as the phone's assistant: unmute and reconnect at once, so the mic streams to the
@@ -438,8 +426,8 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     link.removeListener(notifyListeners);
     unawaited(link.close());
     unawaited(audio.stop());
-    unawaited(phoneControl.orb(connected: false, mode: 'idle', muted: false, workers: const []));
-    phoneControl.dispose();
+    unawaited(overlay.orb(connected: false, mode: 'idle', muted: false, workers: const []));
+    overlay.dispose();
     presence.dispose();
     display.dispose();
     super.dispose();

@@ -555,81 +555,17 @@
       }
     }
   },
-  "activityUsingPhone": "Using the phone…",
-  "@activityUsingPhone": {
-    "description": "What the assistant is doing (spoken aloud)."
+  "phoneOverlay": "Orb over other apps",
+  "@phoneOverlay": {
+    "description": "Phone settings item: Android's \"display over other apps\" permission for Minerva's floating orb."
   },
-  "phoneControl": "Phone control",
-  "@phoneControl": {
-    "description": "Phone settings item: let Minerva use this phone's apps."
+  "phoneOverlayOn": "On: Minerva's orb floats over other apps while it is linked",
+  "@phoneOverlayOn": {
+    "description": "Floating orb status line."
   },
-  "phoneControlOn": "On: Minerva can use this phone's apps",
-  "@phoneControlOn": {
-    "description": "Phone control status line."
-  },
-  "phoneControlOff": "Off: let Minerva use this phone's apps",
-  "@phoneControlOff": {
-    "description": "Phone control status line."
-  },
-  "phoneControlIntro": "While you talk to Minerva from this phone, it can use the phone for you: read the screen of the app in front, tap, type, scroll, open apps and take screenshots. Everything else (memories, routines, webhooks, credentials, workers) keeps running on the computer.",
-  "@phoneControlIntro": {
-    "description": "Phone control page intro."
-  },
-  "phoneControlAccessibility": "Accessibility service",
-  "@phoneControlAccessibility": {
-    "description": "Phone control step 1."
-  },
-  "phoneControlAccessibilityHelp": "Lets Minerva read the screen and act on it. In the list that opens, tap Minerva (under downloaded or installed apps) and turn it on.",
-  "@phoneControlAccessibilityHelp": {
-    "description": "Phone control step 1 help."
-  },
-  "phoneControlAccessibilityStopped": "Turned on, but Android has not started it: turn it off and on again.",
-  "@phoneControlAccessibilityStopped": {
-    "description": "The service is enabled but not running."
-  },
-  "phoneControlRestricted": "If Android says the setting is restricted (Android 13 and later, for apps not installed from a store): open the app info, tap ⋮ > Allow restricted settings, and try again.",
-  "@phoneControlRestricted": {
-    "description": "Help for Android's restricted settings."
-  },
-  "phoneControlOverlay": "Display over other apps",
-  "@phoneControlOverlay": {
-    "description": "Phone control step 2."
-  },
-  "phoneControlOverlayHelp": "Shows Minerva's orb above the other apps while it works on them. Not needed while the accessibility service is on, which shows the orb itself.",
-  "@phoneControlOverlayHelp": {
-    "description": "Phone control step 2 help."
-  },
-  "phoneControlScreenshots": "Screenshots",
-  "@phoneControlScreenshots": {
-    "description": "Phone control step 3."
-  },
-  "phoneControlScreenshotsAuto": "Included with the accessibility service on this Android version.",
-  "@phoneControlScreenshotsAuto": {
-    "description": "Screenshots need nothing else (Android 11+)."
-  },
-  "phoneControlScreenshotsAsk": "The first time Minerva takes a screenshot, the phone asks you: tap Start now (and tick Don't show again if offered).",
-  "@phoneControlScreenshotsAsk": {
-    "description": "Screenshots need the screen capture prompt (before Android 11)."
-  },
-  "phoneControlScreenshotsReady": "Allowed until Minerva closes.",
-  "@phoneControlScreenshotsReady": {
-    "description": "Screen capture allowed in this run."
-  },
-  "statusOn": "On",
-  "@statusOn": {
-    "description": "A permission is granted."
-  },
-  "statusOff": "Off",
-  "@statusOff": {
-    "description": "A permission is not granted."
-  },
-  "openSettings": "Open settings",
-  "@openSettings": {
-    "description": "Button: open the phone's settings for this permission."
-  },
-  "openAppInfo": "App info",
-  "@openAppInfo": {
-    "description": "Button: open Minerva's app info in the phone's settings."
+  "phoneOverlayOff": "Off: allow display over other apps to see Minerva's orb outside the app",
+  "@phoneOverlayOff": {
+    "description": "Floating orb status line."
   },
   "telegramUnsupported": "I can't take video, stickers or locations here yet. Write it to me, please.",
   "@telegramUnsupported": {

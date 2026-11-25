@@ -896,119 +896,23 @@ abstract class AppLocalizations {
   /// **'Male {n}'**
   String voiceMale(int n);
 
-  /// What the assistant is doing (spoken aloud).
+  /// Phone settings item: Android's "display over other apps" permission for Minerva's floating orb.
   ///
   /// In en, this message translates to:
-  /// **'Using the phone…'**
-  String get activityUsingPhone;
+  /// **'Orb over other apps'**
+  String get phoneOverlay;
 
-  /// Phone settings item: let Minerva use this phone's apps.
+  /// Floating orb status line.
   ///
   /// In en, this message translates to:
-  /// **'Phone control'**
-  String get phoneControl;
+  /// **'On: Minerva\'s orb floats over other apps while it is linked'**
+  String get phoneOverlayOn;
 
-  /// Phone control status line.
+  /// Floating orb status line.
   ///
   /// In en, this message translates to:
-  /// **'On: Minerva can use this phone\'s apps'**
-  String get phoneControlOn;
-
-  /// Phone control status line.
-  ///
-  /// In en, this message translates to:
-  /// **'Off: let Minerva use this phone\'s apps'**
-  String get phoneControlOff;
-
-  /// Phone control page intro.
-  ///
-  /// In en, this message translates to:
-  /// **'While you talk to Minerva from this phone, it can use the phone for you: read the screen of the app in front, tap, type, scroll, open apps and take screenshots. Everything else (memories, routines, webhooks, credentials, workers) keeps running on the computer.'**
-  String get phoneControlIntro;
-
-  /// Phone control step 1.
-  ///
-  /// In en, this message translates to:
-  /// **'Accessibility service'**
-  String get phoneControlAccessibility;
-
-  /// Phone control step 1 help.
-  ///
-  /// In en, this message translates to:
-  /// **'Lets Minerva read the screen and act on it. In the list that opens, tap Minerva (under downloaded or installed apps) and turn it on.'**
-  String get phoneControlAccessibilityHelp;
-
-  /// The service is enabled but not running.
-  ///
-  /// In en, this message translates to:
-  /// **'Turned on, but Android has not started it: turn it off and on again.'**
-  String get phoneControlAccessibilityStopped;
-
-  /// Help for Android's restricted settings.
-  ///
-  /// In en, this message translates to:
-  /// **'If Android says the setting is restricted (Android 13 and later, for apps not installed from a store): open the app info, tap ⋮ > Allow restricted settings, and try again.'**
-  String get phoneControlRestricted;
-
-  /// Phone control step 2.
-  ///
-  /// In en, this message translates to:
-  /// **'Display over other apps'**
-  String get phoneControlOverlay;
-
-  /// Phone control step 2 help.
-  ///
-  /// In en, this message translates to:
-  /// **'Shows Minerva\'s orb above the other apps while it works on them. Not needed while the accessibility service is on, which shows the orb itself.'**
-  String get phoneControlOverlayHelp;
-
-  /// Phone control step 3.
-  ///
-  /// In en, this message translates to:
-  /// **'Screenshots'**
-  String get phoneControlScreenshots;
-
-  /// Screenshots need nothing else (Android 11+).
-  ///
-  /// In en, this message translates to:
-  /// **'Included with the accessibility service on this Android version.'**
-  String get phoneControlScreenshotsAuto;
-
-  /// Screenshots need the screen capture prompt (before Android 11).
-  ///
-  /// In en, this message translates to:
-  /// **'The first time Minerva takes a screenshot, the phone asks you: tap Start now (and tick Don\'t show again if offered).'**
-  String get phoneControlScreenshotsAsk;
-
-  /// Screen capture allowed in this run.
-  ///
-  /// In en, this message translates to:
-  /// **'Allowed until Minerva closes.'**
-  String get phoneControlScreenshotsReady;
-
-  /// A permission is granted.
-  ///
-  /// In en, this message translates to:
-  /// **'On'**
-  String get statusOn;
-
-  /// A permission is not granted.
-  ///
-  /// In en, this message translates to:
-  /// **'Off'**
-  String get statusOff;
-
-  /// Button: open the phone's settings for this permission.
-  ///
-  /// In en, this message translates to:
-  /// **'Open settings'**
-  String get openSettings;
-
-  /// Button: open Minerva's app info in the phone's settings.
-  ///
-  /// In en, this message translates to:
-  /// **'App info'**
-  String get openAppInfo;
+  /// **'Off: allow display over other apps to see Minerva\'s orb outside the app'**
+  String get phoneOverlayOff;
 
   /// Telegram reply to a message Minerva can't read.
   ///
