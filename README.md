@@ -1,30 +1,198 @@
 # Minerva
 
-A voice-first desktop assistant for macOS built with Flutter. You talk; it answers briefly and shows
-the rest on screen. Claude Code (your own install and login) runs underneath as the brain, and the
-app exposes the display to it through an embedded MCP server. Speech runs locally (sherpa-onnx).
+A voice-first assistant for macOS. You talk; it answers with a short spoken sentence and shows the
+rest on screen. There is no chat window: when nothing is shown, the window is an audio-reactive
+"presence" orb.
 
-The same app on Android is a remote: pair it with the QR from the desktop's phone button, and the
-phone becomes the mic, speaker and display while everything is still processed on the desktop. Both
-sides connect through a small relay (`relay/`), and everything between them is end-to-end encrypted
-with keys derived from the QR code, so the relay only forwards ciphertext. See
-[docs/design.md §3.7](docs/design.md#37-phone-remote).
+The brain is your own **Claude Code** (your install, your login), run headless underneath the app.
+Minerva gives it a display, your Mac's tools and its own long-term memory through an MCP server
+embedded in the app. **Google Antigravity** (`agy`, on your Antigravity subscription) can be used as
+an alternative brain. Speech recognition and synthesis run locally.
 
-To see what the relay sees, run your own with `cd relay && go run . -addr 0.0.0.0:8094 -tap`, point the desktop at
-it with `MINERVA_RELAY=ws://<host>:8094`, and pair the phone: apart from two handshake frames with
-ephemeral public keys, every frame it logs is ciphertext.
+The same Flutter app on Android turns your phone into Minerva's mic, speaker and screen, and lets the
+brain use the phone too. Everything is still processed on the Mac.
 
-## Running as a service on the Mac
+> Status: personal project under active development. macOS (Apple Silicon tested) and Android only.
+> UI and voice in English and Spanish.
 
-```sh
-cd app && flutter build macos --release && tool/install_macos_service.sh
+## Features
+
+- **Local speech**: Silero VAD, NVIDIA Parakeet TDT v3 speech recognition (25 European languages) and
+  Supertonic 3 text-to-speech (31 languages, ten voices) through
+  [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). No cloud speech. Models are downloaded on first
+  run, not bundled.
+- **Full duplex**: echo-cancelled audio (macOS voice processing), so you can interrupt Minerva by
+  talking over it.
+- **AI-controlled display**: the brain shows cards, tables, stats, forms, video, or HTML pages it writes
+  itself (games, simulations, custom charts), rendered from a fixed themed catalog
+  ([A2UI](https://a2ui.org) via Flutter GenUI). Every item gets a number, so "the second one" works by
+  voice.
+- **Computer use**: shell commands, files, screenshots, the accessibility tree, mouse and keyboard, apps
+  and windows. While it works in other apps, Minerva shrinks to a floating orb.
+- **Phone remote (Android)**: pair with a QR code; the phone becomes the mic, speaker and display.
+  Desktop and phone talk through a small relay with end-to-end encryption, so the relay only forwards
+  ciphertext. With the accessibility service enabled, the brain can also read and operate the phone's
+  apps (`phone_ui_tree`, `phone_click`, `phone_type`, `phone_screen`…). Minerva can be the phone's
+  default digital assistant and show a floating orb over other apps.
+- **Telegram**: chat with Minerva by text through your own bot when you can't talk. Answers in a
+  Telegram turn are written, not spoken.
+- **Webhooks**: third parties (GitHub, Stripe, home automation…) can call your Mac at a per-webhook
+  secret URL; each request reaches the brain as a message. TLS is terminated on the Mac, not on the
+  relay.
+- **Memory and continuity**: one continuous conversation across restarts, full searchable history,
+  memories, and skills (reusable procedures as `SKILL.md` files).
+- **Workers**: background Claude Code processes for longer tasks, which report back when done.
+- **Routines**: one-time, daily or interval prompts (reminders, recurring checks).
+- **Projects**: plain folders with a `README.md`; workers can run inside them.
+- **Credential vault**: the brain uses secrets through `{{vault:name.field}}` placeholders without ever
+  seeing their values; tool results are scrubbed.
+
+## Architecture
+
+```
+ mic ─▶ VAD ─▶ STT ─▶ ┌──────────── Minerva (Flutter, macOS) ────────────┐
+                      │ session manager ◀─stream-json─▶ claude -p (or agy acp)
+ speaker ◀── TTS ◀────│ embedded MCP server (display, Mac, memory,       │
+                      │   workers, routines, vault, webhooks, phone…)    │
+ display ◀────────────│                                                  │
+                      └───────┬──────────────────────┬───────────────────┘
+                              │ E2E-encrypted        │ TLS passthrough
+                         relay (Go) ─────────── minerva-webhooks helper
+                              │
+                       Android app (mic, speaker, display, phone control)
 ```
 
-This installs `/Applications/Minerva.app` and a LaunchAgent that starts it hidden at login. The
-Mac only listens while the window is open; closed or minimized, Minerva keeps running in the
-background (menu bar item), so the phone works without the window in front. While a phone is
-connected the window turns into a small orb, always on top in the top-right corner: click it to mute, drag it
-to move it. "Salir de Minerva" quits until the next login; `tool/install_macos_service.sh
---uninstall` removes the LaunchAgent. For tests, `MINERVA_NO_MIC=1` keeps the Mac's mic off.
+Minerva is both the reader of the brain's output stream and the MCP server that runs its tools, so it
+can speak sentences and render views while they are still streaming. All capabilities live in
+Minerva's MCP server, which keeps the brain pluggable.
 
-Status: design phase. See [docs/design.md](docs/design.md).
+The full design, with measured latencies and the security model, is in
+[docs/design.md](docs/design.md).
+
+| Path | What it is |
+|---|---|
+| `app/` | The Flutter app: macOS desktop and Android remote (`lib/`, native code in `macos/Runner` and `android/`) |
+| `relay/` | Go relay that pairs desktop and phone, plus the TLS passthrough for webhooks |
+| `relay/cmd/minerva-webhooks` | Webhook helper bundled in the macOS app |
+| `docs/design.md` | Design document |
+| `spike/` | Throwaway latency and audio experiments |
+
+## Requirements
+
+- macOS 12 or later (developed on Apple Silicon), with Xcode.
+- [Flutter](https://flutter.dev) (stable, Dart ≥ 3.13).
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and logged in (`claude` on your
+  `PATH`). Optional: the Antigravity CLI (`agy`) signed in with your Google account.
+- Go ≥ 1.25 to build the relay and the webhook helper (without Go the app still builds, without
+  webhooks).
+- About 600 MB of disk for the speech models, downloaded on first run.
+- For the phone remote: an Android phone and the Android SDK.
+
+## Build and run
+
+### macOS app
+
+```sh
+cd app
+flutter pub get
+flutter run -d macos            # development
+flutter build macos --release   # build/macos/Build/Products/Release/Minerva.app
+```
+
+On first start Minerva downloads the speech models and asks for the microphone. Computer use needs the
+**Accessibility** and **Screen Recording** permissions (System Settings → Privacy & Security).
+
+To run it as a login service (hidden at login, menu bar item, restarted after a crash):
+
+```sh
+tool/install_macos_service.sh             # installs /Applications/Minerva.app and a LaunchAgent
+tool/install_macos_service.sh --uninstall # removes the LaunchAgent
+```
+
+The script signs the app with an Apple Development identity so macOS keeps the permission grants
+across rebuilds. It is set up for the maintainer's team: change `team=` in the script (or set
+`MINERVA_SIGN_IDENTITY`) for your own.
+
+### Android app
+
+```sh
+cd app
+flutter build apk --release --target-platform android-arm64
+```
+
+Install the APK, open it and scan the QR code from the desktop's phone button. For phone control,
+enable Minerva's accessibility service and "display over other apps" from its settings screen.
+
+### Relay
+
+The app uses a public relay at `wss://minerva.kidandcat.com` by default. To run your own:
+
+```sh
+cd relay
+go test ./...
+go run . -addr 0.0.0.0:8094          # add -tap to log every frame as the relay sees it
+```
+
+and start the desktop with `MINERVA_RELAY=ws://<host>:8094`. `relay/deploy/` has a systemd unit, a
+deploy script and the Caddy configuration (including SNI passthrough for webhooks).
+
+### Tests
+
+```sh
+cd app && flutter test
+cd relay && go test ./...
+```
+
+## Configuration
+
+Most settings are in the app: the status bar (and the phone's settings screen) has the conversation and
+worker models with effort and speed, the voice, the language, credentials and webhooks. Models are
+whatever your Claude Code (or Antigravity) offers. Telegram is set up by saving a vault credential
+named `telegram` with the bot's `token` and your Telegram user id as `chat_id` (messages from other
+chats are ignored).
+
+Environment variables:
+
+| Variable | Effect |
+|---|---|
+| `MINERVA_DATA_DIR` | Data directory (default `~/Library/Application Support/com.kidandcat.minerva/`) |
+| `MINERVA_MODELS_DIR` | Speech models directory (default `~/Library/Application Support/com.kidandcat.minerva/models`) |
+| `MINERVA_RELAY` | Relay URL for the phone remote |
+| `MINERVA_NO_MIC` | Keep the Mac's microphone off (tests) |
+| `MINERVA_NO_WEBHOOKS` | Don't start the webhook helper |
+| `MINERVA_NO_TELEGRAM` | Don't poll Telegram |
+| `MINERVA_WEBHOOKS_BIN` | Path to the `minerva-webhooks` helper |
+
+## Privacy and security
+
+Read this before you run it.
+
+- **Minerva acts without confirmations.** Every tool (shell commands, files, mouse and keyboard,
+  phone control) runs at once. Safety rules live in the system prompt: destructive or irreversible
+  actions only when the request is unmistakable, otherwise it asks first. Speech recognition can
+  mishear. Run it only on a machine and accounts where you accept that.
+- **What leaves your Mac**: your transcribed words, tool results and screenshots go to the brain's
+  provider (Anthropic through Claude Code, or Google through Antigravity). Audio itself stays local.
+- **Local data**: conversation history, memories, skills, projects and the vault live in the data
+  directory, protected by file permissions. The vault is encrypted with AES-256-GCM, but its key sits
+  next to it; it keeps secrets out of prompts, history and logs, not away from someone with your
+  account.
+- **Phone link**: the pairing key is only shared through the QR code. Messages and audio are encrypted
+  end to end (X25519 + ChaCha20-Poly1305 with forward secrecy); the relay sees who is connected, when,
+  and frame sizes.
+- **Webhooks**: each webhook URL contains its own random key, which is the secret. Their content is
+  marked as third-party for the brain.
+- **Telegram**: only your own chat is accepted; messages pass through Telegram's servers.
+
+See [docs/design.md](docs/design.md) §3.5, §3.7, §3.9 and §3.10 for the details and the threat model.
+
+## Contributing
+
+Issues and pull requests are welcome. Please keep changes small and focused, run `flutter test` and
+`go test ./...`, and update `docs/design.md` when behavior changes. Never commit models, tokens or
+personal data.
+
+## License
+
+[MIT](LICENSE) © 2026 kidandcat. Speech models are downloaded from their own sources under their own
+licenses (Parakeet: CC-BY-4.0; Supertonic 3: code MIT, weights OpenRAIL-M; Silero VAD: MIT).
