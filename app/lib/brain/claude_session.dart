@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'brain_session.dart';
+import 'fallback.dart';
 import 'models.dart';
 
 /// A long-lived headless Claude Code process (stream-json in/out), kept warm between turns.
@@ -72,6 +73,9 @@ class ClaudeSession implements BrainSession {
   /// The message of the turn in progress, and whether it was already re-sent after a crash.
   String? _inFlight;
   bool _retried = false;
+
+  /// The reset of a usage limit Claude Code said this turn hit (`DateTime(0)`: it did not say when).
+  DateTime? _limitResets;
   final _toolNames = <int, String>{};
   final _toolJson = <int, StringBuffer>{};
   final _log = StringBuffer();
@@ -261,6 +265,14 @@ class ClaudeSession implements BrainSession {
               _events.add(ToolInput(index, _toolNames[index]!, _toolJson[index].toString()));
             }
         }
+      case 'rate_limit_event':
+        // Claude Code says how the account's limits stand; "rejected" means this turn hit one.
+        final info = ev['rate_limit_info'];
+        if (info is! Map) return;
+        final resets = info['resetsAt'];
+        _limitResets = info['status'] == 'rejected'
+            ? (resets is num ? DateTime.fromMillisecondsSinceEpoch(resets.toInt() * 1000) : DateTime(0))
+            : null;
       case 'result':
         busy = false;
         _inFlight = null;
@@ -270,10 +282,15 @@ class ClaudeSession implements BrainSession {
         final interrupted = _discard || ev['subtype'] == 'error_during_execution';
         _discard = false;
         final isError = ev['is_error'] == true && !interrupted;
+        final resets = _limitResets;
+        _limitResets = null;
         _events.add(TurnDone(
           interrupted: interrupted,
           error: isError ? '${ev['result'] ?? ev['subtype']}' : null,
           result: ev['result'] is String ? ev['result'] as String : '',
+          limit: isError && resets != null
+              ? ProviderLimit(LimitReason.usage, resetsAt: resets.year == 0 ? null : resets)
+              : null,
         ));
         if (fast && ev['fast_mode_state'] is String) {
           _events.add(FastModeState(
