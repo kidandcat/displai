@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'antigravity_session.dart';
 import 'claude_session.dart';
+import 'codex_session.dart';
+import 'fallback.dart';
 import 'models.dart';
 
 /// Events from a brain's turn, as the app needs them.
@@ -56,9 +58,15 @@ class FastModeState extends BrainEvent {
 }
 
 class TurnDone extends BrainEvent {
-  TurnDone({required this.interrupted, this.error, this.result = ''});
+  TurnDone({required this.interrupted, this.error, this.result = '', ProviderLimit? limit})
+    : limit = limit ?? (interrupted ? null : limitIn(error));
   final bool interrupted;
   final String? error;
+
+  /// The turn failed because the provider reached its usage limit (or lost its login): another
+  /// provider should take over (see [ProviderLimits]). From the agent's own signal when it has one,
+  /// else read from [error].
+  final ProviderLimit? limit;
 
   /// The turn's final text (what a worker reports back).
   final String result;
@@ -66,10 +74,10 @@ class TurnDone extends BrainEvent {
 
 /// A long-lived headless agent the conversation (or a worker) runs on, kept warm between turns,
 /// with Minerva's tools from an MCP server. One per [BrainProvider]: [ClaudeSession] (Claude
-/// Code) and [AntigravitySession] (Antigravity's `agy acp`).
+/// Code), [AntigravitySession] (Antigravity's `agy acp`) and [CodexSession] (`codex app-server`).
 abstract interface class BrainSession {
-  /// Starts (or resumes) [sessionId] for a provider: see [ClaudeSession] and
-  /// [AntigravitySession]. [fileTools]: allow the agent's own read-only file tools besides the
+  /// Starts (or resumes) [sessionId] for a provider: see [ClaudeSession], [AntigravitySession]
+  /// and [CodexSession]. [fileTools]: allow the agent's own read-only file tools besides the
   /// web (workers); [onSessionId] is told the conversation's id when the agent picks it.
   static BrainSession create({
     required BrainProvider provider,
@@ -113,6 +121,20 @@ abstract interface class BrainSession {
           sessionId: sessionId,
           onSessionId: onSessionId,
           builtinTools: fileTools ? AntigravitySession.fileTools : AntigravitySession.webTools,
+          replayUserMessages: replayUserMessages,
+        );
+      case BrainProvider.codex:
+        return CodexSession(
+          model: model,
+          effort: effort,
+          fast: fast,
+          describe: describe,
+          systemPrompt: systemPrompt,
+          mcpUrl: mcpUrl,
+          workDir: workDir,
+          sessionId: sessionId,
+          onSessionId: onSessionId,
+          fileTools: fileTools,
           replayUserMessages: replayUserMessages,
         );
     }

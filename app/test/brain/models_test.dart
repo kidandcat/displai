@@ -165,4 +165,43 @@ void main() {
     defaultWorkerModel.save(store, 'workers');
     expect(ModelChoice.load(store, 'workers', defaultWorkerModel), defaultWorkerModel);
   });
+
+  test("Codex's catalog: its default first, hidden models out, efforts and fast mode as listed", () {
+    Map<String, Object?> model(String id, {bool isDefault = false, bool hidden = false, bool priority = false}) => {
+          'id': id,
+          'model': id,
+          'displayName': id.toUpperCase(),
+          'description': 'about $id',
+          'hidden': hidden,
+          'isDefault': isDefault,
+          'supportedReasoningEfforts': [
+            for (final e in ['low', 'medium', 'high', 'ultra']) {'reasoningEffort': e, 'description': e},
+          ],
+          'serviceTiers': [if (priority) {'id': 'priority', 'name': 'Fast'}],
+        };
+    final codex = ModelCatalog.codex(version: '0.154.0', models: [
+      model('gpt-5.5'),
+      model('gpt-6-astra', isDefault: true, priority: true),
+      model('codex-auto-review', hidden: true),
+      'junk',
+    ]);
+    expect(codex.provider, BrainProvider.codex);
+    expect([for (final m in codex.all) m.value], ['gpt-6-astra', 'gpt-5.5']);
+    expect(codex.previous, isEmpty);
+    final astra = codex.find('gpt-6-astra')!;
+    expect((astra.name, astra.fast), ('GPT-6-ASTRA', true));
+    expect(astra.efforts, ['low', 'medium', 'high', 'ultra']);
+    expect(codex.find('gpt-5.5')!.fast, isFalse);
+
+    expect(codexBrainModel.resolve(codex), (model: 'gpt-6-astra', effort: 'low', fast: false));
+    expect(codexBrainModel.copyWith(effort: 'max', fast: true).resolve(codex),
+        (model: 'gpt-6-astra', effort: 'high', fast: true));
+    expect(codexBrainModel.copyWith(model: 'gpt-5.5', fast: true).resolve(codex),
+        (model: 'gpt-5.5', effort: 'low', fast: false));
+    expect(defaultModel(BrainProvider.codex, workers: true), codexWorkerModel);
+    final other = ModelCatalog.codex(version: '1', models: [model('gpt-7')]);
+    expect(defaultModel(BrainProvider.codex, workers: false, catalog: other).model, 'gpt-7');
+    expect(ModelCatalog.fromJson(jsonDecode(jsonEncode(codex.toJson())))!.find('gpt-6-astra')!.fast, isTrue);
+    expect(BrainProvider.parse('codex'), BrainProvider.codex);
+  });
 }

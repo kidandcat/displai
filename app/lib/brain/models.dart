@@ -2,11 +2,13 @@ import 'dart:convert';
 
 import '../store/store.dart';
 
-/// The agent a brain runs on: Claude Code, or Google Antigravity's CLI (`agy`, signed in with the
-/// user's Google account, so it runs on their Antigravity subscription).
+/// The agent a brain runs on, each on the user's own subscription: Claude Code, Google
+/// Antigravity's CLI (`agy`, signed in with their Google account) or OpenAI's Codex CLI (`codex`,
+/// signed in with their ChatGPT account).
 enum BrainProvider {
   claude('Claude', 'Claude Code'),
-  antigravity('Antigravity', 'Antigravity CLI');
+  antigravity('Antigravity', 'Antigravity CLI'),
+  codex('Codex', 'Codex CLI');
 
   const BrainProvider(this.label, this.agent);
 
@@ -20,8 +22,8 @@ enum BrainProvider {
       values.firstWhere((p) => p.name == id, orElse: () => BrainProvider.claude);
 }
 
-/// One model a brain offers (from Claude Code's initialize answer, or Antigravity's model list;
-/// see [ModelCatalog]).
+/// One model a brain offers (from Claude Code's initialize answer, Antigravity's or Codex's model
+/// list; see [ModelCatalog]).
 class BrainModel {
   BrainModel({
     required this.value,
@@ -81,8 +83,9 @@ class BrainModel {
 }
 
 /// The models of a brain's installed agent, as it lists them. Claude Code's: the newest of each
-/// family first (like Claude Code's own picker), the rest as previous models. Antigravity's: all
-/// of them, in its order. Never a hard-coded list, so it stays current as the agents update.
+/// family first (like Claude Code's own picker), the rest as previous models. Antigravity's and
+/// Codex's: all of them, in their order. Never a hard-coded list, so it stays current as the
+/// agents update.
 class ModelCatalog {
   ModelCatalog({required this.version, required List<BrainModel> models, this.provider = BrainProvider.claude}) {
     final seen = <String>{};
@@ -161,6 +164,38 @@ class ModelCatalog {
     );
   }
 
+  /// From Codex's model list (the app server's `model/list`): its default model first, the
+  /// hidden ones left out. Each lists its reasoning efforts; fast mode is the `priority` service
+  /// tier.
+  factory ModelCatalog.codex({required String version, required List<Object?> models}) {
+    final shown = [
+      for (final m in models)
+        if (m is Map && m['id'] is String && m['hidden'] != true) m,
+    ];
+    final listed = [...shown.where((m) => m['isDefault'] == true), ...shown.where((m) => m['isDefault'] != true)];
+    return ModelCatalog(
+      version: version,
+      provider: BrainProvider.codex,
+      models: [
+        for (final m in listed)
+          BrainModel(
+            value: m['id'] as String,
+            resolved: '${m['model'] ?? m['id']}',
+            name: '${m['displayName'] ?? m['id']}',
+            description: '${m['description'] ?? ''}',
+            efforts: [
+              for (final e in m['supportedReasoningEfforts'] as List? ?? const [])
+                if (e is Map && e['reasoningEffort'] is String) e['reasoningEffort'] as String,
+            ],
+            fast: [
+              for (final t in m['serviceTiers'] as List? ?? const [])
+                if (t is Map) t['id'],
+            ].contains('priority'),
+          ),
+      ],
+    );
+  }
+
   static final _level = RegExp(r'-(low|medium|high|xhigh|max)$');
 
   static const _families = ['opus', 'sonnet', 'haiku', 'fable'];
@@ -215,8 +250,8 @@ class ModelCatalog {
 }
 
 /// Effort levels from lowest to highest, as Claude Code names them (Antigravity's thinking
-/// levels use the same names).
-const effortLevels = ['low', 'medium', 'high', 'xhigh', 'max'];
+/// levels and Codex's reasoning efforts use the same names; Codex has `ultra` above `max`).
+const effortLevels = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
 /// The effort to run [model] with when [wanted] is chosen: null when the model has no effort
 /// levels, else [wanted] or the nearest level below it that the model supports.
@@ -240,12 +275,17 @@ const antigravityBrainModel = ModelChoice(provider: BrainProvider.antigravity, m
 const antigravityWorkerModel =
     ModelChoice(provider: BrainProvider.antigravity, model: 'gemini-4-neon', effort: 'medium');
 
+/// The same on Codex: the model its CLI starts with (the catalog lists its current default first).
+const codexBrainModel = ModelChoice(provider: BrainProvider.codex, model: 'gpt-6-astra', effort: 'low');
+const codexWorkerModel = ModelChoice(provider: BrainProvider.codex, model: 'gpt-6-astra', effort: 'medium');
+
 /// The default choice on [provider], for the conversation or the [workers]; when [catalog] no
 /// longer lists its model, the catalog's first one.
 ModelChoice defaultModel(BrainProvider provider, {required bool workers, ModelCatalog? catalog}) {
   final d = switch (provider) {
     BrainProvider.claude => workers ? defaultWorkerModel : defaultBrainModel,
     BrainProvider.antigravity => workers ? antigravityWorkerModel : antigravityBrainModel,
+    BrainProvider.codex => workers ? codexWorkerModel : codexBrainModel,
   };
   if (catalog == null || catalog.all.isEmpty || catalog.find(d.model) != null) return d;
   return d.copyWith(model: catalog.all.first.value);
@@ -315,13 +355,14 @@ class ModelChoice {
 
   /// The session settings for this choice: the effort fitted to the model, fast mode only where
   /// the model has it. Antigravity's model ids carry the thinking level (`gemini-4-neon-low`),
-  /// and it has no fast mode.
+  /// and it has no fast mode; Codex's fast mode is its `priority` service tier.
   ({String model, String? effort, bool fast}) resolve(ModelCatalog? catalog) {
     final m = catalog?.find(model);
     final e = effortFor(m, effort);
     return switch (provider) {
       BrainProvider.claude => (model: model, effort: e, fast: fast && (m?.fast ?? true)),
       BrainProvider.antigravity => (model: e == null ? model : '$model-$e', effort: null, fast: false),
+      BrainProvider.codex => (model: model, effort: e, fast: fast && (m?.fast ?? false)),
     };
   }
 }
