@@ -314,5 +314,39 @@ void main() {
       expect(bot.promptSection(), contains('[telegram]'));
       await bot.close();
     });
+
+    test('reachable only with a token and a chat', () {
+      String? token = 'TOKEN';
+      int? chat;
+      final bot = Telegram(token: () => token, chatId: () => chat, dir: tmp.path, onMessage: (_) {});
+      expect(bot.reachable, isFalse);
+      chat = 42;
+      expect(bot.reachable, isTrue);
+      token = null;
+      expect(bot.reachable, isFalse);
+    });
+  });
+
+  group('where notices are answered', () {
+    bool here({bool reachable = true, bool lastOnTelegram = false, bool windowOpen = true, bool onPhone = false}) =>
+        Telegram.answersNotice(
+            reachable: reachable, lastOnTelegram: lastOnTelegram, windowOpen: windowOpen, onPhone: onPhone);
+
+    test('spoken while the user is at the Mac (window open, also as the orb) or on the phone', () {
+      expect(here(), isFalse);
+      expect(here(onPhone: true), isFalse);
+      expect(here(windowOpen: false, onPhone: true), isFalse);
+    });
+
+    test('on Telegram when the window is closed or the user last wrote there', () {
+      expect(here(windowOpen: false), isTrue);
+      expect(here(lastOnTelegram: true), isTrue);
+      expect(here(lastOnTelegram: true, onPhone: true), isTrue);
+    });
+
+    test('never when the chat cannot be written to', () {
+      expect(here(reachable: false, windowOpen: false), isFalse);
+      expect(here(reachable: false, lastOnTelegram: true), isFalse);
+    });
   });
 }

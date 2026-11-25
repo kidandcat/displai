@@ -169,7 +169,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   final _telegramInbox = <String>[];
 
   /// The user last talked to Minerva on Telegram (not by voice or on the display): worker
-  /// reports, routines and webhooks are answered there too, until they talk again.
+  /// reports, routines and webhooks are answered there too, until they talk again (and while
+  /// the window is closed, see [Telegram.answersNotice]).
   bool _lastOnTelegram = false;
 
   /// The turn in progress answers on Telegram: its text is sent there, not spoken.
@@ -1068,7 +1069,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   }
 
   /// Hands a worker report or a routine prompt to the brain as soon as it is free (not
-  /// talking, not thinking, the user not speaking).
+  /// talking, not thinking, the user not speaking). Its answer is spoken, or written on Telegram
+  /// when the user is away from the Mac ([Telegram.answersNotice]).
   void notify(String text) {
     _notices.add(text);
     _drainNotices();
@@ -1083,7 +1085,15 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     }
     if (_notices.isEmpty) return;
     _turnSpeechEnd = null;
-    _ask(_notices.removeAt(0), telegram: _lastOnTelegram && telegram?.configured == true, notice: true);
+    final t = telegram;
+    final toTelegram = t != null &&
+        Telegram.answersNotice(
+          reachable: t.reachable,
+          lastOnTelegram: _lastOnTelegram,
+          windowOpen: window.open,
+          onPhone: onPhone,
+        );
+    _ask(_notices.removeAt(0), telegram: toTelegram, notice: true);
   }
 
   // ---------------------------------------------------------------- telegram

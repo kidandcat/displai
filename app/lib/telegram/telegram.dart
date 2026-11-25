@@ -81,6 +81,22 @@ class Telegram extends ChangeNotifier {
   /// A token is saved.
   bool get configured => (token() ?? '').isNotEmpty;
 
+  /// Minerva can write to the user: a token and their chat are saved.
+  bool get reachable => configured && chatId() != null;
+
+  /// A worker report, routine, webhook or other notice (not something the user did) is answered
+  /// on Telegram, not spoken, when the chat is [reachable] and the user is not at the Mac: they
+  /// last wrote on Telegram, or nobody hears the Mac, because Minerva's window is closed (the app
+  /// runs in the background without its mic and voice) and no phone is connected. The corner orb
+  /// counts as open: the user is at the Mac working in other apps.
+  static bool answersNotice({
+    required bool reachable,
+    required bool lastOnTelegram,
+    required bool windowOpen,
+    required bool onPhone,
+  }) =>
+      reachable && (lastOnTelegram || (!windowOpen && !onPhone));
+
   /// Starts polling (in the background; it waits while there is no token).
   void start() {
     if (_running) return;
@@ -321,7 +337,7 @@ Telegram (the written channel):
 - "[telegram]" after the time means the user wrote to you on Telegram (typed, unless marked as a transcribed recording): they can't talk or listen now. Your reply is sent back to them on Telegram as text, not spoken, so the voice rules don't apply: write it (Markdown allowed: **bold**, *italic*, `code`, lists, links), as long as the answer needs, still to the point.
 - A Telegram message that starts "(voice note transcribed…" or "(audio file transcribed…" is a recording the user sent, transcribed locally: read past likely recognition errors as you do with speech, and ask if something important is unclear. Your reply is still written.
 - Don't use the display or Minerva's window for a Telegram message (the user is not at the Mac) unless they ask for it; put everything in the text. Don't ask for credentials with vault_request there: ask the user to save them in Minerva's settings.
-- A "[telegram]" in front of a worker report, routine or webhook means the user was last on Telegram: your reply goes there too.''';
+- A "[telegram]" in front of a worker report, routine, webhook or other event means the user is away from the Mac (they last wrote on Telegram, or Minerva's window is closed): your reply goes to Telegram as text too, written as above.''';
   }
 
   Future<void> close() async {

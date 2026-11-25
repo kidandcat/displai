@@ -521,10 +521,18 @@ own (`app/lib/telegram/`).
   Markdown to Telegram's HTML subset, split under 4096 characters (code blocks closed and reopened), and
   resent as plain text if Telegram rejects the markup. "typing…" shows while the brain works. The prompt
   section tells the brain to write (Markdown, as long as needed) and to leave the display alone.
-- **Where proactive messages go**: the last channel the user used wins. A Telegram message makes it
-  Telegram; speaking to Minerva (Mac or phone) or using the display makes it voice again. Worker
-  reports, routines and webhooks that fire while it is Telegram are tagged `[telegram]` and answered
-  there. It is not kept across restarts (it starts as voice).
+- **Where proactive messages go**: worker reports, routines, webhooks and other notices (not something
+  the user did) are tagged `[telegram]` and answered there when the user is away from the Mac
+  (`Telegram.answersNotice`, decided when the notice reaches the brain, and only with a token and chat
+  saved):
+  - the last channel the user used is Telegram. A Telegram message makes it Telegram; speaking to
+    Minerva (Mac or phone) or using the display makes it voice again. Not kept across restarts (it
+    starts as voice);
+  - or nobody hears the Mac: Minerva's window is closed (`DesktopWindow.open` false: the user closed
+    the full view, or the app started hidden; it runs in the background without the mic and voice)
+    and no phone is connected. The corner orb while Minerva works in other apps counts as open (the
+    window is still the user's, they are at the Mac); the orb while a phone is connected answers on
+    the phone by voice.
 - **Voice at the same time**: a Telegram answer has nothing to talk over, so speech starting does not
   barge in; a real utterance stops it and the voice takes over.
 
