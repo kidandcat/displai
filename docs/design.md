@@ -9,12 +9,14 @@ spoken sentence and, when it helps, shows content on screen (cards, tables, form
 When nothing is shown, the screen is a living, audio-reactive "presence" animation (JARVIS-style).
 There is no chat UI.
 
-The brain is the user's own **Claude Code** (their install, their login), running headless
-underneath the app. The app gives Claude Code a set of **display tools** through an MCP server
-embedded in the app, plus a system prompt that makes it work visually ("speak little; show when it helps").
+The brain is the user's own coding agent (their install, their login, their subscription), running
+headless underneath the app: **Claude Code** (§3.1), **Google Antigravity** (§3.1.1) or **OpenAI
+Codex** (§3.1.2), with an ordered fallback between them when one hits its usage limit (§3.1.3). The
+app gives the agent a set of **display tools** through an MCP server embedded in the app, plus a
+system prompt that makes it work visually ("speak little; show when it helps").
 
 A phone app (Android first) acts as a remote for the desktop: mic, speaker and display on the phone,
-all processing on the desktop (Claude Code does not run on phones). See §3.7.
+all processing on the desktop (the agents do not run on phones). See §3.7.
 
 ### Principles
 
@@ -40,7 +42,7 @@ flowchart LR
     MCP[Embedded MCP server - HTTP on localhost]
     Surface[Display - A2UI surface]
   end
-  Brain <-->|stream-json stdin/stdout| CC[claude -p headless]
+  Brain <-->|stdio: stream-json / ACP / JSON-RPC| CC[claude -p, agy acp or codex app-server]
   CC <-->|tools: show, update, form, video, html, clear, get_state| MCP
   MCP --> Surface
   Surface -->|user actions, state| MCP
@@ -84,7 +86,8 @@ Checked locally with Claude Code **2.1.302**.
   runs at once (no confirmations, see the policy in 3.5), so no `--permission-prompt-tool` is needed.
 - The brain is **pluggable** (`BrainSession` in `lib/brain/brain_session.dart`): the capabilities live
   in Minerva's MCP server, and each provider's adapter only has to speak MCP plus a streaming text
-  protocol. Claude Code is one provider; Google Antigravity is the second (§3.1.1).
+  protocol. Claude Code is one provider; Google Antigravity (§3.1.1) and OpenAI Codex (§3.1.2) are
+  the others, all three at the same level.
 - Model: user-selectable in the status bar's model picker, separately for the conversation (default
   `opus`, effort low) and for the workers (default `opus`, effort medium): model, effort and speed
   (fast mode, where the model and the account allow it). The list is never hard-coded: every brain start
@@ -128,10 +131,89 @@ the user's own `agy`, signed in with their Google account, the way OpenBot (Copi
   `read_url_content`; workers also the read-only file tools) once, and refuses the rest. The system
   prompt append says so. Minerva's MCP tools are flagged `_meta["antigravity/alwaysLoad"]` so
   Antigravity does not defer them.
-- Each provider keeps its own conversation (`brain_session` for Claude, `brain_session.antigravity`);
-  switching providers stops the answer in progress and goes on with that provider's conversation.
-  Workers store `antigravity:<id>` and resume on the provider they started on.
+- Each provider keeps its own conversation (`brain_session` for Claude, `brain_session.antigravity`,
+  `brain_session.codex`); switching providers stops the answer in progress and goes on with that
+  provider's conversation. Workers store `antigravity:<id>` (or `codex:<id>`) and resume on the
+  provider they started on.
 - Smoke test: `dart run tool/antigravity_smoke.dart` (tool call, interruption, resume in a new process).
+
+### 3.1.2 Brain: OpenAI Codex
+
+Checked locally with the Codex CLI (`codex`) **0.154.0** on 2026-11-25. Like Antigravity, it runs on the
+user's **ChatGPT subscription** through their own `codex`, signed in with `codex login` (ChatGPT
+account); Minerva never passes an API key.
+
+- `codex app-server` is the protocol Codex's IDE extension and desktop app use
+  ([docs](https://developers.openai.com/codex/app-server)): JSON-RPC 2.0 over stdio, one JSON per line,
+  kept warm between turns. `codex exec --json` (one process per turn) and `codex mcp-server` (no
+  streaming of text deltas, no steering) were the alternatives; app-server is the only one with
+  streaming, interruption, steering and thread resume.
+- Start: `initialize` (its `userAgent` carries the version) → `initialized` → `account/read` (no account
+  while auth is required: "not signed in") → `config/read` → `thread/start` or, with the stored id,
+  `thread/resume` (a thread that never had a turn is not saved: "no rollout found", so a new one is
+  started). `model/list` gives the picker's catalog (hidden models left out, the default first, reasoning
+  efforts as the effort, the `priority` service tier as fast mode); Codex lists them at Minerva's start.
+- **Isolation from the user's Codex setup**: process `-c` overrides turn off `notify`, update checks,
+  reasoning summaries and the feature flags for plugins, apps, memories, hooks, subagents, goals,
+  computer and browser use, image generation and tool suggestions; web search is `live`. The thread
+  config disables each of the user's MCP servers by name (Codex has no switch for all of them) and adds
+  Minerva's (`minerva`, streamable HTTP, tools approved, 900 s tool timeout). `developerInstructions` is
+  Minerva's prompt plus a short section on which tools exist. Limitation: Codex always loads
+  `~/.codex/AGENTS.md` (and the project's, which Minerva's work dirs do not have); the tools section says
+  Minerva's prompt comes first.
+- Permissions: `approvalPolicy: never`, `sandbox: read-only`. The brain has no shell at all
+  (`features.shell_tool` and `unified_exec` off), only the web; workers keep Codex's shell inside the
+  read-only sandbox to look at files, like the other providers' read-only file tools. Approval requests
+  are declined; MCP elicitations are accepted only for Minerva's server.
+- Turns: `turn/start` carries the model, `effort` and `serviceTier` each time, so a model change needs no
+  restart. Text streams as `item/agentMessage/delta`; tools as `item/started` (`mcpToolCall` with its
+  arguments, whole: Codex does not stream them, so a view appears when the call starts rather than
+  progressively; `webSearch`, `commandExecution`); `contextCompaction` items show as compacting. The turn
+  ends with `turn/completed` (`completed`, `interrupted` or `failed` with `codexErrorInfo`). A
+  `turn/start` sent while a turn runs steers it.
+- Barge-in: `turn/interrupt {threadId, turnId}`; the turn completes as `interrupted`.
+- If the process dies mid-turn it is restarted on the same thread and the message re-sent once.
+- Smoke test: `dart run tool/codex_smoke.dart` (models, thread, MCP server ready, a tool call,
+  interruption and resume in a new process; without a valid login it checks everything up to the first
+  turn and that the expired login is reported as a sign-in limit).
+
+### 3.1.3 Several subscriptions: ordered fallback
+
+Like OpenBot, which lets the user connect several subscriptions and keeps a fallback list, Minerva can
+use all three providers at once. The conversation and the workers each have a preferred choice
+(provider, model, effort, speed) and an ordered list of **fallbacks**, one per provider (a limit is the
+account's, whatever the model), saved as `brain.fallbacks` / `workers.fallbacks`.
+
+- **Detecting limits** (`lib/brain/fallback.dart`): each adapter reports a failed turn's
+  `ProviderLimit` (usage limit, rate limit or quota; or a lost login) in `TurnDone.limit`, from the
+  agent's own signal where it has one, else from the error text:
+  - Claude Code: the `rate_limit_event` with `status: rejected` and `resetsAt`; errors such as "You've
+    hit your limit · resets 3pm", "Claude AI usage limit reached|<epoch>", "Please run /login".
+  - Antigravity: `RESOURCE_EXHAUSTED`, "quota", 429, 401.
+  - Codex: `codexErrorInfo` `usageLimitExceeded` / `rateLimitExceeded` (reset from the
+    `account/rateLimits/updated` window at 100%) or `unauthorized` ("access token could not be
+    refreshed").
+- **Shared state**: `ProviderLimits` holds, per provider, until when it is out and why, in the store
+  (`provider_limits`) so it survives restarts, shared by the conversation and the workers. Without a
+  reset time it is left alone 30 minutes (usage) or 10 minutes (sign-in); a reset in the past or more
+  than 8 days away counts as unknown.
+- **Falling back**: the conversation runs on the first choice of its chain whose provider is installed
+  and not out. When a turn fails on a limit, the provider is marked out, Minerva says (or writes, on
+  Telegram) "Claude can't answer now. Going on with Codex.", switches its session to the next provider
+  and resends the message there. The new session gets a one-time note that the conversation moved and
+  that its earlier part is in the history tools: each agent keeps its own context, Minerva's history
+  and memory are shared. When no other provider can take over, the error is reported as usual and the
+  next message goes to the provider that is back soonest.
+- **Going back**: before each message, when nothing is running, Minerva picks the chain's first usable
+  choice again, so it returns to the preferred provider once its limit is over. Picking a provider by
+  hand clears its sign-in mark (the user just logged in again).
+- **Workers**: a worker starts on the first usable choice of the workers' chain; if it ends on a limit,
+  it is relaunched on the next provider with its task, any follow-ups and a note to do it from the
+  start. Its stored session id switches to the new provider.
+- **UI**: the model picker has a **Providers** tab (each provider: ready, checking, not installed or
+  signed out, limited until when; what runs on it) and, under the Conversation and Workers tabs, the
+  ordered fallbacks (add, reorder, remove, model per fallback). The phone shows the same from the
+  settings the desktop sends (`brain_fallbacks`, `worker_fallbacks`, `active_brain`, `limits`).
 
 ### 3.2 Audio: sherpa-onnx
 
@@ -260,7 +342,7 @@ lives in `~/Library/Application Support/com.kidandcat.minerva/` (`MINERVA_DATA_D
 | History | `search_history` | Every user message, display or worker/routine event, and spoken reply is saved. Search by words (any word, best ranked) or read around a message id. Covers what auto-compaction removed from the context. |
 | Memories | `remember`, `search_memories`, `forget_memory` | Short self-contained facts. `essential` ones (budget 4,000 chars) go into the system prompt at each start; the rest are searched. `remember` with `id` corrects one. |
 | Skills | `read_skill`, `save_skill`, `delete_skill` | `skills/<name>/SKILL.md` with name and description front matter. Only the index goes into the system prompt; the brain loads a skill before that kind of task. Deleting runs at once. |
-| Workers | `start_worker`, `list_workers`, `worker_status`, `message_worker`, `stop_worker` | Each worker is its own headless Claude Code process (the workers' model from the model picker, by default opus with effort medium, `--autocompact 200k`) with its own MCP endpoint: commands and files, read-only memories, history and skills, `report_progress`, plus `Read`, `Glob`, `Grep`, `WebSearch`, `WebFetch`. No display and no mouse or keyboard. Nothing is confirmed: its prompt says to do destructive actions only when the task clearly asks for them, otherwise to leave them out and say so in the report. Its final message is the report, handed to the brain as a `[worker …]` message. Its session is saved, so `message_worker` can continue it later, also after a restart. The status bar shows how many are running. |
+| Workers | `start_worker`, `list_workers`, `worker_status`, `message_worker`, `stop_worker` | Each worker is its own headless agent session (the workers' provider and model from the model picker, by default Claude Code with opus at effort medium, `--autocompact 200k`; or Antigravity or Codex; falling back along the workers' chain, §3.1.3) with its own MCP endpoint: commands and files, read-only memories, history and skills, `report_progress`, plus the agent's read-only file tools (Claude's `Read`, `Glob`, `Grep`; Antigravity's file viewers; Codex's shell in a read-only sandbox) and the web. No display and no mouse or keyboard. Nothing is confirmed: its prompt says to do destructive actions only when the task clearly asks for them, otherwise to leave them out and say so in the report. Its final message is the report, handed to the brain as a `[worker …]` message. Its session is saved, so `message_worker` can continue it later, also after a restart. The status bar shows how many are running. |
 | Projects | file tools, `start_worker` `project` | `projects/<name>/` is a plain folder whose `README.md` (else `AGENTS.md` or `CLAUDE.md`) says what it is, next to its notes and files. The system prompt lists them (name and the doc's first line) and says how to create one; the brain reads and writes them with the file tools. A worker started with `project` (a name or any folder path) runs in that folder with the main doc in its prompt, and resumes there. No per-project sessions or memories. |
 | Routines | `create_routine`, `list_routines`, `update_routine`, `delete_routine` | Schedules `once` (local time), `daily` (time, optional weekdays) or `interval` (minutes). Checked every 15 s while the app runs. At the due time the prompt is handed to the brain as a `[routine …]` message. A missed one-time reminder fires late at the next start; recurring runs missed by more than 2 h are skipped. |
 
@@ -588,7 +670,7 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
 - **No scrolling**: one view = one screen; views are kept short.
 - **Ordinals**: every selectable item gets a visible number; `get_state` reports them so the agent can
   resolve "la segunda", "el último", "ese".
-- Settings: model alias, voice, input device, hotkey, "use my Claude Code settings" toggle. The voice
+- Settings: provider and model (with fallbacks), voice, input device, hotkey, "use my Claude Code settings" toggle. The voice
   button picks one of Supertonic 3's ten speakers (female 1–5, male 1–5; `kv.voice`), from the next sentence.
 
 ### 7.1 Language

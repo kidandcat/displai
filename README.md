@@ -4,10 +4,11 @@ A voice-first assistant for macOS. You talk; it answers with a short spoken sent
 rest on screen. There is no chat window: when nothing is shown, the window is an audio-reactive
 "presence" orb.
 
-The brain is your own **Claude Code** (your install, your login), run headless underneath the app.
-Minerva gives it a display, your Mac's tools and its own long-term memory through an MCP server
-embedded in the app. **Google Antigravity** (`agy`, on your Antigravity subscription) can be used as
-an alternative brain. Speech recognition and synthesis run locally.
+The brain is a coding agent you already pay for, run headless underneath the app on your own install
+and login: **Claude Code**, **Google Antigravity** or **OpenAI Codex**. Minerva gives it a display,
+your Mac's tools and its own long-term memory through an MCP server embedded in the app. You can
+connect several of them and set a fallback order: when one hits its usage limit, Minerva carries on
+with the next and comes back when the limit resets. Speech recognition and synthesis run locally.
 
 The same Flutter app on Android turns your phone into Minerva's mic, speaker and screen, and lets the
 brain use the phone too. Everything is still processed on the Mac.
@@ -41,7 +42,8 @@ brain use the phone too. Everything is still processed on the Mac.
   relay.
 - **Memory and continuity**: one continuous conversation across restarts, full searchable history,
   memories, and skills (reusable procedures as `SKILL.md` files).
-- **Workers**: background Claude Code processes for longer tasks, which report back when done.
+- **Workers**: background agent sessions (on any of the providers) for longer tasks, which report back
+  when done.
 - **Routines**: one-time, daily or interval prompts (reminders, recurring checks).
 - **Projects**: plain folders with a `README.md`; workers can run inside them.
 - **Credential vault**: the brain uses secrets through `{{vault:name.field}}` placeholders without ever
@@ -51,7 +53,7 @@ brain use the phone too. Everything is still processed on the Mac.
 
 ```
  mic ─▶ VAD ─▶ STT ─▶ ┌──────────── Minerva (Flutter, macOS) ────────────┐
-                      │ session manager ◀─stream-json─▶ claude -p (or agy acp)
+                      │ session manager ◀──▶ claude -p │ agy acp │ codex app-server
  speaker ◀── TTS ◀────│ embedded MCP server (display, Mac, memory,       │
                       │   workers, routines, vault, webhooks, phone…)    │
  display ◀────────────│                                                  │
@@ -81,12 +83,42 @@ The full design, with measured latencies and the security model, is in
 
 - macOS 12 or later (developed on Apple Silicon), with Xcode.
 - [Flutter](https://flutter.dev) (stable, Dart ≥ 3.13).
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and logged in (`claude` on your
-  `PATH`). Optional: the Antigravity CLI (`agy`) signed in with your Google account.
+- At least one brain provider installed and signed in: Claude Code, the Antigravity CLI or the Codex
+  CLI (see [Brain providers](#brain-providers)).
 - Go ≥ 1.25 to build the relay and the webhook helper (without Go the app still builds, without
   webhooks).
 - About 600 MB of disk for the speech models, downloaded on first run.
 - For the phone remote: an Android phone and the Android SDK.
+
+## Brain providers
+
+Minerva has no API keys of its own: each provider is the agent's own CLI, on its own subscription and
+login. All three get the same tools, prompt, memory and conversation; pick by preference, plan or
+model.
+
+| Provider | CLI | Subscription | Install | Sign in | How Minerva runs it |
+|---|---|---|---|---|---|
+| **Claude** | [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`) | Claude Pro / Max | `npm i -g @anthropic-ai/claude-code` (or the native installer) | `claude`, then `/login` | `claude -p` with stream-json |
+| **Antigravity** | Antigravity CLI (`agy`) | Google Antigravity | see [antigravity.google](https://antigravity.google) | `agy`, sign in with Google | `agy acp` (Agent Client Protocol) |
+| **Codex** | [Codex CLI](https://developers.openai.com/codex/cli) (`codex`) | ChatGPT Plus / Pro / Business | `brew install --cask codex` or `npm i -g @openai/codex` | `codex login`, sign in with ChatGPT | `codex app-server` (JSON-RPC) |
+
+The CLIs must be on the `PATH` of your login shell. Minerva starts them itself; you only sign in once
+in a terminal. Each one keeps its conversation across restarts (session resume).
+
+**Choosing a provider and model.** Click the model in the status bar (or open the phone's settings).
+The **Conversation** and **Workers** tabs each have a provider switch, the models that provider lists
+(read from the installed CLI, never hard-coded), the effort and, where the model has it, fast mode. The
+conversation and the workers can run on different providers.
+
+**Fallbacks.** Like OpenBot, Minerva can use several subscriptions at once.
+Under each tab, **Fallbacks** is an ordered list of provider and model (one per provider). Minerva runs
+on the first one that can answer. When a provider reports a usage limit, rate limit or quota error, or
+a lost login, Minerva marks it out (until the reset time the CLI gives, or for a while when it gives
+none), says so, and resends the message to the next fallback; a worker hands its task over the same
+way. It goes back to your preferred choice once the limit is over. The **Providers** tab shows each
+provider's status (ready, not installed, limited until when) and what is running on it. Switching
+providers mid-conversation keeps Minerva's own history and memory, but the new agent starts a fresh
+context and reads back what it needs from the history.
 
 ## Build and run
 
@@ -146,8 +178,8 @@ cd relay && go test ./...
 ## Configuration
 
 Most settings are in the app: the status bar (and the phone's settings screen) has the conversation and
-worker models with effort and speed, the voice, the language, credentials and webhooks. Models are
-whatever your Claude Code (or Antigravity) offers. Telegram is set up by saving a vault credential
+worker providers and models with effort, speed and fallbacks, the voice, the language, credentials
+and webhooks. Models are whatever your installed agents offer. Telegram is set up by saving a vault credential
 named `telegram` with the bot's `token` and your Telegram user id as `chat_id` (messages from other
 chats are ignored).
 
@@ -172,7 +204,8 @@ Read this before you run it.
   actions only when the request is unmistakable, otherwise it asks first. Speech recognition can
   mishear. Run it only on a machine and accounts where you accept that.
 - **What leaves your Mac**: your transcribed words, tool results and screenshots go to the brain's
-  provider (Anthropic through Claude Code, or Google through Antigravity). Audio itself stays local.
+  provider (Anthropic through Claude Code, Google through Antigravity, or OpenAI through Codex), and
+  to the next one when a fallback takes over. Audio itself stays local.
 - **Local data**: conversation history, memories, skills, projects and the vault live in the data
   directory, protected by file permissions. The vault is encrypted with AES-256-GCM, but its key sits
   next to it; it keeps secrets out of prompts, history and logs, not away from someone with your
