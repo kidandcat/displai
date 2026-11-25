@@ -18,6 +18,7 @@ import '../display/display_runner.dart';
 import '../l10n/l10n.dart';
 import '../mcp/display_mcp_server.dart';
 import '../presence/presence.dart';
+import '../projects/projects.dart';
 import '../remote/phone_host.dart';
 import '../remote/phone_tools.dart';
 import '../remote/protocol.dart';
@@ -124,6 +125,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   late final Vault vault;
 
   String get _skillsDir => '${store.dir}/skills';
+
+  /// Folders the user works on with Minerva (see lib/projects/projects.dart).
+  late final Projects projects;
 
   /// Worker reports and routine prompts waiting for the brain to be free.
   final _notices = <String>[];
@@ -276,6 +280,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       voice = validVoice(int.tryParse(store.get('voice') ?? '')) ?? voice;
       vault = await Vault.open('${store.dir}/vault');
       vault.addListener(_pushSettings);
+      projects = Projects('${store.dir}/projects');
       workers = Workers(
         store: store,
         hostTools: [
@@ -436,6 +441,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         languagePromptSection(speechLanguage, strings),
         MemoryTools.promptSection(store),
         SkillTools.promptSection(_skillsDir),
+        projects.promptSection(),
         webhooks?.promptSection() ?? '',
       ]),
       mcpUrl: _mcp.url,
