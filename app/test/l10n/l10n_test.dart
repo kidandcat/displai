@@ -58,12 +58,12 @@ void main() {
     tester.platformDispatcher.localesTestValue = const [Locale('pt', 'BR')];
     addTearDown(tester.platformDispatcher.clearLocalesTestValue);
     await tester.pumpWidget(app());
-    expect(find.text('2 background jobs'), findsOneWidget);
+    expect(find.text('2 workers working'), findsOneWidget);
 
     tester.platformDispatcher.localesTestValue = const [Locale('es', 'ES')];
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
-    expect(find.text('2 trabajos en segundo plano'), findsOneWidget);
+    expect(find.text('2 workers trabajando'), findsOneWidget);
   });
 
   test('the language setting overrides the OS language, and null follows it again', () {

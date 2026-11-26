@@ -52,8 +52,8 @@ class AppLocalizationsEs extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count trabajos en segundo plano',
-      one: '1 trabajo en segundo plano',
+      other: '$count workers trabajando',
+      one: '1 worker trabajando',
     );
     return '$_temp0';
   }

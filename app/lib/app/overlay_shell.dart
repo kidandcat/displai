@@ -18,12 +18,13 @@ import 'main_view.dart';
 ///     bar and the Dock, as wide as the user left it; they can move it (by its top strip) and
 ///     resize it (by its corner), and it goes back to the left each time it comes back from the
 ///     orb or the window is opened again;
-///   - the orb in the top-right corner while the window is the overlay (tap: mute, or the full
-///     view back when the user only went to another app; drag: move; right click: Minerva's menu);
+///   - the orb on the right edge, centred vertically, while the window is the overlay (tap: mute,
+///     or the full view back when the user only went to another app; drag: move; right click:
+///     Minerva's menu);
 ///   - the widget Minerva pops over the other apps while it works in them: the view it showed
 ///     last, on its own dark panel.
-/// Going to the orb, the panel closes around its own orb and flies with it to the corner; coming
-/// back it does the reverse.
+/// Going to the orb, the panel closes around its own orb and flies with it to the orb's place;
+/// coming back it does the reverse.
 /// Only those take clicks: their rects go to the native side, which lets the rest through.
 class OverlayShell extends StatefulWidget {
   const OverlayShell({super.key, required this.window, required this.assistant, required this.child});
@@ -128,8 +129,9 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
     return _fit(Rect.fromLTWH(usable.left, usable.top, width, usable.height), usable);
   }
 
+  /// The orb: where the user dragged it, else on the right edge of [usable], centred vertically.
   Rect _orbRect(Rect usable, Rect screen) {
-    final p = _orb ?? _window.orb ?? Offset(usable.right - _margin - _orbSize, usable.top + _margin);
+    final p = _orb ?? _window.orb ?? Offset(usable.right - _margin - _orbSize, usable.center.dy - _orbSize / 2);
     return _fit(p & const Size.square(_orbSize), screen);
   }
 
@@ -143,8 +145,8 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
     return (c: Offset(area.right - 12 - size / 2, area.top + 12 + size / 2), r: 0.25 * size);
   }
 
-  /// Where the widget goes for the tools' `at`.
-  Rect _widgetRect(String at, Rect usable, Rect screen) {
+  /// Where the widget goes for the tools' `at`, clear of the [orb].
+  Rect _widgetRect(String at, Rect usable, Rect screen, Rect orb) {
     final center = at == 'center';
     final w = center
         ? math.min(usable.width * 0.6, 1100.0)
@@ -162,10 +164,18 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
       'left' => Offset(left, middle),
       'right' => Offset(right, middle),
       'center' => Offset(usable.center.dx - w / 2, middle),
-      // Under the orb.
-      _ => Offset(right, top + _orbSize + 12),
+      _ => Offset(right, top),
     };
-    return _fit((origin + _widgetShift) & Size(w, h), screen);
+    // Where it would cover the orb, it moves aside to the orb's free side: by default (the orb on
+    // the right edge, in the middle) the right-hand widgets end just left of it.
+    var rect = origin & Size(w, h);
+    final clear = orb.inflate(12);
+    if (rect.overlaps(clear)) {
+      rect = orb.center.dx >= rect.center.dx
+          ? rect.translate(clear.left - rect.right, 0)
+          : rect.translate(clear.right - rect.left, 0);
+    }
+    return _fit(rect.shift(_widgetShift), screen);
   }
 
   @override
@@ -190,7 +200,7 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
       _widgetSeq = view?.seq;
       _widgetShift = Offset.zero;
     }
-    final widgetRect = view == null ? null : _widgetRect(a!.widgetAt, usable, screen);
+    final widgetRect = view == null ? null : _widgetRect(a!.widgetAt, usable, screen, orb);
     // Nothing takes clicks halfway.
     _report([
       if (t == 0 && !orbMode && _window.open) panel,
@@ -198,7 +208,7 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
       ?widgetRect,
     ]);
     // The morph: the panel's clip closes from its rounded rect to a circle around its orb (shape),
-    // then the panel flies so that orb lands on the corner orb (flight), and fades into it.
+    // then the panel flies so that orb lands on the overlay's orb (flight), and fades into it.
     final shape = Curves.easeInOutCubic.transform(const Interval(0, 0.55).transform(t));
     final flight = Curves.easeInOutCubic.transform(const Interval(0.3, 1).transform(t));
     final from = _panelOrb(panel, a != null && !a.display.isEmpty);

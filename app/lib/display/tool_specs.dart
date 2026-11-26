@@ -106,7 +106,8 @@ const Map<String, dynamic> _atSchema = {
   ],
   'description':
       'Where the widget goes while you work in other apps; default '
-      'top-right, under the orb. Keep clear of what you act on.',
+      'top-right. It keeps clear of the orb, on the right edge. Keep clear '
+      'of what you act on.',
 };
 
 final List<DisplayToolSpec> displayToolSpecs = [

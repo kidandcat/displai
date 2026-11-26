@@ -161,7 +161,7 @@ abstract class AppLocalizations {
   /// Status bar: workers running in the background.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 background job} other{{count} background jobs}}'**
+  /// **'{count, plural, =1{1 worker working} other{{count} workers working}}'**
   String backgroundJobs(int count);
 
   /// Status bar while the mic is muted.

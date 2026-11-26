@@ -14,7 +14,7 @@ import '../l10n/l10n.dart';
 /// screen, transparent and click-through: the full view is a [panel] on it (see OverlayShell).
 /// While a phone is connected, while Minerva works in other apps of the Mac, or while the user is
 /// in another app (the native side turns the full view into the orb when they go to one), it is
-/// the [overlay]: just the orb in the top-right corner, and the widgets Minerva pops.
+/// the [overlay]: just the orb on the right edge of the screen, and the widgets Minerva pops.
 class DesktopWindow extends ChangeNotifier {
   static const _channel = MethodChannel('minerva/window');
 
@@ -28,7 +28,7 @@ class DesktopWindow extends ChangeNotifier {
   /// The user has the window open (not closed).
   bool get open => _open;
 
-  /// The window is the corner orb shown while a phone is connected, Minerva uses the Mac or the
+  /// The window is the orb shown while a phone is connected, Minerva uses the Mac or the
   /// user is in another app.
   bool get overlay => _overlay;
 
@@ -42,7 +42,7 @@ class DesktopWindow extends ChangeNotifier {
   /// panel goes back to the left edge of the screen.
   Rect? get panel => _panel;
 
-  /// Where the user dragged the orb (null: the top-right corner).
+  /// Where the user dragged the orb (null: the right edge, centred vertically).
   Offset? get orb => _orb;
 
   /// The full view's panel is on screen (false once it has become the orb), set by the shell.
@@ -110,7 +110,7 @@ class DesktopWindow extends ChangeNotifier {
   static List<double> _numbers(Object? v) =>
       v is List ? [for (final n in v) if (n is num) n.toDouble()] : const [];
 
-  /// Turns the window into the corner orb, or back. [reason] is 'phone' or 'computer'.
+  /// Turns the window into the orb, or back. [reason] is 'phone' or 'computer'.
   Future<void> setOverlay(bool on, {String reason = 'phone'}) async {
     if (on != _overlay || (on && reason != _reason)) {
       _overlay = on;

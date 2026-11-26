@@ -14,7 +14,7 @@ import webview_flutter_wkwebview
 ///            ordinary window: the other apps come in front of it, and when the user goes to one
 ///            it becomes the orb (reason "away") until they come back to Minerva
 ///   hidden   ordered out; the app keeps running in the background without the Mac's mic
-///   overlay  just the orb in the top-right corner (and Minerva's widgets), over every app and on
+///   overlay  just the orb on the right edge of the screen (and Minerva's widgets), over every app and on
 ///            every Space, while a phone is connected (reason "phone"), while Minerva works in
 ///            other apps of the Mac (reason "computer") or while the user is in another app (reason
 ///            "away"). It never keeps the keyboard: the app the user (or Minerva) works in stays

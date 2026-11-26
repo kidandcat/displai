@@ -26,7 +26,7 @@ class ComputerTools extends ToolProvider {
   final Duration settle;
 
   /// Tools that act on (or look at) the whole screen of the Mac: Minerva's window gets out of
-  /// the way first (it shrinks to the corner orb), so it neither covers the apps nor takes their
+  /// the way first (it shrinks to the orb), so it neither covers the apps nor takes their
   /// keyboard. `screen` of one window does not need it.
   static bool needsScreen(String name, Map<String, dynamic> args) => switch (name) {
         'click' || 'type_text' || 'press_key' || 'scroll' || 'open' || 'activate' => true,

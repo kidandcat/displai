@@ -229,7 +229,7 @@ final class ComputerControl: NSObject {
       guard let display = content.displays.first(where: { $0.displayID == mainId }) ?? content.displays.first else {
         throw ComputerError(code: "not_found", message: "No display to capture")
       }
-      // Without Minerva's own windows (the corner orb), so the model sees only the Mac.
+      // Without Minerva's own windows (the orb), so the model sees only the Mac.
       let own = content.windows.filter { $0.owningApplication?.processID == ownPid }
       filter = SCContentFilter(display: display, excludingWindows: own)
       frame = CGDisplayBounds(display.displayID)
@@ -450,6 +450,13 @@ final class ComputerControl: NSObject {
 
   func elementAt(_ p: CGPoint) throws -> [String: Any]? {
     try requireAccessibility()
+    guard let found = element(at: p) else { return nil }
+    let (hit, pid) = found
+    return ["line": Self.describe(read(hit, children: false)), "app": appName(pid), "pid": Int(pid)]
+  }
+
+  /// The element of another app at [p], and its app.
+  private func element(at p: CGPoint) -> (AXUIElement, pid_t)? {
     var el: AXUIElement?
     guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(p.x), Float(p.y), &el) == .success,
       var hit = el
@@ -467,7 +474,7 @@ final class ComputerControl: NSObject {
       AXUIElementGetPid(hit, &pid)
       if pid == Self.ownPid { return nil }
     }
-    return ["line": Self.describe(read(hit, children: false)), "app": appName(pid), "pid": Int(pid)]
+    return (hit, pid)
   }
 
   /// The owner of the topmost on-screen window at [p] that is not Minerva's.
@@ -493,13 +500,16 @@ final class ComputerControl: NSObject {
     return el
   }
 
-  private func center(_ el: AXUIElement) throws -> CGPoint {
-    let n = read(el, children: false)
-    guard !n.frame.isNull, n.frame.width > 0, n.frame.height > 0 else {
+  /// Where a click on [el] lands: near its center, inside its frame.
+  private func target(_ el: AXUIElement) throws -> CGPoint {
+    let f = read(el, children: false).frame
+    guard Self.hasArea(f) else {
       throw ComputerError(code: "gone", message: "The element is no longer on screen: call ui_tree again")
     }
-    return CGPoint(x: n.frame.midX, y: n.frame.midY)
+    return Self.landing(near: CGPoint(x: f.midX, y: f.midY), in: f)
   }
+
+  private static func hasArea(_ r: CGRect) -> Bool { !r.isNull && r.width > 0 && r.height > 0 }
 
   // MARK: - Mouse
 
@@ -507,15 +517,20 @@ final class ComputerControl: NSObject {
     try requireAccessibility()
     let el = try cached(index)
     let n = read(el, children: false)
-    if button == .left, count == 1, Self.pressableRoles.contains(n.role),
-      AXUIElementPerformAction(el, kAXPressAction as CFString) == .success
-    {
-      return "pressed [\(index)] \(Self.describe(n))"
+    if button == .left, count == 1, Self.pressableRoles.contains(n.role) {
+      // Pressed directly, but the pointer still goes there first, as a hand would.
+      if Self.hasArea(n.frame) {
+        let near = Self.landing(near: CGPoint(x: n.frame.midX, y: n.frame.midY), in: n.frame)
+        try passingThroughOwnWindows { glide(to: near) }
+      }
+      if AXUIElementPerformAction(el, kAXPressAction as CFString) == .success {
+        return "pressed [\(index)] \(Self.describe(n))"
+      }
     }
     var pid: pid_t = 0
     AXUIElementGetPid(el, &pid)
     bringToFront(pid)
-    let p = try center(el)
+    let p = try target(el)
     try postClick(at: p, button: button, count: count)
     return "clicked [\(index)] at (\(Int(p.x)),\(Int(p.y)))"
   }
@@ -523,8 +538,11 @@ final class ComputerControl: NSObject {
   func click(at p: CGPoint, button: CGMouseButton, count: Int) throws -> String {
     try requireAccessibility()
     // A click on a background window often only activates it; bring its app to front first.
-    if let hit = try? elementAt(p), let pid = (hit["pid"] as? Int).map({ pid_t($0) }) { bringToFront(pid) }
-    try postClick(at: p, button: button, count: count)
+    let hit = element(at: p)
+    if let pid = hit?.1 { bringToFront(pid) }
+    // A few points off, as a hand lands, but never off the element there.
+    let frame = hit.map { read($0.0, children: false).frame }
+    try postClick(at: Self.landing(near: p, in: frame), button: button, count: count)
     return "clicked at (\(Int(p.x)),\(Int(p.y)))"
   }
 
@@ -533,27 +551,90 @@ final class ComputerControl: NSObject {
     let (down, up): (CGEventType, CGEventType) =
       button == .right ? (.rightMouseDown, .rightMouseUp) : (.leftMouseDown, .leftMouseUp)
     try passingThroughOwnWindows {
-      Self.post(CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: button))
-      usleep(30_000)
+      glide(to: p)
+      usleep(UInt32.random(in: 30_000...70_000))
       for i in 1...count {
         for type in [down, up] {
           guard let e = CGEvent(mouseEventSource: src, mouseType: type, mouseCursorPosition: p, mouseButton: button)
           else { throw ComputerError(code: "event", message: "Could not create a mouse event") }
           e.setIntegerValueField(.mouseEventClickState, value: Int64(i))
           Self.post(e)
-          usleep(15_000)
+          // Held a moment, as a finger does; short enough for a double click.
+          usleep(UInt32.random(in: type == down ? 25_000...60_000 : 20_000...45_000))
         }
       }
     }
   }
 
+  /// Moves the pointer to [end] as a hand would instead of jumping there: along a slightly curved
+  /// path (a quadratic Bézier with its control point off to a random side), speeding up and then
+  /// slowing down, with a small wobble and uneven steps, in 150–400 ms depending on the distance.
+  /// Runs inside [passingThroughOwnWindows], so the moves never reach Minerva's own windows.
+  private func glide(to end: CGPoint) {
+    let src = CGEventSource(stateID: .combinedSessionState)
+    var last = CGEvent(source: nil)?.location ?? end
+    func move(to p: CGPoint) {
+      let e = CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)
+      e?.setIntegerValueField(.mouseEventDeltaX, value: Int64((p.x - last.x).rounded()))
+      e?.setIntegerValueField(.mouseEventDeltaY, value: Int64((p.y - last.y).rounded()))
+      Self.post(e)
+      last = p
+    }
+    let start = last
+    let dx = end.x - start.x, dy = end.y - start.y
+    let distance = hypot(dx, dy)
+    guard distance >= 3 else { return move(to: end) }
+    let duration = min(0.4, max(0.15, (0.15 + distance / 6000) * Double.random(in: 0.9...1.1)))
+    // The unit normal of the straight line: the side the path bends and wobbles to.
+    let nx = -dy / distance, ny = dx / distance
+    let bend = min(distance * Double.random(in: 0.05...0.18), 120) * (Bool.random() ? 1 : -1)
+    let control = CGPoint(x: (start.x + end.x) / 2 + nx * bend, y: (start.y + end.y) / 2 + ny * bend)
+    let wobble = min(1.5, distance / 150) * Double.random(in: 0.5...1)
+    let frequency = Double.random(in: 1.5...3), phase = Double.random(in: 0..<(2 * .pi))
+    var elapsed = 0.0
+    while elapsed < duration {
+      let step = min(Double.random(in: 0.006...0.016), duration - elapsed)
+      usleep(UInt32(step * 1_000_000))
+      elapsed += step
+      let t = elapsed / duration
+      guard t < 1 else { break }
+      // Ease in and out (cubic), then the point on the curve at that progress.
+      let s = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+      let a = (1 - s) * (1 - s), b = 2 * (1 - s) * s, c = s * s
+      // The wobble fades out at both ends, so the path still starts and ends where it should.
+      let w = sin(.pi * t) * (wobble * sin(2 * .pi * frequency * t + phase) + Double.random(in: -0.3...0.3))
+      move(to: CGPoint(
+        x: a * start.x + b * control.x + c * end.x + nx * w,
+        y: a * start.y + b * control.y + c * end.y + ny * w))
+    }
+    move(to: end)
+  }
+
+  /// Where a hand lands aiming at [p]: a few points off it, at random, but inside [frame] (the
+  /// target element's, when known) so the click still hits it.
+  private static func landing(near p: CGPoint, in frame: CGRect?) -> CGPoint {
+    func off() -> CGPoint {
+      let angle = Double.random(in: 0..<(2 * .pi)), r = Double.random(in: 1.5...4)
+      return CGPoint(x: p.x + r * cos(angle), y: p.y + r * sin(angle))
+    }
+    guard let f = frame, hasArea(f) else { return off() }
+    let inside = f.insetBy(dx: 1, dy: 1)
+    guard inside.contains(p) else { return p }
+    for _ in 0..<8 {
+      let q = off()
+      if inside.contains(q) { return q }
+    }
+    return p
+  }
+
   func scroll(dx: Int, dy: Int, at p: CGPoint?) throws -> String {
     try requireAccessibility()
     let src = CGEventSource(stateID: .combinedSessionState)
+    let over = p.map { p in Self.landing(near: p, in: element(at: p).map { read($0.0, children: false).frame }) }
     try passingThroughOwnWindows {
-      if let p = p {
-        Self.post(CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left))
-        usleep(30_000)
+      if let over = over {
+        glide(to: over)
+        usleep(UInt32.random(in: 30_000...60_000))
       }
       // dy > 0 scrolls down (content moves up), dx > 0 scrolls right. Send it in small steps so apps
       // that ignore large deltas still move.
@@ -630,7 +711,7 @@ final class ComputerControl: NSObject {
       var focused: CFTypeRef?
       let isFocused = AXUIElementCopyAttributeValue(el, kAXFocusedAttribute as CFString, &focused) == .success
         && (focused as? Bool ?? false)
-      if !ok || !isFocused { try postClick(at: try center(el), button: .left, count: 1) }
+      if !ok || !isFocused { try postClick(at: try target(el), button: .left, count: 1) }
       usleep(100_000)
       prefix = "focused [\(index)], "
     }

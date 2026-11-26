@@ -87,7 +87,7 @@ class Telegram extends ChangeNotifier {
   /// A worker report, routine, webhook or other notice (not something the user did) is answered
   /// on Telegram, not spoken, when the chat is [reachable] and the user is not at the Mac: they
   /// last wrote on Telegram, or nobody hears the Mac, because Minerva's window is closed (the app
-  /// runs in the background without its mic and voice) and no phone is connected. The corner orb
+  /// runs in the background without its mic and voice) and no phone is connected. The orb
   /// counts as open: the user is at the Mac working in other apps.
   static bool answersNotice({
     required bool reachable,

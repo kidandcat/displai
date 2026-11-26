@@ -118,7 +118,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   final audio = NativeAudio();
 
-  /// The desktop window: the Mac listens only while it is open, and it becomes a corner orb
+  /// The desktop window: the Mac listens only while it is open, and it becomes the orb
   /// while a phone is connected or Minerva works in other apps.
   final DesktopWindow window;
   @override
@@ -208,7 +208,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   static const _windowTool = McpTool(
     'minerva_window',
-    'Minerva\'s own window on the Mac. It shrinks to the corner orb on its own when you act on '
+    'Minerva\'s own window on the Mac. It shrinks to the orb on its own when you act on '
         'other apps; meanwhile show and html pop up as a widget over them (at: where) and the '
         'window stays the orb, while form and video bring it back. orb: shrink it now; '
         'full: bring it back without showing anything.',
@@ -247,10 +247,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// Views that pop up as a widget over the other apps while the window is the orb.
   static const _widgetTools = {'show', 'html'};
 
-  /// The window is the corner orb because Minerva works in other apps of the Mac (or the user does).
+  /// The window is the orb because Minerva works in other apps of the Mac (or the user does).
   bool _usingMac = false;
 
-  /// The window is the corner orb because the user went to another app.
+  /// The window is the orb because the user went to another app.
   bool _away = false;
 
   /// Views from this one on (by [DisplayViewEntry.seq]) pop up as a widget: the ones shown
@@ -666,7 +666,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   void _phoneJoined() {
     // The Mac goes quiet: its voice stops, its mic is released, the phone takes over, and the
-    // window shrinks to the corner orb.
+    // window shrinks to the orb.
     unawaited(audio.stop());
     _usingMac = false;
     unawaited(window.setOverlay(true));
@@ -1215,6 +1215,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       if (p.handles(name)) {
         _setActivity(_activityFor(name, strings));
         if (ComputerTools.needsScreen(name, args)) await _useMac(true);
+        // The work goes to a worker: the full view comes back, as with minerva_window full.
+        if (name == 'start_worker' && !onPhone && window.open) await _useMac(false);
         return p.call(name, args);
       }
     }
@@ -1231,7 +1233,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       if (onPhone) return const ToolResult('ok: the phone is connected, the Mac window stays the orb.');
       if (!window.open) return const ToolResult('ok: the window is closed (the user is not at the Mac).');
       await _useMac(orb);
-      return ToolResult(orb ? 'ok: the window is the corner orb.' : 'ok: the window is back.');
+      return ToolResult(orb ? 'ok: the window is the orb.' : 'ok: the window is back.');
     }
     if (_showingTools.contains(name) && !(_usingMac && _widgetTools.contains(name))) await _useMac(false);
     if (_usingMac && _widgetTools.contains(name)) {
@@ -1264,7 +1266,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         'never see the values. Use {{vault:$name.<field>}} once it is saved.');
   }
 
-  /// Shrinks the window to the corner orb while Minerva works in other apps of the Mac (the
+  /// Shrinks the window to the orb while Minerva works in other apps of the Mac (the
   /// Mac keeps listening and speaking), or brings it back. Nothing changes while a phone is
   /// connected (the window is already the orb) or while the window is closed.
   Future<void> _useMac(bool on) async {

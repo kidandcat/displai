@@ -10,7 +10,7 @@
   "modelVoice": "Voz (Supertonic 3)",
   "startFailed": "No se pudo arrancar: {error}",
   "loadingVoice": "Cargando la voz…",
-  "backgroundJobs": "{count, plural, =1{1 trabajo en segundo plano} other{{count} trabajos en segundo plano}}",
+  "backgroundJobs": "{count, plural, =1{1 worker trabajando} other{{count} workers trabajando}}",
   "micMuted": "Micrófono silenciado · espacio para activar",
   "linkNoteOnPhone": "Móvil conectado · el Mac está en silencio",
   "phoneConnected": "Móvil conectado",

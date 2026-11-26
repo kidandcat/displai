@@ -55,7 +55,7 @@
   "@loadingVoice": {
     "description": "Status bar while the assistant starts."
   },
-  "backgroundJobs": "{count, plural, =1{1 background job} other{{count} background jobs}}",
+  "backgroundJobs": "{count, plural, =1{1 worker working} other{{count} workers working}}",
   "@backgroundJobs": {
     "description": "Status bar: workers running in the background.",
     "placeholders": {
