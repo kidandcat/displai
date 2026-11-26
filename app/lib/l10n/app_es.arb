@@ -152,12 +152,16 @@
   "usageRunsOutAt": "se agota hacia las {time}",
   "usageRunsOutOn": "se agota hacia el {when}",
   "usageSpent": "límite alcanzado",
-  "workersTitle": "Trabajos en segundo plano",
   "workerRunning": "Trabajando",
   "workerDone": "Terminado",
   "workerFailed": "Falló",
   "workerStopped": "Detenido",
   "workerInterrupted": "Interrumpido",
   "workerStarting": "Empezando…",
-  "workersMore": "+{count} más"
+  "workersMore": "+{count} más",
+  "projectEdited": "Modificado {when}",
+  "timeJustNow": "ahora mismo",
+  "timeMinutesAgo": "hace {count} min",
+  "timeHoursAgo": "hace {count} h",
+  "timeDaysAgo": "{count, plural, =1{ayer} other{hace {count} días}}"
 }

@@ -556,9 +556,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get usageSpent => 'limit reached';
 
   @override
-  String get workersTitle => 'Background jobs';
-
-  @override
   String get workerRunning => 'Working';
 
   @override
@@ -579,5 +576,34 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String workersMore(int count) {
     return '+$count more';
+  }
+
+  @override
+  String projectEdited(String when) {
+    return 'Edited $when';
+  }
+
+  @override
+  String get timeJustNow => 'just now';
+
+  @override
+  String timeMinutesAgo(int count) {
+    return '$count min ago';
+  }
+
+  @override
+  String timeHoursAgo(int count) {
+    return '$count h ago';
+  }
+
+  @override
+  String timeDaysAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days ago',
+      one: 'yesterday',
+    );
+    return '$_temp0';
   }
 }

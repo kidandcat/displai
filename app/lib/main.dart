@@ -12,6 +12,7 @@ import 'app/desktop_window.dart';
 import 'app/main_view.dart';
 import 'app/model_picker.dart';
 import 'app/overlay_shell.dart';
+import 'app/projects_panel.dart';
 import 'app/settings.dart';
 import 'app/workers_panel.dart';
 import 'l10n/l10n.dart';
@@ -142,7 +143,8 @@ class HomePage extends StatelessWidget {
                 showDisplay: a.window.panelShown.value,
                 // Not in a narrow window, where the bar is full of buttons.
                 leading: a.ready && MediaQuery.sizeOf(context).width >= 600 ? UsageRings(monitor: a.usage) : null,
-                side: a.ready ? WorkersPanel(workers: a.workers) : null,
+                left: a.ready ? ProjectsPanel(workers: a.workers) : null,
+                right: a.ready ? WorkersPanel(workers: a.workers) : null,
                 actions: [
                   if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),
                   if (a.ready) _VaultButton(vault: a.vault),

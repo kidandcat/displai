@@ -1010,12 +1010,6 @@ abstract class AppLocalizations {
   /// **'limit reached'**
   String get usageSpent;
 
-  /// Workers panel (next to the orb): its heading.
-  ///
-  /// In en, this message translates to:
-  /// **'Background jobs'**
-  String get workersTitle;
-
   /// Workers panel: a worker's status while it runs.
   ///
   /// In en, this message translates to:
@@ -1057,6 +1051,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+{count} more'**
   String workersMore(int count);
+
+  /// Projects panel (left of the orb): when a project's folder last changed, for a project no worker ran in.
+  ///
+  /// In en, this message translates to:
+  /// **'Edited {when}'**
+  String projectEdited(String when);
+
+  /// Projects panel: something that happened less than a minute ago.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get timeJustNow;
+
+  /// Projects panel: something that happened minutes ago.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min ago'**
+  String timeMinutesAgo(int count);
+
+  /// Projects panel: something that happened hours ago.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} h ago'**
+  String timeHoursAgo(int count);
+
+  /// Projects panel: something that happened days ago.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{yesterday} other{{count} days ago}}'**
+  String timeDaysAgo(int count);
 }
 
 class _AppLocalizationsDelegate

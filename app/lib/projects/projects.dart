@@ -70,6 +70,22 @@ class Projects {
     return null;
   }
 
+  /// When the folder at [path] last changed: itself or the latest of the files and folders
+  /// right in it (not deeper, to stay cheap).
+  static DateTime modified(String path) {
+    final d = Directory(path);
+    var latest = d.statSync().modified;
+    try {
+      for (final e in d.listSync(followLinks: false)) {
+        final m = e.statSync().modified;
+        if (m.isAfter(latest)) latest = m;
+      }
+    } on FileSystemException {
+      // Unreadable: the folder's own time.
+    }
+    return latest;
+  }
+
   /// The projects index as a system-prompt section.
   String promptSection() {
     final projects = list();

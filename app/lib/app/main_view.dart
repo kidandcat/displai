@@ -15,16 +15,18 @@ ThemeData minervaTheme() => ThemeData(
       scaffoldBackgroundColor: kBackground,
     );
 
-/// The main screen, the same on the desktop and on the phone: the presence orb, the display
-/// on top of it, and a slim bar of status notes and actions (the transcript and the activity
-/// are spoken, not shown; the orb turns red when the mic is muted).
+/// The main screen, the same on the desktop and on the phone: the presence orb, always in the
+/// middle, the display on top of it, columns of cards floating at the orb's sides, and a slim bar
+/// of status notes and actions (the transcript and the activity are spoken, not shown; the orb
+/// turns red when the mic is muted).
 class MainView extends StatelessWidget {
   const MainView({
     super.key,
     required this.assistant,
     this.actions = const [],
     this.leading,
-    this.side,
+    this.left,
+    this.right,
     this.compactOrb = 180,
     this.showDisplay = true,
   });
@@ -37,9 +39,16 @@ class MainView extends StatelessWidget {
   /// What the status bar shows at its start (the providers' usage).
   final Widget? leading;
 
-  /// What goes at the right of the orb and the display, above the status bar (the background
-  /// workers on the desktop).
-  final Widget? side;
+  /// What floats at the left of the orb (the projects on the desktop). Not in a narrow window,
+  /// nor while the display shows something.
+  final Widget? left;
+
+  /// What floats at the right of the orb (the background workers on the desktop), and goes at the
+  /// right of the display while it shows something. Not in a narrow window.
+  final Widget? right;
+
+  /// How narrow the room at a side of the orb may be for a column of cards there.
+  static const _minSide = 200.0;
 
   /// Size of the corner orb while something is on screen.
   final double compactOrb;
@@ -66,73 +75,96 @@ class MainView extends StatelessWidget {
       );
     }
     final showing = showDisplay && !a.display.isEmpty;
-    return Column(
-      children: [
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                // The display is transparent while empty, so the presence animation shows through.
-                child: RepaintBoundary(
-                  key: showDisplay ? a.screenKey : null,
-                  child: ColoredBox(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        AnimatedOpacity(
-                          opacity: showing ? 0 : 1,
-                          duration: const Duration(milliseconds: 350),
-                          child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence),
-                        ),
-                        // The header of each view leaves room for the corner orb.
-                        if (showDisplay)
-                          DisplayView(controller: a.display, cornerReserve: Size.square(12 + compactOrb)),
-                        // The full orb: the sphere and its inner rings, ~0.3 of the short side around the center.
-                        // Tapping it (or the corner orb) mutes or unmutes the mic.
-                        if (!showing)
-                          LayoutBuilder(
-                            builder: (context, box) => Center(
-                              child: ClipOval(
-                                child: _OrbTap(
-                                  onTap: _tapOrb,
-                                  child: SizedBox.square(dimension: 0.6 * box.biggest.shortestSide),
-                                ),
+    final wide = MediaQuery.sizeOf(context).width >= 600;
+    return LayoutBuilder(builder: (context, box) {
+      // The room the full orb (0.6 of the short side, see below) leaves at each side of it.
+      final screen = Size(box.maxWidth, box.maxHeight - StatusBar.height);
+      final room = (screen.width - 0.6 * screen.shortestSide) / 2 - 8;
+      final sides = wide && (showing || room >= _minSide);
+      Widget aside(Widget panel) => ConstrainedBox(constraints: BoxConstraints(maxWidth: room), child: panel);
+      return Column(
+        children: [
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      // The display is transparent while empty, so the presence animation shows through.
+                      child: RepaintBoundary(
+                        key: showDisplay ? a.screenKey : null,
+                        child: ColoredBox(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              AnimatedOpacity(
+                                opacity: showing ? 0 : 1,
+                                duration: const Duration(milliseconds: 350),
+                                child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence),
                               ),
-                            ),
+                              // The header of each view leaves room for the corner orb.
+                              if (showDisplay)
+                                DisplayView(controller: a.display, cornerReserve: Size.square(12 + compactOrb)),
+                              // The full orb: the sphere and its inner rings, ~0.3 of the short side around the center.
+                              // Tapping it (or the corner orb) mutes or unmutes the mic.
+                              if (!showing)
+                                LayoutBuilder(
+                                  builder: (context, box) => Center(
+                                    child: ClipOval(
+                                      child: _OrbTap(
+                                        onTap: _tapOrb,
+                                        child: SizedBox.square(dimension: 0.6 * box.biggest.shortestSide),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              // While something is on screen the presence shrinks to a large orb in the corner.
+                              if (showing)
+                                Positioned(
+                                  top: 12,
+                                  right: 12,
+                                  child: _OrbTap(
+                                    onTap: _tapOrb,
+                                    child: PresenceView(signal: a.presence, compact: true, compactSize: compactOrb),
+                                  ),
+                                ),
+                            ],
                           ),
-                        // While something is on screen the presence shrinks to a large orb in the corner.
-                        if (showing)
-                          Positioned(
-                            top: 12,
-                            right: 12,
-                            child: _OrbTap(
-                              onTap: _tapOrb,
-                              child: PresenceView(signal: a.presence, compact: true, compactSize: compactOrb),
-                            ),
-                          ),
-                      ],
+                        ),
+                      ),
                     ),
-                  ),
+                    // Next to the display while it shows something.
+                    if (sides && showing) ?right,
+                  ],
                 ),
-              ),
-              ?side,
-            ],
+                // Floating at the orb's sides, over the presence, which stays in the middle.
+                if (sides && !showing && left != null) Positioned(left: 0, top: 0, bottom: 0, child: aside(left!)),
+                if (sides && !showing && right != null) Positioned(right: 0, top: 0, bottom: 0, child: aside(right!)),
+              ],
+            ),
           ),
-        ),
-        StatusBar(assistant: a, actions: actions, leading: leading),
-      ],
-    );
+          // The workers' count only when their cards are not on screen.
+          StatusBar(assistant: a, actions: actions, leading: leading, jobs: right == null || !sides),
+        ],
+      );
+    });
   }
 }
 
 class StatusBar extends StatelessWidget {
-  const StatusBar({super.key, required this.assistant, this.actions = const [], this.leading});
+  const StatusBar({super.key, required this.assistant, this.actions = const [], this.leading, this.jobs = true});
+
+  static const height = 52.0;
 
   final AssistantUi assistant;
   final List<Widget> actions;
   final Widget? leading;
+
+  /// Shows how many background jobs run.
+  final bool jobs;
 
   @override
   Widget build(BuildContext context) {
@@ -141,7 +173,7 @@ class StatusBar extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final narrow = MediaQuery.sizeOf(context).width < 600;
     return Container(
-      height: 52,
+      height: height,
       padding: EdgeInsets.symmetric(horizontal: narrow ? 4 : 16),
       child: Row(
         children: [
@@ -152,7 +184,7 @@ class StatusBar extends StatelessWidget {
                 style: t.bodySmall?.copyWith(color: kAccent, fontStyle: FontStyle.italic)),
             const SizedBox(width: 16),
           ],
-          if (a.ready && a.backgroundJobs > 0) ...[
+          if (jobs && a.ready && a.backgroundJobs > 0) ...[
             const SizedBox(
               width: 14,
               height: 14,

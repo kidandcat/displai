@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:minerva/app/projects_panel.dart';
 import 'package:minerva/app/workers_panel.dart';
 import 'package:minerva/l10n/l10n.dart';
 import 'package:minerva/projects/projects.dart';
@@ -78,16 +79,78 @@ void main() {
           home: Scaffold(body: Row(children: [const Expanded(child: SizedBox()), WorkersPanel(workers: workers)])),
         );
     await tester.pumpWidget(app());
-    expect(find.text('TRABAJOS EN SEGUNDO PLANO'), findsNothing);
+    expect(find.byType(Container), findsNothing);
 
     add('Investigar vuelos', 'running',
         ago: const Duration(minutes: 1, seconds: 5), model: 'Codex · gpt-6', progress: 'Comparando precios.');
     await tester.pumpWidget(app(), duration: const Duration(seconds: 1));
-    expect(find.text('TRABAJOS EN SEGUNDO PLANO'), findsOneWidget);
     expect(find.text('Investigar vuelos'), findsOneWidget);
     expect(find.textContaining('Trabajando · 1 min'), findsOneWidget);
     expect(find.text('Comparando precios.'), findsOneWidget);
     expect(find.text('Codex · gpt-6'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  void write(String path, String text) => File(path)
+    ..createSync(recursive: true)
+    ..writeAsStringSync(text);
+
+  /// Sets when [path] last changed (a folder's time can't be set from dart:io).
+  void touch(String path, DateTime at) {
+    final f = at.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    Process.runSync('touch', ['-t', '${f.year}${two(f.month)}${two(f.day)}${two(f.hour)}${two(f.minute)}', path]);
+  }
+
+  test('the projects board has the most recently active first, each with its latest worker', () {
+    final dir = '${tmp.path}/projects';
+    write('$dir/Casa/README.md', '# Casa\n\nObra del baño.\n');
+    write('$dir/blog/README.md', 'Mi blog.\n');
+    write('$dir/viaje/README.md', 'Viaje a Japón.\n');
+    Directory('$dir/vacio').createSync();
+    for (final p in ['Casa', 'blog', 'viaje']) {
+      touch('$dir/$p/README.md', DateTime.now().subtract(const Duration(days: 3)));
+      touch('$dir/$p', DateTime.now().subtract(const Duration(days: 3)));
+    }
+    touch('$dir/blog/README.md', DateTime.now().subtract(const Duration(days: 1)));
+    add('presupuesto viejo', 'done',
+        ago: const Duration(hours: 5), finishedAgo: const Duration(hours: 4), cwd: '$dir/Casa');
+    add('comparar presupuestos', 'running',
+        ago: const Duration(minutes: 4), cwd: '$dir/Casa', progress: 'Leyendo los planos.');
+    add('fuera', 'done',
+        ago: const Duration(minutes: 2), finishedAgo: const Duration(minutes: 1), cwd: '${tmp.path}/code');
+
+    final board = workers.projectsBoard();
+    expect(board.map((p) => p.name), ['Casa', 'blog', 'viaje']);
+    expect(board.first.worker?.title, 'comparar presupuestos');
+    expect(board.first.worker?.latest, 'Leyendo los planos.');
+    expect(board[1].worker, isNull);
+    expect(board[1].summary, 'Mi blog.');
+    expect(workers.projectsBoard(limit: 2), hasLength(2));
+  });
+
+  testWidgets('the projects panel shows each project and how it is going', (tester) async {
+    final dir = '${tmp.path}/projects';
+    write('$dir/Casa/README.md', 'Obra del baño.\n');
+    write('$dir/blog/README.md', 'Mi blog.\n');
+    add('Revisar facturas', 'done',
+        ago: const Duration(minutes: 30),
+        finishedAgo: const Duration(minutes: 5),
+        cwd: '$dir/Casa',
+        result: 'Hecho: dos facturas pendientes.');
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('es'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: Row(children: [ProjectsPanel(workers: workers), const Expanded(child: SizedBox())])),
+    ));
+    expect(find.text('Casa'), findsOneWidget);
+    expect(find.text('Terminado · hace 5 min'), findsOneWidget);
+    expect(find.text('Revisar facturas'), findsOneWidget);
+    expect(find.text('Hecho: dos facturas pendientes.'), findsOneWidget);
+    expect(find.text('blog'), findsOneWidget);
+    expect(find.text('Mi blog.'), findsOneWidget);
+    expect(find.text('Modificado ahora mismo'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

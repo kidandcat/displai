@@ -407,6 +407,40 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     ];
   }
 
+  /// The projects the projects panel shows, the most recently active first (its latest worker's
+  /// start or end, else when its folder last changed), at most [limit], each with that worker.
+  List<ProjectInfo> projectsBoard({int limit = 6}) {
+    final last = <String, WorkerInfo>{};
+    final rows = store.db.select(
+      'SELECT id, title, status, started, finished, model, cwd, progress, result FROM workers '
+      'WHERE id IN (SELECT MAX(id) FROM workers WHERE cwd LIKE ? GROUP BY cwd)',
+      ['${projects.dir}/%'],
+    );
+    for (final r in rows) {
+      last[r['cwd'] as String] = WorkerInfo(
+        id: r['id'] as int,
+        title: r['title'] as String,
+        status: r['status'] as String,
+        started: DateTime.fromMillisecondsSinceEpoch(r['started'] as int),
+        finished: r['finished'] == null ? null : DateTime.fromMillisecondsSinceEpoch(r['finished'] as int),
+        model: r['model'] as String?,
+        project: projects.label(r['cwd'] as String),
+        progress: r['progress'] as String?,
+        result: r['result'] as String?,
+      );
+    }
+    final out = [
+      for (final p in projects.list())
+        ProjectInfo(
+          name: p.name,
+          summary: p.summary,
+          modified: Projects.modified('${projects.dir}/${p.name}'),
+          worker: last['${projects.dir}/${p.name}'],
+        ),
+    ]..sort((a, b) => b.active.compareTo(a.active));
+    return out.take(limit).toList();
+  }
+
   String _list() {
     final rows = store.db.select(
       "SELECT id, title, status, progress, cwd FROM workers WHERE status = 'running' "
@@ -490,6 +524,31 @@ class WorkerInfo {
     }
     final p = progress?.trim();
     return p == null || p.isEmpty ? null : p;
+  }
+}
+
+/// A project as the projects panel shows it.
+class ProjectInfo {
+  const ProjectInfo({required this.name, required this.summary, required this.modified, this.worker});
+
+  final String name;
+
+  /// The first line of its README.md.
+  final String summary;
+
+  /// When its folder last changed.
+  final DateTime modified;
+
+  /// Its latest worker (null: none ever ran in it).
+  final WorkerInfo? worker;
+
+  /// When it last saw activity: its worker running now, else the latest of the worker's end and
+  /// the folder's change.
+  DateTime get active {
+    final w = worker;
+    if (w == null) return modified;
+    final at = w.running ? DateTime.now() : w.finished ?? w.started;
+    return at.isAfter(modified) ? at : modified;
   }
 }
 

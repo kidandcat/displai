@@ -6,10 +6,9 @@ import 'package:flutter/material.dart';
 import '../l10n/l10n.dart';
 import '../presence/presence.dart';
 import '../workers/workers.dart';
-import 'main_view.dart';
 
-/// The background workers, in a column at the side of the full view: the running ones, then the
-/// ones that finished lately ([Workers.board]). Each card has the worker's title, status, how
+/// The background workers, cards floating in a column at the right of the orb: the running ones,
+/// then the ones that finished lately ([Workers.board]). Each card has the worker's title, status, how
 /// long it has run, its latest progress note (a couple of lines, faded in as a new one comes),
 /// its model and its project. As many as fit, never scrolled; nothing while there are none.
 class WorkersPanel extends StatefulWidget {
@@ -65,53 +64,65 @@ class _WorkersPanelState extends State<WorkersPanel> {
     _tick ??= Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
     final l = AppLocalizations.of(context);
     final t = Theme.of(context).textTheme;
-    final width = (MediaQuery.sizeOf(context).width * 0.3).clamp(220.0, 340.0);
     final now = DateTime.now();
-    return Container(
-      width: width,
-      padding: const EdgeInsets.fromLTRB(12, 14, 14, 12),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0B0810),
-        border: Border(left: BorderSide(color: Color(0x1FA87CFF))),
-      ),
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final fit = math.max(1, ((box.maxHeight - 32) / (_cardExtent + _gap)).floor());
-          final cards = shown.length > fit ? shown.take(fit - (fit > 1 ? 1 : 0)).toList() : shown;
-          final more = shown.length - cards.length;
-          return ClipRect(
-            child: SingleChildScrollView(
-              // Never scrolled: only so a card taller than counted is cut off, not overflowing.
-              physics: const NeverScrollableScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(l.workersTitle.toUpperCase(),
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: kAccent.withValues(alpha: 0.6))),
-                      ),
-                      Text('${widget.workers.runningCount}',
-                          style: t.labelSmall?.copyWith(color: kPresenceWorkerAccent)),
+    return SizedBox(
+      width: sidePanelWidth(context),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 14, 14, 12),
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final fit = math.max(1, ((box.maxHeight - 12) / (_cardExtent + _gap)).floor());
+            final cards = shown.length > fit ? shown.take(fit - (fit > 1 ? 1 : 0)).toList() : shown;
+            final more = shown.length - cards.length;
+            return ClipRect(
+              child: SingleChildScrollView(
+                // Never scrolled: only so a card taller than counted is cut off, not overflowing.
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final w in cards) ...[
+                      _WorkerCard(worker: w, now: now),
+                      const SizedBox(height: _gap),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  for (final w in cards) ...[
-                    _WorkerCard(worker: w, now: now),
-                    const SizedBox(height: _gap),
+                    if (more > 0)
+                      Center(child: Text(l.workersMore(more), style: t.bodySmall?.copyWith(color: Colors.white38))),
                   ],
-                  if (more > 0)
-                    Center(child: Text(l.workersMore(more), style: t.bodySmall?.copyWith(color: Colors.white38))),
-                ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
+}
+
+/// How wide a column of cards at the side of the orb is (the workers', the projects').
+double sidePanelWidth(BuildContext context) => (MediaQuery.sizeOf(context).width * 0.3).clamp(220.0, 340.0);
+
+/// A side card's box: dark, rounded, its border lit while [active].
+BoxDecoration sideCardDecoration({bool active = false}) => BoxDecoration(
+      color: const Color(0xFF141019),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: active ? kPresenceWorkerAccent.withValues(alpha: 0.35) : Colors.white10),
+    );
+
+/// A worker's status as the cards show it: its name and color.
+(String, Color) workerStatusLook(AppLocalizations l, String status) => switch (status) {
+      'running' => (l.workerRunning, kPresenceWorkerAccent),
+      'done' => (l.workerDone, const Color(0xFF4ADE80)),
+      'failed' => (l.workerFailed, const Color(0xFFFF5C5C)),
+      'interrupted' => (l.workerInterrupted, Colors.white54),
+      _ => (l.workerStopped, Colors.white54),
+    };
+
+/// "45 s", "4 min 12 s", "1 h 05 min".
+String workerDuration(Duration d) {
+  if (d.isNegative) d = Duration.zero;
+  if (d.inHours > 0) return '${d.inHours} h ${(d.inMinutes % 60).toString().padLeft(2, '0')} min';
+  if (d.inMinutes > 0) return '${d.inMinutes} min ${d.inSeconds % 60} s';
+  return '${d.inSeconds} s';
 }
 
 class _WorkerCard extends StatelessWidget {
@@ -120,37 +131,24 @@ class _WorkerCard extends StatelessWidget {
   final WorkerInfo worker;
   final DateTime now;
 
-  static const _done = Color(0xFF4ADE80);
-  static const _failed = Color(0xFFFF5C5C);
-
   @override
   Widget build(BuildContext context) {
     final w = worker;
     final l = AppLocalizations.of(context);
     final t = Theme.of(context).textTheme;
-    final (status, color) = switch (w.status) {
-      'running' => (l.workerRunning, kPresenceWorkerAccent),
-      'done' => (l.workerDone, _done),
-      'failed' => (l.workerFailed, _failed),
-      'interrupted' => (l.workerInterrupted, Colors.white54),
-      _ => (l.workerStopped, Colors.white54),
-    };
+    final (status, color) = workerStatusLook(l, w.status);
     final latest = w.latest ?? (w.running ? l.workerStarting : null);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF141019),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: w.running ? kPresenceWorkerAccent.withValues(alpha: 0.35) : Colors.white10),
-      ),
+      decoration: sideCardDecoration(active: w.running),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(padding: const EdgeInsets.only(top: 2), child: _StatusIcon(status: w.status, color: color)),
+              Padding(padding: const EdgeInsets.only(top: 2), child: WorkerStatusIcon(status: w.status, color: color)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(w.title,
@@ -161,7 +159,7 @@ class _WorkerCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text('$status · ${_duration(w.elapsed(now))}', style: t.bodySmall?.copyWith(color: color)),
+          Text('$status · ${workerDuration(w.elapsed(now))}', style: t.bodySmall?.copyWith(color: color)),
           if (latest != null) ...[
             const SizedBox(height: 6),
             AnimatedSwitcher(
@@ -177,25 +175,18 @@ class _WorkerCard extends StatelessWidget {
           ],
           if (w.model != null || w.project != null) ...[
             const SizedBox(height: 8),
-            if (w.model != null) _Detail(icon: Icons.memory, text: w.model!),
-            if (w.project != null) _Detail(icon: Icons.folder_outlined, text: w.project!),
+            if (w.model != null) CardDetail(icon: Icons.memory, text: w.model!),
+            if (w.project != null) CardDetail(icon: Icons.folder_outlined, text: w.project!),
           ],
         ],
       ),
     );
   }
-
-  /// "45 s", "4 min 12 s", "1 h 05 min".
-  static String _duration(Duration d) {
-    if (d.isNegative) d = Duration.zero;
-    if (d.inHours > 0) return '${d.inHours} h ${(d.inMinutes % 60).toString().padLeft(2, '0')} min';
-    if (d.inMinutes > 0) return '${d.inMinutes} min ${d.inSeconds % 60} s';
-    return '${d.inSeconds} s';
-  }
 }
 
-class _StatusIcon extends StatelessWidget {
-  const _StatusIcon({required this.status, required this.color});
+/// A worker's status as an icon: a spinner while it runs.
+class WorkerStatusIcon extends StatelessWidget {
+  const WorkerStatusIcon({super.key, required this.status, required this.color});
 
   final String status;
   final Color color;
@@ -213,8 +204,8 @@ class _StatusIcon extends StatelessWidget {
 }
 
 /// A line of a card's details (model, project), with its icon.
-class _Detail extends StatelessWidget {
-  const _Detail({required this.icon, required this.text});
+class CardDetail extends StatelessWidget {
+  const CardDetail({super.key, required this.icon, required this.text});
 
   final IconData icon;
   final String text;

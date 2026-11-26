@@ -661,10 +661,6 @@
   "@usageSpent": {
     "description": "Usage card (status bar): a limit's projection at the current pace."
   },
-  "workersTitle": "Background jobs",
-  "@workersTitle": {
-    "description": "Workers panel (next to the orb): its heading."
-  },
   "workerRunning": "Working",
   "@workerRunning": {
     "description": "Workers panel: a worker's status while it runs."
@@ -692,6 +688,46 @@
   "workersMore": "+{count} more",
   "@workersMore": {
     "description": "Workers panel: workers that do not fit.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "projectEdited": "Edited {when}",
+  "@projectEdited": {
+    "description": "Projects panel (left of the orb): when a project's folder last changed, for a project no worker ran in.",
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "timeJustNow": "just now",
+  "@timeJustNow": {
+    "description": "Projects panel: something that happened less than a minute ago."
+  },
+  "timeMinutesAgo": "{count} min ago",
+  "@timeMinutesAgo": {
+    "description": "Projects panel: something that happened minutes ago.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeHoursAgo": "{count} h ago",
+  "@timeHoursAgo": {
+    "description": "Projects panel: something that happened hours ago.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeDaysAgo": "{count, plural, =1{yesterday} other{{count} days ago}}",
+  "@timeDaysAgo": {
+    "description": "Projects panel: something that happened days ago.",
     "placeholders": {
       "count": {
         "type": "int"
