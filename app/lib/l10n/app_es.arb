@@ -47,6 +47,7 @@
   "activityCheckingWorkers": "Mirando los trabajos en curso…",
   "activityScheduling": "Programando…",
   "activityWebhooks": "Configurando webhooks…",
+  "activitySendingFile": "Enviándolo por Telegram…",
   "activityRunningCommand": "Ejecutando un comando…",
   "activityReadingFiles": "Leyendo ficheros…",
   "activityWritingFile": "Escribiendo un fichero…",

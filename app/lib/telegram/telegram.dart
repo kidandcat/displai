@@ -302,6 +302,163 @@ class Telegram extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// The most a bot can upload (Telegram's limit for each file).
+  static const maxUpload = 50 * 1000 * 1000;
+
+  /// The most sendPhoto takes; larger images go as documents.
+  static const maxPhoto = 10 * 1000 * 1000;
+
+  /// The most files in one album (sendMediaGroup).
+  static const maxAlbum = 10;
+
+  static const maxCaption = 1024;
+
+  static const _photoTypes = {'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'};
+
+  /// Whether [path] goes as a photo (compressed, shown inline) rather than a document: [as] when
+  /// given ("photo" or "document"), else by its extension; images over [maxPhoto] are documents.
+  static bool sendsAsPhoto(String path, int size, {String? as}) {
+    if (as == 'document' || size > maxPhoto) return false;
+    return as == 'photo' || _photoTypes.contains(path.split('.').last.toLowerCase());
+  }
+
+  /// Sends [paths] to the user's chat: one file with sendPhoto or sendDocument, several as albums
+  /// of up to [maxAlbum] (all documents if any of them is one, as Telegram asks). [caption] goes
+  /// with the first file, or as a message after them when it is longer than [maxCaption]. A photo
+  /// Telegram rejects (size, format) is sent again as a document. Returns what was sent, one line
+  /// each; throws a [TelegramException] when something could not be sent.
+  Future<List<String>> sendFiles(List<String> paths, {String? caption, String? as}) {
+    final done = _sends.then((_) => _sendFiles(paths, caption: caption?.trim() ?? '', as: as));
+    _sends = done.then((_) {}, onError: (Object e) => debugPrint('telegram: sending files failed: ${_scrub('$e')}'));
+    return done;
+  }
+
+  Future<List<String>> _sendFiles(List<String> paths, {required String caption, String? as}) async {
+    final chat = chatId();
+    if (!configured) throw TelegramException(401, 'Telegram is not set up (no bot token saved)');
+    if (chat == null) throw TelegramException(400, 'no Telegram chat yet: the user has to write to the bot first');
+    if (paths.isEmpty) throw TelegramException(400, 'no file given');
+    final files = <(File, bool)>[];
+    for (final p in paths) {
+      final f = File(p);
+      if (!f.existsSync()) throw TelegramException(400, 'not found: $p');
+      final size = f.lengthSync();
+      if (size > maxUpload) {
+        throw TelegramException(413, '$p is ${_mb(size)}; Telegram bots can send at most ${_mb(maxUpload)}');
+      }
+      if (size == 0) throw TelegramException(400, '$p is empty');
+      files.add((f, sendsAsPhoto(p, size, as: as)));
+    }
+    final longCaption = caption.length > maxCaption;
+    final sent = <String>[];
+    final tmp = <Directory>[];
+    try {
+      for (var i = 0; i < files.length; i += maxAlbum) {
+        final group = files.sublist(i, (i + maxAlbum).clamp(0, files.length));
+        final cap = i == 0 && !longCaption ? caption : '';
+        if (group.length == 1) {
+          sent.add(await _sendOne(chat, group.single.$1, group.single.$2, cap, tmp));
+        } else {
+          sent.add(await _sendAlbum(chat, group, cap, tmp));
+        }
+      }
+    } finally {
+      for (final d in tmp) {
+        if (d.existsSync()) d.deleteSync(recursive: true);
+      }
+    }
+    if (longCaption) {
+      await _call('sendMessage', {'chat_id': chat, 'text': caption});
+      sent.add('the caption as a message (over $maxCaption characters)');
+    }
+    return sent;
+  }
+
+  static String _mb(int bytes) => '${(bytes / 1e6).toStringAsFixed(1)} MB';
+
+  static String _name(File f) => f.path.split('/').last;
+
+  /// HEIC as JPEG (Telegram does not show HEIC photos); other files as they are.
+  static Future<File> _photoFile(File f, List<Directory> tmp) async {
+    final ext = f.path.split('.').last.toLowerCase();
+    if (ext != 'heic' && ext != 'heif') return f;
+    final d = await Directory.systemTemp.createTemp('minerva-telegram');
+    tmp.add(d);
+    final name = _name(f);
+    final out = '${d.path}/${name.substring(0, name.length - ext.length)}jpg';
+    final r = await Process.run('/usr/bin/sips', ['-s', 'format', 'jpeg', f.path, '--out', out]);
+    return r.exitCode == 0 && File(out).existsSync() ? File(out) : f;
+  }
+
+  Future<String> _sendOne(int chat, File f, bool photo, String caption, List<Directory> tmp) async {
+    Future<void> send(String method, String field, File file) =>
+        _upload(method, {'chat_id': '$chat', if (caption.isNotEmpty) 'caption': caption}, {field: file});
+    if (photo) {
+      try {
+        await send('sendPhoto', 'photo', await _photoFile(f, tmp));
+        return 'photo ${_name(f)}';
+      } on TelegramException catch (e) {
+        if (e.code != 400) rethrow;
+        debugPrint('telegram: photo rejected, sending it as a document ($e)');
+        await send('sendDocument', 'document', f);
+        return 'document ${_name(f)} (Telegram rejected it as a photo: ${e.message})';
+      }
+    }
+    await send('sendDocument', 'document', f);
+    return 'document ${_name(f)}';
+  }
+
+  Future<String> _sendAlbum(int chat, List<(File, bool)> group, String caption, List<Directory> tmp) async {
+    Future<void> send(bool photos) async {
+      final files = <String, File>{};
+      final media = <Map<String, dynamic>>[];
+      for (final (f, _) in group) {
+        final key = 'file${files.length}';
+        files[key] = photos ? await _photoFile(f, tmp) : f;
+        media.add({
+          'type': photos ? 'photo' : 'document',
+          'media': 'attach://$key',
+          if (media.isEmpty && caption.isNotEmpty) 'caption': caption,
+        });
+      }
+      await _upload('sendMediaGroup', {'chat_id': '$chat', 'media': jsonEncode(media)}, files);
+    }
+
+    String album(String kind) => '$kind album: ${group.map((g) => _name(g.$1)).join(', ')}';
+    // Documents can only be grouped with documents.
+    if (group.every((g) => g.$2)) {
+      try {
+        await send(true);
+        return album('photo');
+      } on TelegramException catch (e) {
+        if (e.code != 400) rethrow;
+        debugPrint('telegram: photo album rejected, sending it as documents ($e)');
+        await send(false);
+        return '${album('document')} (Telegram rejected it as photos: ${e.message})';
+      }
+    }
+    await send(false);
+    return album('document');
+  }
+
+  /// A multipart upload of [files] (field name to file) with [fields].
+  Future<Object?> _upload(String method, Map<String, String> fields, Map<String, File> files) async {
+    final t = token() ?? '';
+    if (t.isEmpty) throw TelegramException(401, 'no token');
+    final http.Response r;
+    try {
+      final req = http.MultipartRequest('POST', Uri.parse('$api/bot$t/$method'))..fields.addAll(fields);
+      for (final MapEntry(key: field, value: f) in files.entries) {
+        req.files.add(await http.MultipartFile.fromPath(field, f.path, filename: _name(f)));
+      }
+      r = await _client.send(req).then(http.Response.fromStream).timeout(const Duration(minutes: 5));
+    } catch (e) {
+      // Network errors can carry the URL, and so the token.
+      throw TelegramException(0, _scrub('$e'));
+    }
+    return _result(r);
+  }
+
   Future<Object?> _call(String method, Map<String, dynamic> params, {Duration timeout = const Duration(seconds: 30)}) async {
     final t = token() ?? '';
     if (t.isEmpty) throw TelegramException(401, 'no token');
@@ -314,6 +471,10 @@ class Telegram extends ChangeNotifier {
       // Network errors can carry the URL, and so the token.
       throw TelegramException(0, _scrub('$e'));
     }
+    return _result(r);
+  }
+
+  Object? _result(http.Response r) {
     Map<String, dynamic> j;
     try {
       j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -337,7 +498,8 @@ Telegram (the written channel):
 - "[telegram]" after the time means the user wrote to you on Telegram (typed, unless marked as a transcribed recording): they can't talk or listen now. Your reply is sent back to them on Telegram as text, not spoken, so the voice rules don't apply: write it (Markdown allowed: **bold**, *italic*, `code`, lists, links), as long as the answer needs, still to the point.
 - A Telegram message that starts "(voice note transcribed…" or "(audio file transcribed…" is a recording the user sent, transcribed locally: read past likely recognition errors as you do with speech, and ask if something important is unclear. Your reply is still written.
 - Don't use the display or Minerva's window for a Telegram message (the user is not at the Mac) unless they ask for it; put everything in the text. Don't ask for credentials with vault_request there: ask the user to save them in Minerva's settings.
-- A "[telegram]" in front of a worker report, routine, webhook or other event means the user is away from the Mac (they last wrote on Telegram, or Minerva's window is closed): your reply goes to Telegram as text too, written as above.''';
+- A "[telegram]" in front of a worker report, routine, webhook or other event means the user is away from the Mac (they last wrote on Telegram, or Minerva's window is closed): your reply goes to Telegram as text too, written as above.
+- To give the user a file or photo (one they ask for, a screenshot, something you made or downloaded), send it with telegram_send_file; also when they are at the Mac and ask for it on their phone. Say in your reply what you sent.''';
   }
 
   Future<void> close() async {

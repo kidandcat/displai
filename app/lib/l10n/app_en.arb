@@ -223,6 +223,10 @@
   "@activityWebhooks": {
     "description": "What the assistant is doing (spoken aloud)."
   },
+  "activitySendingFile": "Sending it on Telegram…",
+  "@activitySendingFile": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
   "activityRunningCommand": "Running a command…",
   "@activityRunningCommand": {
     "description": "What the assistant is doing (spoken aloud)."

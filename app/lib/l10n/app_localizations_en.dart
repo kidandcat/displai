@@ -176,6 +176,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get activityWebhooks => 'Setting up webhooks…';
 
   @override
+  String get activitySendingFile => 'Sending it on Telegram…';
+
+  @override
   String get activityRunningCommand => 'Running a command…';
 
   @override

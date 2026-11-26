@@ -178,6 +178,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get activityWebhooks => 'Configurando webhooks…';
 
   @override
+  String get activitySendingFile => 'Enviándolo por Telegram…';
+
+  @override
   String get activityRunningCommand => 'Ejecutando un comando…';
 
   @override

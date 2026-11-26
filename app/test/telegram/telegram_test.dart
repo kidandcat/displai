@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:minerva/l10n/l10n.dart';
 import 'package:minerva/telegram/telegram.dart';
+import 'package:minerva/telegram/telegram_tools.dart';
 
 void main() {
   group('markdown to Telegram HTML', () {
@@ -324,6 +325,152 @@ void main() {
       expect(bot.reachable, isTrue);
       token = null;
       expect(bot.reachable, isFalse);
+    });
+
+    group('sending files', () {
+      /// A bot whose API records each upload (method, multipart body as text) and answers with
+      /// [reply] (null: ok).
+      (Telegram, List<(String, String)>) bot({
+        http.Response? Function(String method)? reply,
+        int? chat = 42,
+        String? token = 'TOKEN',
+      }) {
+        final calls = <(String, String)>[];
+        final client = MockClient((req) async {
+          final method = req.url.pathSegments.last;
+          calls.add((method, latin1.decode(req.bodyBytes)));
+          return reply?.call(method) ?? http.Response(jsonEncode({'ok': true, 'result': {}}), 200);
+        });
+        final t = Telegram(
+          token: () => token,
+          chatId: () => chat,
+          dir: tmp.path,
+          onMessage: (_) {},
+          api: 'https://api.test',
+          client: () => client,
+        );
+        return (t, calls);
+      }
+
+      String file(String name, [int size = 10]) {
+        final f = File('${tmp.path}/$name')..writeAsBytesSync(List.filled(size, 65));
+        return f.path;
+      }
+
+      test('photos by extension, documents otherwise, or as asked', () {
+        expect(Telegram.sendsAsPhoto('a.JPG', 100), isTrue);
+        expect(Telegram.sendsAsPhoto('a.webp', 100), isTrue);
+        expect(Telegram.sendsAsPhoto('a.pdf', 100), isFalse);
+        expect(Telegram.sendsAsPhoto('a.gif', 100), isFalse);
+        expect(Telegram.sendsAsPhoto('a.png', 100, as: 'document'), isFalse);
+        expect(Telegram.sendsAsPhoto('a.bmp', 100, as: 'photo'), isTrue);
+        // Too big for sendPhoto.
+        expect(Telegram.sendsAsPhoto('a.png', Telegram.maxPhoto + 1), isFalse);
+        expect(Telegram.sendsAsPhoto('a.png', Telegram.maxPhoto + 1, as: 'photo'), isFalse);
+      });
+
+      test('a photo and a document go to the user\'s chat with their caption', () async {
+        final (t, calls) = bot();
+        expect(await t.sendFiles([file('pic.png')], caption: 'look'), ['photo pic.png']);
+        expect(await t.sendFiles([file('notes.pdf')]), ['document notes.pdf']);
+        expect(calls.map((c) => c.$1), ['sendPhoto', 'sendDocument']);
+        expect(calls[0].$2, contains('name="chat_id"\r\n\r\n42'));
+        expect(calls[0].$2, contains('name="caption"\r\n\r\nlook'));
+        expect(calls[0].$2, contains('name="photo"; filename="pic.png"'));
+        expect(calls[1].$2, contains('name="document"; filename="notes.pdf"'));
+        expect(calls[1].$2, isNot(contains('name="caption"')));
+        await t.close();
+      });
+
+      test('a photo Telegram rejects is sent again as a document', () async {
+        final (t, calls) = bot(
+            reply: (m) => m == 'sendPhoto'
+                ? http.Response(jsonEncode({'ok': false, 'error_code': 400, 'description': 'PHOTO_INVALID_DIMENSIONS'}), 400)
+                : null);
+        final sent = await t.sendFiles([file('wide.jpg')]);
+        expect(sent.single, startsWith('document wide.jpg'));
+        expect(sent.single, contains('PHOTO_INVALID_DIMENSIONS'));
+        expect(calls.map((c) => c.$1), ['sendPhoto', 'sendDocument']);
+        await t.close();
+      });
+
+      test('several files go as albums of up to ten, documents with documents', () async {
+        final (t, calls) = bot();
+        final photos = [for (var i = 0; i < 11; i++) file('p$i.jpg')];
+        final sent = await t.sendFiles(photos, caption: 'trip');
+        expect(calls.map((c) => c.$1), ['sendMediaGroup', 'sendPhoto']);
+        expect(sent.first, startsWith('photo album: p0.jpg, p1.jpg'));
+        expect(sent.last, 'photo p10.jpg');
+        final album = calls.first.$2;
+        expect(album, contains('"type":"photo","media":"attach://file0","caption":"trip"'));
+        expect(album, contains('attach://file9'));
+        expect(album, contains('name="file9"; filename="p9.jpg"'));
+        // The caption goes only with the first file.
+        expect(calls.last.$2, isNot(contains('name="caption"')));
+
+        calls.clear();
+        await t.sendFiles([file('a.jpg'), file('b.zip')]);
+        expect(calls.single.$1, 'sendMediaGroup');
+        expect(calls.single.$2, contains('"type":"document","media":"attach://file0"'));
+        expect(calls.single.$2, isNot(contains('"type":"photo"')));
+        await t.close();
+      });
+
+      test('a caption too long for Telegram follows as a message', () async {
+        final (t, calls) = bot();
+        final sent = await t.sendFiles([file('a.txt')], caption: 'x' * (Telegram.maxCaption + 1));
+        expect(calls.map((c) => c.$1), ['sendDocument', 'sendMessage']);
+        expect(calls.first.$2, isNot(contains('name="caption"')));
+        expect(sent.last, contains('caption as a message'));
+        await t.close();
+      });
+
+      test('missing, empty and too large files, no chat and API errors are errors', () async {
+        final (t, calls) = bot(
+            reply: (m) => http.Response(jsonEncode({'ok': false, 'error_code': 403, 'description': 'Forbidden: bot was blocked by the user'}), 403));
+        Future<String> error(Future<Object?> f) async {
+          try {
+            await f;
+          } on TelegramException catch (e) {
+            return e.message;
+          }
+          fail('no error');
+        }
+
+        expect(await error(t.sendFiles(['${tmp.path}/nope.png'])), contains('not found'));
+        expect(await error(t.sendFiles([file('empty.txt', 0)])), contains('empty'));
+        final big = File('${tmp.path}/big.mov');
+        final raf = big.openSync(mode: FileMode.write)..truncateSync(Telegram.maxUpload + 1);
+        raf.closeSync();
+        expect(await error(t.sendFiles([big.path])), contains('at most 50.0 MB'));
+        expect(calls, isEmpty);
+        expect(await error(t.sendFiles([file('a.png')])), contains('blocked'));
+        await t.close();
+
+        final (noChat, _) = bot(chat: null);
+        expect(await error(noChat.sendFiles([file('a.png')])), contains('write to the bot first'));
+        final (noToken, _) = bot(token: null);
+        expect(await error(noToken.sendFiles([file('a.png')])), contains('not set up'));
+      });
+
+      test('the tool resolves paths and reports the result', () async {
+        final (t, calls) = bot();
+        final tools = TelegramTools(t, home: tmp.path);
+        file('report.pdf');
+        file('a.png');
+        var r = await tools.call('telegram_send_file', {'path': '~/report.pdf', 'caption': 'here'});
+        expect(r.isError, isFalse);
+        expect(r.text, 'sent to the user on Telegram: document report.pdf');
+        r = await tools.call('telegram_send_file', {'path': 'report.pdf', 'more_paths': ['a.png'], 'as': 'document'});
+        expect(r.text, contains('document album: report.pdf, a.png'));
+        r = await tools.call('telegram_send_file', {'path': 'missing.png'});
+        expect(r.isError, isTrue);
+        expect(r.text, startsWith('error: not sent: not found'));
+        r = await tools.call('telegram_send_file', {'path': 'a.png', 'as': 'video'});
+        expect(r.isError, isTrue);
+        expect(calls, hasLength(2));
+        await t.close();
+      });
     });
   });
 

@@ -27,6 +27,7 @@ import '../computer/computer_tools.dart';
 import '../routines/routines.dart';
 import '../store/store.dart';
 import '../telegram/telegram.dart';
+import '../telegram/telegram_tools.dart';
 import '../tools/command_tools.dart';
 import '../tools/history_tools.dart';
 import '../tools/memory_tools.dart';
@@ -396,6 +397,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         workers,
         routines,
         if (webhooks != null) WebhookTools(webhooks!),
+        if (telegram != null) TelegramTools(telegram!),
       ];
       _speaker = await Speaker.start(modelDir: models.supertonic, voice: voice, language: speechLanguage);
       _listener = await Listener.start(vadModel: models.vad, parakeetDir: models.parakeet);
@@ -1322,6 +1324,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         'list_workers' || 'worker_status' || 'stop_worker' => l.activityCheckingWorkers,
         'create_routine' || 'list_routines' || 'update_routine' || 'delete_routine' => l.activityScheduling,
         'webhook_create' || 'webhook_list' || 'webhook_delete' => l.activityWebhooks,
+        'telegram_send_file' => l.activitySendingFile,
         'run_command' => l.activityRunningCommand,
         'read_file' || 'list_dir' => l.activityReadingFiles,
         'write_file' => l.activityWritingFile,

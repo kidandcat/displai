@@ -383,6 +383,12 @@ abstract class AppLocalizations {
   /// What the assistant is doing (spoken aloud).
   ///
   /// In en, this message translates to:
+  /// **'Sending it on Telegram…'**
+  String get activitySendingFile;
+
+  /// What the assistant is doing (spoken aloud).
+  ///
+  /// In en, this message translates to:
   /// **'Running a command…'**
   String get activityRunningCommand;
 
