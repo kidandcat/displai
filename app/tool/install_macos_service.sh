@@ -42,7 +42,7 @@ team=5M4PZM9Z6T
 identity="${MINERVA_SIGN_IDENTITY:-}"
 if [[ -z "$identity" ]]; then
   security find-identity -v -p codesigning | grep '"Apple Development:' | while read -r _ hash name; do
-    security find-certificate -c "${${name#\"}%\"}" -p | openssl x509 -noout -subject | grep -q "OU=$team," && echo "$hash"
+    security find-certificate -c "${${name#\"}%\"}" -p | openssl x509 -noout -subject | grep -qE "OU=$team(,|/|$)" && echo "$hash"
   done | head -1 | read -r identity || true
 fi
 [[ -n "$identity" ]] || { echo "No Apple Development identity of team $team in the keychain" >&2; exit 1; }
