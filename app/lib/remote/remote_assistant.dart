@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart' show AppLifecycleState, GlobalKey, Size, WidgetsBinding;
+import 'package:flutter/widgets.dart' show GlobalKey, Size;
 
 import '../app/assistant_ui.dart';
 import '../app/settings.dart';
@@ -14,7 +14,6 @@ import '../display/display.dart';
 import '../display/display_runner.dart';
 import '../l10n/l10n.dart';
 import '../presence/presence.dart';
-import 'phone_overlay.dart';
 import 'protocol.dart';
 import 'remote_link.dart';
 
@@ -39,8 +38,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
 
   late final RemoteLink link = RemoteLink(relay: relay, key: key, role: 'remote');
 
-  /// The orb over other apps, and bringing Minerva back to show a view.
-  final overlay = PhoneOverlay();
   final _subs = <StreamSubscription<Object?>>[];
 
   /// The desktop is connected and has said hello.
@@ -131,7 +128,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     link.addListener(notifyListeners);
     link.start();
     presence.mode = PresenceMode.idle;
-    unawaited(overlay.refresh());
   }
 
   /// The size of the display area changed (first layout, rotation).
@@ -148,18 +144,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
         'platform': Platform.operatingSystem,
       });
 
-  /// Tells the phone's orb what the desktop's presence is doing (it shows while Minerva is not in
-  /// front).
-  void _pushOrb() => unawaited(overlay.orb(
-        connected: _hostReady,
-        mode: presence.mode.name,
-        muted: muted,
-        workers: _workers,
-      ));
-
-  /// The desktop's running workers, as it last said.
-  List<int> _workers = const [];
-
   void _onMessage(Map<String, dynamic> m) {
     switch (m['t']) {
       case 'peer':
@@ -173,7 +157,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
             ..mode = PresenceMode.idle
             ..workers = const [];
           activity = '';
-          _pushOrb();
           notifyListeners();
         }
       case 'hello':
@@ -181,7 +164,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
         _hostReady = true;
         final rate = (m['rate'] as num?)?.toInt();
         if (rate != null && rate != _playRate) unawaited(_startAudio(rate));
-        _pushOrb();
         notifyListeners();
       case 'state':
         final mode = m['mode'];
@@ -190,15 +172,13 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
         activity = '${m['activity'] ?? ''}';
         lastHeard = '${m['heard'] ?? ''}';
         backgroundJobs = (m['jobs'] as num?)?.toInt() ?? 0;
-        _workers = [for (final id in m['workers'] as List? ?? const []) (id as num).toInt()];
-        presence.workers = _workers;
+        presence.workers = [for (final id in m['workers'] as List? ?? const []) (id as num).toInt()];
         muted = m['muted'] == true;
         presence.muted = muted;
         if (_unmuteOnState) {
           _unmuteOnState = false;
           if (muted) return toggleMute();
         }
-        _pushOrb();
         notifyListeners();
       case 'stop':
         unawaited(audio.stop());
@@ -350,12 +330,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     final id = m['id'];
     final name = '${m['name']}';
     final args = (m['args'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
-    // A view the brain shows while the user is in other apps: bring Minerva back to show it.
-    if (id != null &&
-        const {'show', 'html', 'form', 'video'}.contains(name) &&
-        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
-      await overlay.front();
-    }
     if (name == 'snapshot') {
       final shot = await DisplayRunner.capture(screenKey);
       if (id == null) return;
@@ -396,15 +370,12 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     muted = !muted;
     presence.muted = muted;
     link.send({'t': 'mute', 'on': muted});
-    _pushOrb();
     notifyListeners();
   }
 
-  /// Back in the foreground: reconnect at once instead of waiting for the next retry, and read the
-  /// overlay permission again (the user may come back from its settings).
+  /// Back in the foreground: reconnect at once instead of waiting for the next retry.
   void resumed() {
     link.reconnectNow();
-    unawaited(overlay.refresh());
   }
 
   /// Opened as the phone's assistant: unmute and reconnect at once, so the mic streams to the
@@ -426,8 +397,6 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     link.removeListener(notifyListeners);
     unawaited(link.close());
     unawaited(audio.stop());
-    unawaited(overlay.orb(connected: false, mode: 'idle', muted: false, workers: const []));
-    overlay.dispose();
     presence.dispose();
     display.dispose();
     super.dispose();

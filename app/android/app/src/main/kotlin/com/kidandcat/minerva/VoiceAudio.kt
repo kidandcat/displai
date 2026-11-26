@@ -56,7 +56,6 @@ class VoiceAudio(context: Context) : EventChannel.StreamHandler {
 
     private fun emit(event: Map<String, Any>) = main.post {
         sink?.success(event)
-        OrbOverlay.audio(event)
     }
 
     /** Starts (or restarts with a new playback rate) and describes the audio path. */

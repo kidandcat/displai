@@ -3,10 +3,7 @@ package com.kidandcat.minerva
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -18,9 +15,9 @@ import io.flutter.plugin.common.MethodChannel
  * gives Flutter the phone's echo-cancelled mic and its speaker ([VoiceAudio], channel
  * minerva/audio, the same contract as the macOS engine) and the pairing links it is opened
  * with (channel minerva/link), tells it when it was opened as the phone's assistant
- * (channel minerva/assist, see [AssistService]), and runs the orb over other apps (channel
- * minerva/overlay, see [OrbOverlay]). While the audio runs, [LinkService] keeps it going behind
- * other apps. Every action happens on the desktop: the phone only listens, speaks and shows.
+ * (channel minerva/assist, see [AssistService]). Minerva shows only in its own app: nothing
+ * draws over other apps. While the audio runs, [LinkService] keeps it going behind other apps.
+ * Every action happens on the desktop: the phone only listens, speaks and shows.
  */
 class MainActivity : FlutterActivity() {
     private var audio: VoiceAudio? = null
@@ -34,8 +31,6 @@ class MainActivity : FlutterActivity() {
         initialLink = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString
         initialAssist = isAssist(intent)
         super.onCreate(savedInstanceState)
-        // A remote on the table: keep the screen on while Minerva is open.
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -63,29 +58,6 @@ class MainActivity : FlutterActivity() {
                 }
                 "stop" -> {
                     voice.stop()
-                    result.success(null)
-                }
-                else -> result.notImplemented()
-            }
-        }
-        MethodChannel(messenger, "minerva/overlay").setMethodCallHandler { call, result ->
-            when (call.method) {
-                "allowed" -> result.success(OrbOverlay.allowed(this))
-                "openSettings" -> {
-                    if (Build.VERSION.SDK_INT >= 23) {
-                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                    }
-                    result.success(null)
-                }
-                "front" -> {
-                    try {
-                        OrbOverlay.front(this)
-                    } catch (_: Exception) {
-                    }
-                    result.success(null)
-                }
-                "orb" -> {
-                    OrbOverlay.setState(this, call.arguments as? Map<*, *> ?: emptyMap<String, Any>())
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -152,19 +124,20 @@ class MainActivity : FlutterActivity() {
         (intent.getBooleanExtra(EXTRA_ASSIST, false) ||
             intent.action == Intent.ACTION_ASSIST || intent.action == Intent.ACTION_VOICE_COMMAND)
 
+    // A remote on the table: the screen stays on while Minerva is in front, and may sleep again
+    // once the user leaves it.
     override fun onStart() {
         super.onStart()
-        OrbOverlay.appVisible(this, true)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     override fun onStop() {
-        OrbOverlay.appVisible(this, false)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onStop()
     }
 
     override fun onDestroy() {
         LinkService.stop(this)
-        OrbOverlay.setState(this, emptyMap<String, Any>())
         audio?.release()
         audio = null
         super.onDestroy()
