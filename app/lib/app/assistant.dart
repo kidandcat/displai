@@ -428,7 +428,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       }
       unawaited(_listModels(BrainProvider.antigravity, AntigravitySession.listModels));
       unawaited(_listModels(BrainProvider.codex, CodexSession.listModels));
-      usage = UsageMonitor(providers: () => {for (final c in [...brainChain, ...workers.chain]) c.provider})..start();
+      usage = UsageMonitor(providers: () => {for (final c in [...brainChain, ...workers.chain]) c.provider})
+        ..addListener(_pushUsage)
+        ..start();
       window.onOpenRequested = () => unawaited(_useMac(false));
       await window.init();
       window.addListener(_syncAudio);
@@ -775,6 +777,13 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     });
   }
 
+  /// Sends the providers' plan usage to the phone, for its usage rings.
+  void _pushUsage() {
+    final p = phone;
+    if (p == null || !p.active || !ready) return;
+    p.pushUsage([for (final u in usage.shown) u.toJson()]);
+  }
+
   /// The user changed settings on the phone: the same as changing them here.
   void _onPhoneSettings(Map<String, dynamic> m) {
     if (!ready) return;
@@ -808,6 +817,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   void notifyListeners() {
     _pushState();
     _pushSettings();
+    _pushUsage();
     super.notifyListeners();
   }
 

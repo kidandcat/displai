@@ -140,7 +140,8 @@ class HomePage extends StatelessWidget {
                 assistant: a,
                 // Once the panel has become the orb, the display shows as Minerva's widgets.
                 showDisplay: a.window.panelShown.value,
-                leading: a.ready ? UsageRings(monitor: a.usage) : null,
+                // Not in a narrow window, where the bar is full of buttons.
+                leading: a.ready && MediaQuery.sizeOf(context).width >= 600 ? UsageRings(monitor: a.usage) : null,
                 side: a.ready ? WorkersPanel(workers: a.workers) : null,
                 actions: [
                   if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),

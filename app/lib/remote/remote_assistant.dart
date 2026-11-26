@@ -14,6 +14,7 @@ import '../display/display.dart';
 import '../display/display_runner.dart';
 import '../l10n/l10n.dart';
 import '../presence/presence.dart';
+import '../usage/usage.dart';
 import 'protocol.dart';
 import 'remote_link.dart';
 
@@ -106,6 +107,9 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
   String webhooksStatus = '';
   bool webhooksOn = false;
 
+  /// The plan usage of the desktop's providers, for the usage rings.
+  final usage = SentUsage();
+
   @override
   String get linkNote {
     if (_hostReady) return '';
@@ -192,6 +196,8 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
         display.cancelPartial();
       case 'settings':
         _applySettings(m);
+      case 'usage':
+        usage.apply(m['providers']);
     }
   }
 
@@ -399,6 +405,7 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     unawaited(audio.stop());
     presence.dispose();
     display.dispose();
+    usage.dispose();
     super.dispose();
   }
 }

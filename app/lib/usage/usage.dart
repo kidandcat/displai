@@ -73,6 +73,27 @@ class UsageWindow {
     );
   }
 
+  /// As the desktop sends it to the phone (see remote/protocol.dart).
+  Map<String, Object?> toJson() => {
+        'kind': kind.name,
+        'used': used,
+        if (resetsAt != null) 'resets_at': resetsAt!.millisecondsSinceEpoch,
+        if (scope != null) 'scope': scope,
+        if (minutes != null) 'minutes': minutes,
+      };
+
+  /// A window the desktop sent, or null when it is not one.
+  static UsageWindow? fromJson(Object? j) {
+    if (j is! Map || j['used'] is! num) return null;
+    return UsageWindow(
+      kind: UsageKind.values.where((k) => k.name == j['kind']).firstOrNull ?? UsageKind.other,
+      used: _percent(j['used']),
+      resetsAt: j['resets_at'] is int ? DateTime.fromMillisecondsSinceEpoch(j['resets_at'] as int) : null,
+      scope: j['scope'] is String ? j['scope'] as String : null,
+      minutes: (j['minutes'] as num?)?.toInt(),
+    );
+  }
+
   @override
   String toString() => 'UsageWindow(${kind.name}${scope == null ? '' : ' $scope'}, $used%, resets $resetsAt)';
 }
@@ -119,6 +140,47 @@ class ProviderUsage {
   final BrainProvider provider;
   final List<UsageWindow> windows;
   final DateTime readAt;
+
+  Map<String, Object?> toJson() => {
+        'provider': provider.name,
+        'read_at': readAt.millisecondsSinceEpoch,
+        'windows': [for (final w in windows) w.toJson()],
+      };
+
+  /// A provider's usage the desktop sent, or null when it is not one (or names a provider this
+  /// app does not know).
+  static ProviderUsage? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final provider = BrainProvider.values.where((p) => p.name == j['provider']).firstOrNull;
+    if (provider == null) return null;
+    final windows = [
+      for (final w in j['windows'] is List ? j['windows'] as List : const []) ?UsageWindow.fromJson(w),
+    ];
+    final readAt = j['read_at'];
+    return ProviderUsage(provider, windows,
+        readAt: readAt is int ? DateTime.fromMillisecondsSinceEpoch(readAt) : DateTime.now());
+  }
+}
+
+/// What the usage rings show: the desktop's [UsageMonitor], or on the phone [SentUsage].
+abstract interface class UsageSource implements Listenable {
+  /// The providers with a reading, in order.
+  List<ProviderUsage> get shown;
+}
+
+/// The phone's copy of the usage the desktop last sent (its `usage` message).
+class SentUsage extends ChangeNotifier implements UsageSource {
+  @override
+  List<ProviderUsage> shown = const [];
+
+  /// The providers in a `usage` message (see remote/protocol.dart).
+  void apply(Object? providers) {
+    shown = [
+      for (final p in providers is List ? providers : const [])
+        if (ProviderUsage.fromJson(p) case final u? when u.windows.isNotEmpty) u,
+    ];
+    notifyListeners();
+  }
 }
 
 /// The provider answered "too many requests": read again after [retryAfter] (or the usual wait).
@@ -253,7 +315,7 @@ typedef UsageReader = Future<List<UsageWindow>?> Function();
 /// (up to [longestWait]), as Claude's usage endpoint is shared with Claude Code and answers 429
 /// for a long while when asked too often. A provider whose reading fails keeps it for
 /// [keepFailed], then it is hidden.
-class UsageMonitor extends ChangeNotifier {
+class UsageMonitor extends ChangeNotifier implements UsageSource {
   UsageMonitor({required this.providers, Map<BrainProvider, UsageReader>? readers, DateTime Function()? clock})
       : readers = readers ?? defaultReaders,
         _clock = clock ?? DateTime.now;
@@ -281,6 +343,7 @@ class UsageMonitor extends ChangeNotifier {
   bool _disposed = false;
 
   /// What to show, in the providers' order: the configured ones with a reading.
+  @override
   List<ProviderUsage> get shown {
     final want = providers();
     return [

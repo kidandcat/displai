@@ -24,6 +24,10 @@ import 'dart:typed_data';
 ///                               webhooks?: {on, status, hooks: [{name, description, url}]}}
 ///                                                     the desktop's settings, when they change
 ///                                                     (field names only, never vault values)
+///                     usage {providers: [{provider, read_at, windows: [{kind, used, resets_at?,
+///                                         scope?, minutes?}]}]}
+///                                                     the plan usage of the desktop's providers,
+///                                                     when it changes (times: ms since epoch)
 ///   remote → host:    hello {w, h, platform}          logical screen size of the remote display
 ///                     result {id, text, error?, png?} a display tool's result (png: base64)
 ///                     idle {n}                        voice queue drained after n voice frames

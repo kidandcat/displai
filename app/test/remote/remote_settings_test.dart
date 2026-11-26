@@ -58,6 +58,19 @@ void main() {
     expect(a.voice, 6);
     expect(a.workerModel.model, 'sonnet');
     expect(a.credentials.single.fields, ['username', 'password']);
+    a.handleMessage({
+      't': 'usage',
+      'providers': [
+        {
+          'provider': 'claude',
+          'read_at': 0,
+          'windows': [
+            {'kind': 'session', 'used': 40},
+          ],
+        },
+      ],
+    });
+    expect(a.usage.shown.single.windows.single.leftAt(DateTime.now()), 60);
 
     await tester.pumpWidget(MaterialApp(
       locale: const Locale('es'),

@@ -34,7 +34,7 @@ class MainView extends StatelessWidget {
   /// Extra buttons at the end of the status bar.
   final List<Widget> actions;
 
-  /// What the status bar shows at its start (the providers' usage on the desktop).
+  /// What the status bar shows at its start (the providers' usage).
   final Widget? leading;
 
   /// What goes at the right of the orb and the display, above the status bar (the background
@@ -145,7 +145,7 @@ class StatusBar extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: narrow ? 4 : 16),
       child: Row(
         children: [
-          if (leading != null && !narrow) leading!,
+          ?leading,
           const Spacer(),
           if (!a.ready) ...[
             Text(a.linkNote.isNotEmpty ? a.linkNote : l.loadingVoice,

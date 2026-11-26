@@ -70,6 +70,7 @@ class PhoneHost extends ChangeNotifier {
 
   String _lastState = '';
   String _lastSettings = '';
+  String _lastUsage = '';
   Timer? _partialTimer;
   (String, String)? _partial;
 
@@ -91,6 +92,7 @@ class PhoneHost extends ChangeNotifier {
           active = true;
           _lastState = '';
           _lastSettings = '';
+          _lastUsage = '';
           link.send({'t': 'reset'});
           log.replay((name, args) => link.send({'t': 'tool', 'name': name, 'args': args}));
           debugPrint('phone joined (${width.round()}×${height.round()} $platform)');
@@ -201,6 +203,15 @@ class PhoneHost extends ChangeNotifier {
     final json = jsonEncode({'t': 'settings', ...settings});
     if (json == _lastSettings) return;
     _lastSettings = json;
+    link.send(jsonDecode(json) as Map<String, Object?>);
+  }
+
+  /// Sends the providers' plan usage to the phone when it changed.
+  void pushUsage(List<Map<String, Object?>> providers) {
+    if (!active) return;
+    final json = jsonEncode({'t': 'usage', 'providers': providers});
+    if (json == _lastUsage) return;
+    _lastUsage = json;
     link.send(jsonDecode(json) as Map<String, Object?>);
   }
 

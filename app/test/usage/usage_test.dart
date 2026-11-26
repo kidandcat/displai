@@ -191,6 +191,9 @@ void main() {
       (UsageKind.week, null),
       (UsageKind.week, 'Fable'),
     ]);
+    // Only the plan's five hours and week get a ring; a model's week and other lengths are in the card.
+    expect([for (final x in w) if (hasRing(x)) (x.kind, x.scope)], [(UsageKind.session, null), (UsageKind.week, null)]);
+    expect(hasRing(const UsageWindow(kind: UsageKind.other, used: 0, minutes: 60)), isFalse);
   });
 
   group('UsageMonitor', () {
@@ -312,5 +315,58 @@ void main() {
       expect(find.text('5-hour limit'), findsNothing);
       m.dispose();
     });
+  });
+
+  test('the desktop sends each provider\'s usage to the phone as it read it', () {
+    final readAt = DateTime(2026, 11, 26, 10);
+    final windows = [
+      UsageWindow(kind: UsageKind.session, used: 40, resetsAt: DateTime(2026, 11, 26, 13)),
+      const UsageWindow(kind: UsageKind.week, used: 5, scope: 'Fable'),
+      const UsageWindow(kind: UsageKind.other, used: 12, minutes: 60),
+    ];
+    final sent = SentUsage()
+      ..apply(jsonDecode(jsonEncode([
+        ProviderUsage(BrainProvider.claude, windows, readAt: readAt).toJson(),
+        ProviderUsage(BrainProvider.codex, const [], readAt: readAt).toJson(),
+        {'provider': 'someday', 'windows': []},
+      ])));
+    final u = sent.shown.single;
+    expect(u.provider, BrainProvider.claude);
+    expect(u.readAt, readAt);
+    expect([for (final w in u.windows) (w.kind, w.used, w.resetsAt, w.scope, w.minutes)], [
+      for (final w in windows) (w.kind, w.used, w.resetsAt, w.scope, w.minutes),
+    ]);
+    sent.dispose();
+  });
+
+  testWidgets('on the phone a tap opens the card, on screen, and the next tap closes it', (tester) async {
+    tester.view.physicalSize = const Size(377, 702);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final now = DateTime.now();
+    final window = UsageWindow(kind: UsageKind.session, used: 40, resetsAt: now.add(const Duration(hours: 4)));
+    final sent = SentUsage()
+      ..apply([
+        for (final p in BrainProvider.values) ProviderUsage(p, [window], readAt: now).toJson(),
+      ]);
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: Align(alignment: Alignment.bottomLeft, child: UsageRings(monitor: sent, dialSize: 34))),
+    ));
+    expect(find.byType(UsageDial), findsNWidgets(3));
+
+    await tester.tap(find.byType(UsageDial).last);
+    await tester.pumpAndSettle();
+    expect(find.text('Codex'), findsOneWidget);
+    expect(find.text('60% left'), findsOneWidget);
+    final card = tester.getRect(find.ancestor(of: find.text('Codex'), matching: find.byType(Material)).first);
+    expect(card.left, greaterThanOrEqualTo(0));
+    expect(card.right, lessThanOrEqualTo(377));
+
+    await tester.tapAt(const Offset(200, 100));
+    await tester.pumpAndSettle();
+    expect(find.text('60% left'), findsNothing);
+    sent.dispose();
   });
 }

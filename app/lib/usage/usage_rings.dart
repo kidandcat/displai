@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -8,15 +9,17 @@ import '../l10n/l10n.dart';
 import 'usage.dart';
 
 /// The usage limits of the providers Minerva runs on, at the start of the status bar: one dial
-/// per provider, its logo in the middle and a ring per limit around it (outermost the five
-/// hours, then the week, then a model's own week), each full and green with the whole limit left
-/// and emptying as it is spent, through amber to red when little is left (see [leftColor]).
-/// Hovering a dial enlarges it and opens a card with each limit's percent left, reset and
-/// projection. Nothing when no provider could be read.
+/// per provider, its logo in the middle and two rings around it, the plan's five hours outside
+/// and its week inside (see [hasRing]), each full and green with the whole limit left and emptying
+/// as it is spent, through amber to red when little is left (see [leftColor]). Hovering a dial
+/// (tapping it on a touch screen) enlarges it and opens a card with each limit's percent left,
+/// reset and projection, a model's own limits too. Nothing when no provider could be read.
 class UsageRings extends StatelessWidget {
-  const UsageRings({super.key, required this.monitor});
+  const UsageRings({super.key, required this.monitor, this.dialSize = 40});
 
-  final UsageMonitor monitor;
+  /// The desktop's [UsageMonitor], or on the phone what the desktop sent.
+  final UsageSource monitor;
+  final double dialSize;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -28,8 +31,8 @@ class UsageRings extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               for (final (i, u) in shown.indexed) ...[
-                if (i > 0) const SizedBox(width: 10),
-                UsageDial(usage: u),
+                if (i > 0) SizedBox(width: dialSize / 4),
+                UsageDial(usage: u, size: dialSize),
               ],
             ],
           );
@@ -63,7 +66,12 @@ List<UsageWindow> ringOrder(List<UsageWindow> windows) => [...windows]..sort((a,
     return k != 0 ? k : (a.minutes ?? 0).compareTo(b.minutes ?? 0);
   });
 
-/// One provider's dial, and its card while hovered.
+/// Whether a limit gets a ring in the dial: only the plan's own five hours and week. The others
+/// (a model's or model group's week, a window of another length) are only in the card.
+bool hasRing(UsageWindow w) => w.scope == null && w.kind != UsageKind.other;
+
+/// One provider's dial, and its card while hovered (or, on a touch screen, from a tap on it
+/// until the next tap anywhere).
 class UsageDial extends StatefulWidget {
   const UsageDial({super.key, required this.usage, this.size = 40});
 
@@ -88,6 +96,19 @@ class _UsageDialState extends State<UsageDial> with SingleTickerProviderStateMix
     _hover.forward();
   }
 
+  void _tap() => _card.isShowing && _hover.status != AnimationStatus.reverse ? _hover.reverse() : _enter();
+
+  /// How far left of the dial the card starts: a little, unless that would take it past the
+  /// right edge of a narrow screen (the phone's), then as far as needed.
+  double _cardShift(BuildContext context) {
+    const shift = -6.0;
+    final box = this.context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return shift;
+    final width = MediaQuery.sizeOf(context).width;
+    final x = box.localToGlobal(Offset.zero).dx;
+    return math.max(8 - x, math.min(shift, width - 8 - _UsageCard.maxWidth(width) - x));
+  }
+
   @override
   void dispose() {
     _hover.dispose();
@@ -98,45 +119,54 @@ class _UsageDialState extends State<UsageDial> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final rings = ringOrder(widget.usage.windows);
-    return MouseRegion(
-      onEnter: (_) => _enter(),
-      onExit: (_) => _hover.reverse(),
-      child: OverlayPortal(
-        controller: _card,
-        overlayChildBuilder: (context) => CompositedTransformFollower(
-          link: _link,
-          targetAnchor: Alignment.topLeft,
-          followerAnchor: Alignment.bottomLeft,
-          offset: const Offset(-6, -8),
-          child: Align(
-            alignment: Alignment.bottomLeft,
-            child: IgnorePointer(
-              child: FadeTransition(
-                opacity: _curve,
-                child: ScaleTransition(
-                  scale: Tween(begin: 0.85, end: 1.0).animate(_curve),
-                  alignment: Alignment.bottomLeft,
-                  child: _UsageCard(usage: widget.usage, rings: rings, now: now),
+    final limits = ringOrder(widget.usage.windows);
+    final rings = limits.where(hasRing).toList();
+    // On a touch screen a tap opens the card, and the next tap anywhere closes it.
+    return TapRegion(
+      onTapOutside: (_) => _hover.reverse(),
+      child: GestureDetector(
+        supportedDevices: const {PointerDeviceKind.touch},
+        onTap: _tap,
+        child: MouseRegion(
+          onEnter: (_) => _enter(),
+          onExit: (_) => _hover.reverse(),
+          child: OverlayPortal(
+            controller: _card,
+            overlayChildBuilder: (context) => CompositedTransformFollower(
+              link: _link,
+              targetAnchor: Alignment.topLeft,
+              followerAnchor: Alignment.bottomLeft,
+              offset: Offset(_cardShift(context), -8),
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: IgnorePointer(
+                  child: FadeTransition(
+                    opacity: _curve,
+                    child: ScaleTransition(
+                      scale: Tween(begin: 0.85, end: 1.0).animate(_curve),
+                      alignment: Alignment.bottomLeft,
+                      child: _UsageCard(usage: widget.usage, limits: limits, now: now),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-        child: CompositedTransformTarget(
-          link: _link,
-          child: ScaleTransition(
-            scale: Tween(begin: 1.0, end: 1.18).animate(_curve),
-            child: Semantics(
-              label: widget.usage.provider.label,
-              child: SizedBox.square(
-                dimension: widget.size,
-                child: CustomPaint(
-                  painter: _RingsPainter([for (final w in rings) (w.leftAt(now), leftColor(w.leftAt(now)))]),
-                  child: Center(
-                    child: SizedBox.square(
-                      dimension: _logoSize(widget.size, rings.length),
-                      child: ProviderLogo(widget.usage.provider),
+            child: CompositedTransformTarget(
+              link: _link,
+              child: ScaleTransition(
+                scale: Tween(begin: 1.0, end: 1.18).animate(_curve),
+                child: Semantics(
+                  label: widget.usage.provider.label,
+                  child: SizedBox.square(
+                    dimension: widget.size,
+                    child: CustomPaint(
+                      painter: _RingsPainter([for (final w in rings) (w.leftAt(now), leftColor(w.leftAt(now)))]),
+                      child: Center(
+                        child: SizedBox.square(
+                          dimension: _logoSize(widget.size, rings.length),
+                          child: ProviderLogo(widget.usage.provider),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -188,23 +218,28 @@ class _RingsPainter extends CustomPainter {
       old.left.length != left.length || [for (var i = 0; i < left.length; i++) old.left[i] != left[i]].any((d) => d);
 }
 
-/// The card a hovered dial opens: per ring (same order and color) which limit it is, the percent
-/// left, when it starts over, and where it is heading (when it runs out, if before).
+/// The card a hovered dial opens: per limit (the rings' first, in their order and color, then a
+/// model's own) which limit it is, the percent left, when it starts over, and where it is heading
+/// (when it runs out, if before).
 class _UsageCard extends StatelessWidget {
-  const _UsageCard({required this.usage, required this.rings, required this.now});
+  const _UsageCard({required this.usage, required this.limits, required this.now});
 
   final ProviderUsage usage;
-  final List<UsageWindow> rings;
+  final List<UsageWindow> limits;
   final DateTime now;
+
+  /// The card's widest, on a screen [width] wide.
+  static double maxWidth(double width) => math.min(360, width - 16);
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final t = Theme.of(context).textTheme;
+    final max = maxWidth(MediaQuery.sizeOf(context).width);
     return Material(
       type: MaterialType.transparency,
       child: Container(
-        constraints: const BoxConstraints(minWidth: 240, maxWidth: 360),
+        constraints: BoxConstraints(minWidth: math.min(240, max), maxWidth: max),
         padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
         decoration: BoxDecoration(
           color: const Color(0xF2141019),
@@ -225,7 +260,7 @@ class _UsageCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            for (final w in rings) _row(context, l, t, w),
+            for (final w in limits) _row(context, l, t, w),
           ],
         ),
       ),

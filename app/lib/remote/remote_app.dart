@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../app/main_view.dart';
 import '../l10n/l10n.dart';
+import '../usage/usage_rings.dart';
 import 'protocol.dart';
 import 'remote_assistant.dart';
 import 'remote_settings.dart';
@@ -164,6 +165,12 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
                       return MainView(
                         assistant: a,
                         compactOrb: 96,
+                        leading: a.ready
+                            ? Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: UsageRings(monitor: a.usage, dialSize: 34),
+                              )
+                            : null,
                         actions: [
                           IconButton(
                             tooltip: AppLocalizations.of(context).settings,
