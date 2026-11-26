@@ -29,6 +29,7 @@ class MainView extends StatelessWidget {
     this.right,
     this.compactOrb = 180,
     this.showDisplay = true,
+    this.muteKey,
   });
 
   final AssistantUi assistant;
@@ -55,6 +56,9 @@ class MainView extends StatelessWidget {
 
   /// Draws the display (false while it is shown elsewhere, as a widget over other apps).
   final bool showDisplay;
+
+  /// The name of the key that unmutes the mic, for the status bar (null: the space bar's note).
+  final String? muteKey;
 
   void _tapOrb() {
     if (!assistant.ready) return;
@@ -140,7 +144,8 @@ class MainView extends StatelessWidget {
           ),
           // The workers' count only when their cards are not on screen (a view is shown, or the
           // window is narrow).
-          StatusBar(assistant: a, actions: actions, leading: leading, jobs: right == null || !sides),
+          StatusBar(
+              assistant: a, actions: actions, leading: leading, jobs: right == null || !sides, muteKey: muteKey),
         ],
       );
     });
@@ -148,7 +153,8 @@ class MainView extends StatelessWidget {
 }
 
 class StatusBar extends StatelessWidget {
-  const StatusBar({super.key, required this.assistant, this.actions = const [], this.leading, this.jobs = true});
+  const StatusBar(
+      {super.key, required this.assistant, this.actions = const [], this.leading, this.jobs = true, this.muteKey});
 
   static const height = 52.0;
 
@@ -158,6 +164,9 @@ class StatusBar extends StatelessWidget {
 
   /// Shows how many background jobs run.
   final bool jobs;
+
+  /// See [MainView.muteKey].
+  final String? muteKey;
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +200,7 @@ class StatusBar extends StatelessWidget {
             const SizedBox(width: 16),
           ],
           if (a.muted && !narrow)
-            Text(l.micMuted,
+            Text(muteKey == null ? l.micMuted : l.micMutedKey(muteKey!),
                 style: t.bodySmall?.copyWith(color: Colors.redAccent.withValues(alpha: 0.8))),
           if (a.ready && a.linkNote.isNotEmpty && !narrow) ...[
             const SizedBox(width: 16),

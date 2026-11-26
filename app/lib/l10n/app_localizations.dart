@@ -170,6 +170,78 @@ abstract class AppLocalizations {
   /// **'Microphone muted · space to unmute'**
   String get micMuted;
 
+  /// Status bar while the mic is muted, with the mute key.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone muted · {key} to unmute'**
+  String micMutedKey(String key);
+
+  /// Setting: the key that mutes and unmutes the mic, and the tooltip of its button.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute key'**
+  String get muteKey;
+
+  /// Mute key dialog: the current key.
+  ///
+  /// In en, this message translates to:
+  /// **'Mutes and unmutes the mic: {key}'**
+  String muteKeyCurrent(String key);
+
+  /// Mute key dialog: where each kind of key works.
+  ///
+  /// In en, this message translates to:
+  /// **'A key on its own works while Minerva is on screen and you are not typing. Caps Lock and combos with ⌘ or ⌃ work in any app, also while Minerva is closed.'**
+  String get muteKeyHint;
+
+  /// Mute key dialog: waiting for the key.
+  ///
+  /// In en, this message translates to:
+  /// **'Press the new key or combo… (Esc cancels)'**
+  String get muteKeyRecording;
+
+  /// Mute key dialog: record a new key.
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get muteKeyChange;
+
+  /// Mute key dialog: make Caps Lock the mute key.
+  ///
+  /// In en, this message translates to:
+  /// **'Use Caps Lock'**
+  String get muteKeyCapsLock;
+
+  /// Mute key dialog: back to the default key.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to Space'**
+  String get muteKeyReset;
+
+  /// Mute key dialog: the permission is missing.
+  ///
+  /// In en, this message translates to:
+  /// **'To use it in other apps, Minerva needs Accessibility (and maybe Input Monitoring) in System Settings → Privacy & Security.'**
+  String get muteKeyNoAccess;
+
+  /// Mute key dialog: ask for the permission.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get muteKeyGrant;
+
+  /// Name of the space bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Space'**
+  String get keySpace;
+
+  /// Name of the Caps Lock key.
+  ///
+  /// In en, this message translates to:
+  /// **'Caps Lock'**
+  String get keyCapsLock;
+
   /// Status bar on the Mac while the phone remote is connected.
   ///
   /// In en, this message translates to:

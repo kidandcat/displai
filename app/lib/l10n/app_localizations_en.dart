@@ -61,6 +61,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String get micMuted => 'Microphone muted · space to unmute';
 
   @override
+  String micMutedKey(String key) {
+    return 'Microphone muted · $key to unmute';
+  }
+
+  @override
+  String get muteKey => 'Mute key';
+
+  @override
+  String muteKeyCurrent(String key) {
+    return 'Mutes and unmutes the mic: $key';
+  }
+
+  @override
+  String get muteKeyHint =>
+      'A key on its own works while Minerva is on screen and you are not typing. Caps Lock and combos with ⌘ or ⌃ work in any app, also while Minerva is closed.';
+
+  @override
+  String get muteKeyRecording => 'Press the new key or combo… (Esc cancels)';
+
+  @override
+  String get muteKeyChange => 'Change';
+
+  @override
+  String get muteKeyCapsLock => 'Use Caps Lock';
+
+  @override
+  String get muteKeyReset => 'Reset to Space';
+
+  @override
+  String get muteKeyNoAccess =>
+      'To use it in other apps, Minerva needs Accessibility (and maybe Input Monitoring) in System Settings → Privacy & Security.';
+
+  @override
+  String get muteKeyGrant => 'Open settings';
+
+  @override
+  String get keySpace => 'Space';
+
+  @override
+  String get keyCapsLock => 'Caps Lock';
+
+  @override
   String get linkNoteOnPhone => 'Phone connected · the Mac is silent';
 
   @override

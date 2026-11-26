@@ -44,6 +44,7 @@ import '../voice/speaker.dart';
 import '../webhooks/webhook_tools.dart';
 import '../webhooks/webhooks.dart';
 import 'assistant_ui.dart';
+import 'mute_key.dart';
 import 'settings.dart';
 
 /// Wires voice, brain and display together (docs/design.md §2 and §5).
@@ -346,6 +347,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       limits = ProviderLimits(store: store, onChange: notifyListeners);
       activeBrainModel = limits.pick(brainChain);
       voice = validVoice(int.tryParse(store.get('voice') ?? '')) ?? voice;
+      _muteKey = MuteKey.decode(store.get('mute_key')) ?? MuteKey.space;
       vault = await Vault.open('${store.dir}/vault');
       vault.addListener(_pushSettings);
       projects = Projects('${store.dir}/projects');
@@ -433,6 +435,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         ..start();
       window.onOpenRequested = () => unawaited(_useMac(false));
       await window.init();
+      unawaited(window.setMuteKey(_muteKey));
       window.addListener(_syncAudio);
       window.addListener(_syncAway);
       _syncAudio();
@@ -478,6 +481,19 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     if (tell) notify('[settings] The user changed Minerva\'s language.\n$section');
     notifyListeners();
     return section;
+  }
+
+  // ---------------------------------------------------------------- mute key
+
+  /// The key that mutes and unmutes the Mac's mic (desktop only).
+  MuteKey get muteKey => _muteKey;
+  MuteKey _muteKey = MuteKey.space;
+
+  void setMuteKey(MuteKey key) {
+    _muteKey = key;
+    store.set('mute_key', key == MuteKey.space ? null : key.encode());
+    unawaited(window.setMuteKey(key));
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------- voice

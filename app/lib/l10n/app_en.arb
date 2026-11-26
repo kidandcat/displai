@@ -68,6 +68,64 @@
   "@micMuted": {
     "description": "Status bar while the mic is muted."
   },
+  "micMutedKey": "Microphone muted · {key} to unmute",
+  "@micMutedKey": {
+    "description": "Status bar while the mic is muted, with the mute key.",
+    "placeholders": {
+      "key": {
+        "type": "String"
+      }
+    }
+  },
+  "muteKey": "Mute key",
+  "@muteKey": {
+    "description": "Setting: the key that mutes and unmutes the mic, and the tooltip of its button."
+  },
+  "muteKeyCurrent": "Mutes and unmutes the mic: {key}",
+  "@muteKeyCurrent": {
+    "description": "Mute key dialog: the current key.",
+    "placeholders": {
+      "key": {
+        "type": "String"
+      }
+    }
+  },
+  "muteKeyHint": "A key on its own works while Minerva is on screen and you are not typing. Caps Lock and combos with ⌘ or ⌃ work in any app, also while Minerva is closed.",
+  "@muteKeyHint": {
+    "description": "Mute key dialog: where each kind of key works."
+  },
+  "muteKeyRecording": "Press the new key or combo… (Esc cancels)",
+  "@muteKeyRecording": {
+    "description": "Mute key dialog: waiting for the key."
+  },
+  "muteKeyChange": "Change",
+  "@muteKeyChange": {
+    "description": "Mute key dialog: record a new key."
+  },
+  "muteKeyCapsLock": "Use Caps Lock",
+  "@muteKeyCapsLock": {
+    "description": "Mute key dialog: make Caps Lock the mute key."
+  },
+  "muteKeyReset": "Reset to Space",
+  "@muteKeyReset": {
+    "description": "Mute key dialog: back to the default key."
+  },
+  "muteKeyNoAccess": "To use it in other apps, Minerva needs Accessibility (and maybe Input Monitoring) in System Settings → Privacy & Security.",
+  "@muteKeyNoAccess": {
+    "description": "Mute key dialog: the permission is missing."
+  },
+  "muteKeyGrant": "Open settings",
+  "@muteKeyGrant": {
+    "description": "Mute key dialog: ask for the permission."
+  },
+  "keySpace": "Space",
+  "@keySpace": {
+    "description": "Name of the space bar."
+  },
+  "keyCapsLock": "Caps Lock",
+  "@keyCapsLock": {
+    "description": "Name of the Caps Lock key."
+  },
   "linkNoteOnPhone": "Phone connected · the Mac is silent",
   "@linkNoteOnPhone": {
     "description": "Status bar on the Mac while the phone remote is connected."

@@ -62,6 +62,49 @@ class AppLocalizationsEs extends AppLocalizations {
   String get micMuted => 'Micrófono silenciado · espacio para activar';
 
   @override
+  String micMutedKey(String key) {
+    return 'Micrófono silenciado · $key para activar';
+  }
+
+  @override
+  String get muteKey => 'Tecla de silencio';
+
+  @override
+  String muteKeyCurrent(String key) {
+    return 'Silencia y activa el micrófono: $key';
+  }
+
+  @override
+  String get muteKeyHint =>
+      'Una tecla sola funciona mientras Minerva está en pantalla y no estás escribiendo. Bloq Mayús y las combinaciones con ⌘ o ⌃ funcionan en cualquier app, también con Minerva cerrada.';
+
+  @override
+  String get muteKeyRecording =>
+      'Pulsa la nueva tecla o combinación… (Esc cancela)';
+
+  @override
+  String get muteKeyChange => 'Cambiar';
+
+  @override
+  String get muteKeyCapsLock => 'Usar Bloq Mayús';
+
+  @override
+  String get muteKeyReset => 'Volver a Espacio';
+
+  @override
+  String get muteKeyNoAccess =>
+      'Para usarla en otras apps, Minerva necesita Accesibilidad (y quizá Monitorización de entrada) en Ajustes del Sistema → Privacidad y seguridad.';
+
+  @override
+  String get muteKeyGrant => 'Abrir ajustes';
+
+  @override
+  String get keySpace => 'Espacio';
+
+  @override
+  String get keyCapsLock => 'Bloq Mayús';
+
+  @override
   String get linkNoteOnPhone => 'Móvil conectado · el Mac está en silencio';
 
   @override

@@ -604,9 +604,19 @@ barge-in.
   or within 2 s after it started, the barge-in is treated as a continuation: the previous transcript
   and the new one are merged and sent as one turn. Latency stays low and split sentences are fixed;
   tested live.
-- **Activation**: always listening while the app runs. **Space** toggles mute while the window has
-  focus (not while a form text field has focus); the status-bar mic button does the same. A global
-  push-to-talk hotkey (e.g. hold ⌥Space) is planned after v0. A spoken wake word is not in v0: sherpa-onnx ships
+- **Activation**: always listening while the app runs. The **mute key** toggles mute; tapping the
+  orb does the same. It is **Space** by default and can be changed in the status bar's keyboard
+  button: record any key or combo, pick **Caps Lock**, or go back to Space (stored as `mute_key`).
+  A key that types (Space, a letter, ⌥ or ⇧ combos) works while Minerva is on screen, in its window
+  and in other apps, but not while a text field has the keyboard (Minerva's own, a custom page's, or
+  the focused element of the app in front, read through Accessibility). Caps Lock and combos with ⌘
+  or ⌃ are global: they work in any app, also while Minerva is closed. Natively (`MuteKey` in
+  MainFlutterWindow.swift) a local event monitor takes the key in Minerva's window (no permission
+  needed) and a keyboard event tap in the other apps; the tap needs Accessibility (and Input
+  Monitoring on some systems: Minerva asks for it when the tap cannot be created) and is retried
+  every few seconds until it is granted; the settings dialog says when it is missing. Caps Lock
+  arrives as a modifier change: each press that turns it on counts, and Minerva turns it off again
+  through the HID system, so it never stays on (if macOS refuses, each toggle counts). A spoken wake word is not in v0: sherpa-onnx ships
   only English/Chinese KWS models. Options later: English-token wake word ("Hey Display") with the
   gigaspeech KWS model, or a custom-trained one.
 - Known STT issue: Parakeet v3 detects the language itself, and very short fragments ("for",
@@ -690,7 +700,7 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
 - **No scrolling**: one view = one screen; views are kept short.
 - **Ordinals**: every selectable item gets a visible number; `get_state` reports them so the agent can
   resolve "la segunda", "el último", "ese".
-- Settings: provider and model (with fallbacks), voice, input device, hotkey, "use my Claude Code settings" toggle. The voice
+- Settings: provider and model (with fallbacks), voice, input device, mute key, "use my Claude Code settings" toggle. The voice
   button picks one of Supertonic 3's ten speakers (female 1–5, male 1–5; `kv.voice`), from the next sentence.
 
 ### 7.1 Language
@@ -732,7 +742,7 @@ In:
 - Claude Code session manager (spawn, warm, stream-json, interrupt, restart on crash).
 - Local VAD + Parakeet v3 STT + Supertonic 3 TTS, sentence streaming.
 - Native macOS audio plugin (voice processing: echo-cancelled capture + playback).
-- Full-duplex with voice barge-in and continuation merge; Space mute toggle; earcon; thinking strip.
+- Full-duplex with voice barge-in and continuation merge; configurable global mute key (Space, a combo or Caps Lock); earcon; thinking strip.
 - Embedded MCP with `show`, `update`, `form`, `video`, `clear`, `get_state`, `snapshot`, plus the host
   tools (§3.5), which run without confirmations (the prompts carry the safety rules).
 - A2UI rendering via genui with high-level catalog items; progressive rendering of `show`.

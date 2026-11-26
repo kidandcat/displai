@@ -6,6 +6,7 @@ import 'package:flutter/painting.dart' show EdgeInsets;
 import 'package:flutter/services.dart';
 
 import '../l10n/l10n.dart';
+import 'mute_key.dart';
 
 /// Dart side of the desktop window's states (macos/Runner/MainFlutterWindow.swift).
 ///
@@ -53,8 +54,19 @@ class DesktopWindow extends ChangeNotifier {
   /// Minerva works in other apps.
   VoidCallback? onOpenRequested;
 
-  /// The space bar was pressed in another app while the window is on screen.
-  VoidCallback? onSpace;
+  /// The mute key was pressed, in Minerva's window or in another app (see [MuteKey]).
+  VoidCallback? onMuteKey;
+
+  bool _keyAccess = true;
+  bool _keyActive = false;
+
+  /// Minerva has the Accessibility permission, which the mute key needs in other apps.
+  bool get keyAccess => _keyAccess;
+
+  /// The mute key works in other apps too (the native keyboard tap is in place).
+  bool get keyActive => _keyActive;
+
+  bool _typing = false;
 
   Future<void>? _connected;
 
@@ -72,8 +84,10 @@ class DesktopWindow extends ChangeNotifier {
           _apply(call.arguments as Map);
         case 'openRequested':
           onOpenRequested?.call();
-        case 'space':
-          onSpace?.call();
+        case 'muteKey':
+          onMuteKey?.call();
+        case 'muteKeyStatus':
+          _applyKeyStatus(call.arguments);
       }
       return null;
     });
@@ -168,6 +182,54 @@ class DesktopWindow extends ChangeNotifier {
   static Locale _parseLocale(String tag) {
     final parts = tag.split(RegExp('[-_]'));
     return Locale(parts.first, parts.length > 1 && parts[1].length == 2 ? parts[1] : null);
+  }
+
+  /// Makes [key] the mute key.
+  Future<void> setMuteKey(MuteKey key) async {
+    try {
+      _applyKeyStatus(await _channel.invokeMethod('setMuteKey', {'code': key.code, 'modifiers': key.modifiers}));
+    } on MissingPluginException {
+      return;
+    }
+  }
+
+  /// The next key or combo the user presses in Minerva's window, which the window does not get
+  /// (null: Escape, or [cancelMuteKeyRecord]).
+  Future<MuteKey?> recordMuteKey() async {
+    try {
+      final r = await _channel.invokeMapMethod<String, Object?>('recordMuteKey');
+      if (r == null) return null;
+      return MuteKey(r['code'] as int, modifiers: r['modifiers'] as int? ?? 0, char: r['char'] as String? ?? '');
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  Future<void> cancelMuteKeyRecord() => _invoke('cancelMuteKey');
+
+  /// Asks macOS for the permissions the mute key needs in other apps.
+  Future<void> requestKeyAccess() async {
+    try {
+      _applyKeyStatus(await _channel.invokeMethod('requestKeyAccess'));
+    } on MissingPluginException {
+      return;
+    }
+  }
+
+  /// A text field of Minerva's has the keyboard: the mute key types there (unless it is global).
+  void setTyping(bool typing) {
+    if (typing == _typing) return;
+    _typing = typing;
+    unawaited(_invoke('setTyping', typing));
+  }
+
+  void _applyKeyStatus(Object? status) {
+    if (status is! Map) return;
+    final access = status['accessibility'] == true, active = status['active'] == true;
+    if (access == _keyAccess && active == _keyActive) return;
+    _keyAccess = access;
+    _keyActive = active;
+    notifyListeners();
   }
 
   /// Opens the normal window.

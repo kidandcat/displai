@@ -2,6 +2,7 @@ import AVFoundation
 import Carbon.HIToolbox
 import Cocoa
 import FlutterMacOS
+import IOKit.hidsystem
 import WebKit
 import webview_flutter_wkwebview
 
@@ -19,21 +20,27 @@ import webview_flutter_wkwebview
 ///            other apps of the Mac (reason "computer") or while the user is in another app (reason
 ///            "away"). It never keeps the keyboard: the app the user (or Minerva) works in stays
 ///            in front. It goes back to open or hidden afterwards.
-/// While the window is on screen the space bar toggles the mic from any app ([SpaceKey]).
+/// The mute key (the space bar by default) toggles the mic from any app ([MuteKey]).
 ///
 /// Method channel `minerva/window`:
 ///   Dart → native  state() -> State   setOverlay({on, reason})   show()   hide()
 ///                  setHitRects([[x, y, w, h]])   setPanel([x, y, w, h])   setOrb([x, y])
 ///                  contextMenu()   setLanguage({code, save})   systemLanguages() -> [String]
+///                  setMuteKey({code, modifiers}) -> MuteKeyStatus   muteKeyStatus() -> MuteKeyStatus
+///                  recordMuteKey() -> {code, modifiers, char} or nil   cancelMuteKey()
+///                  setTyping(bool)   requestKeyAccess() -> MuteKeyStatus
 ///   native → Dart  state(State)   openRequested()   (the user asked for the window while it is
-///                  the orb)   space()   (the space bar was pressed in another app)
+///                  the orb)   muteKey()   (the mute key was pressed)   muteKeyStatus(MuteKeyStatus)
 /// State: {open, overlay, reason, insets: [left, top, right, bottom] (the menu bar and the Dock),
 /// panel: [x, y, w, h], orb: [x, y] or nil}. Rects are in points from the window's top-left.
+/// MuteKeyStatus: {accessibility, active} (the permission, and the key works).
 class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var audio: VoiceAudio?
   private var computer: ComputerControl?
   private var channel: FlutterMethodChannel?
-  private let spaceKey = SpaceKey()
+  private let muteKey = MuteKey()
+  /// The pending recordMuteKey call.
+  private var recording: FlutterResult?
 
   /// The user has the window open (not closed).
   private(set) var userOpen = false
@@ -96,7 +103,13 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     let channel = FlutterMethodChannel(name: "minerva/window", binaryMessenger: engine.binaryMessenger)
     channel.setMethodCallHandler { [weak self] call, result in self?.handle(call, result) }
     self.channel = channel
-    spaceKey.onPress = { [weak self] in self?.channel?.invokeMethod("space", arguments: nil) }
+    muteKey.window = self
+    muteKey.onPress = { [weak self] in self?.channel?.invokeMethod("muteKey", arguments: nil) }
+    muteKey.onActive = { [weak self] in
+      guard let self = self else { return }
+      self.channel?.invokeMethod("muteKeyStatus", arguments: self.muteKeyStatus)
+    }
+    muteKey.start()
     delegate = self
     NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -181,6 +194,38 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       result(nil)
     case "systemLanguages":
       result(AppDelegate.systemLanguages)
+    case "setMuteKey":
+      let args = call.arguments as? [String: Any] ?? [:]
+      muteKey.set(
+        code: (args["code"] as? NSNumber)?.int64Value ?? Int64(kVK_Space),
+        flags: MuteKey.flags((args["modifiers"] as? NSNumber)?.intValue ?? 0))
+      result(muteKeyStatus)
+    case "muteKeyStatus":
+      result(muteKeyStatus)
+    case "recordMuteKey":
+      recording?(nil)
+      recording = result
+      muteKey.record { [weak self] code, flags in
+        guard let self = self, let done = self.recording else { return }
+        self.recording = nil
+        done(code.map { ["code": $0, "modifiers": MuteKey.bits(flags), "char": MuteKey.character($0)] })
+      }
+    case "cancelMuteKey":
+      muteKey.record(nil)
+      recording?(nil)
+      recording = nil
+      result(nil)
+    case "setTyping":
+      muteKey.typing = call.arguments as? Bool ?? false
+      result(nil)
+    case "requestKeyAccess":
+      let prompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+      if !AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary) {
+        result(muteKeyStatus)
+        return
+      }
+      if !CGPreflightListenEventAccess() { _ = CGRequestListenEventAccess() }
+      result(muteKeyStatus)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -227,6 +272,10 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
   private func notify() {
     channel?.invokeMethod("state", arguments: state)
+  }
+
+  private var muteKeyStatus: [String: Any] {
+    ["accessibility": AXIsProcessTrusted(), "active": muteKey.active]
   }
 
   /// A titled window keeps out of the menu bar; this one covers the whole screen.
@@ -279,14 +328,14 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       RunLoop.main.add(t, forMode: .common)
       hitTimer = t
     }
-    spaceKey.enabled = true
+    muteKey.enabled = true
   }
 
   private func conceal() {
     orderOut(nil)
     hitTimer?.invalidate()
     hitTimer = nil
-    spaceKey.enabled = false
+    muteKey.enabled = false
     NSApp.setActivationPolicy(.accessory)
   }
 
@@ -454,84 +503,302 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   }
 }
 
-/// The space bar toggles Minerva's mic from any app while Minerva is on screen: a keyboard event
-/// tap (it needs the Accessibility permission Minerva already has for computer use) takes a bare
-/// space press away from the app in front, unless the user is typing in a text field there or
-/// Minerva itself is in front (Flutter handles it then). Minerva's own key presses are tagged and
-/// go through. The tap runs on its own thread, so the keyboard never waits for the UI.
-final class SpaceKey {
+/// The mute key toggles Minerva's mic from any app: the space bar unless the user picked another
+/// key, a combo or Caps Lock in the settings. In Minerva's own window a local event monitor takes
+/// it (no permission needed); in the other apps a keyboard event tap does (it needs the
+/// Accessibility permission Minerva already has for computer use, and Input Monitoring on some
+/// systems). A key that types (no ⌘ or ⌃) works only while Minerva is on screen, and not while the
+/// user is typing in a text field: Minerva's own ([typing], told by Flutter, or a web page's) or
+/// the one of the app in front. A combo with ⌘ or ⌃, and Caps Lock, work everywhere, also while
+/// Minerva is hidden. Caps Lock is turned off again after each press, so it never stays on.
+/// Minerva's own key presses are tagged and go through. The tap runs on its own thread, so the
+/// keyboard never waits for the UI.
+final class MuteKey {
   /// Called on the main thread on each press taken.
   var onPress: (() -> Void)?
+  /// Called on the main thread once the tap works (the permission may come later).
+  var onActive: (() -> Void)?
+  /// Minerva's window, to tell whether a web page in it has the keyboard.
+  weak var window: NSWindow?
 
+  static let capsLock = Int64(kVK_CapsLock)
+  /// The modifiers a combo is made of (not fn, which arrow and function keys carry on their own).
+  static let modifiers: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
+
+  /// Minerva is on screen.
   var enabled: Bool {
-    get {
-      lock.lock()
-      defer { lock.unlock() }
-      return on
-    }
+    get { locked { on } }
     set {
-      lock.lock()
-      on = newValue
-      lock.unlock()
+      locked { on = newValue }
       if newValue { install() }
     }
   }
 
+  /// A text field of Minerva's own has the keyboard focus. Main thread.
+  var typing = false
+
+  /// The tap is in place: the key works in the other apps.
+  var active: Bool { locked { tap != nil } }
+
   private let lock = NSLock()
   private var on = false
+  private var code = Int64(kVK_Space)
+  private var flags: CGEventFlags = []
+  /// Caps Lock can be turned off from here (else each of its toggles counts as a press).
+  private var capsReset = true
   private var tap: CFMachPort?
   private var thread: Thread?
-  /// The last space press was taken: its repeats and its release are taken too.
-  private var taking = false
+  private var retrying = false
+  /// The key whose press the tap took: its repeats and its release are taken too (tap thread only).
+  private var taken: Int64?
+  /// The same for the local monitor (main thread).
+  private var takenHere: Int64?
+  private var monitor: Any?
+  private var recorder: ((Int64?, CGEventFlags) -> Void)? {
+    didSet { locked { recordingNow = recorder != nil } }
+  }
+  /// [recorder] is set, for the tap thread.
+  private var recordingNow = false
+
+  private func locked<T>(_ body: () -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body()
+  }
+
+  /// Caps Lock, and combos with ⌘ or ⌃, which type nothing: they work in every app, at any time.
+  private static func isGlobal(_ code: Int64, _ flags: CGEventFlags) -> Bool {
+    code == capsLock || !flags.intersection([.maskCommand, .maskControl]).isEmpty
+  }
+
+  /// Starts listening in Minerva's own window. Main thread.
+  func start() {
+    guard monitor == nil else { return }
+    monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] e in
+      self?.local(e) ?? e
+    }
+  }
+
+  /// The key: a virtual key code ([kVK_Space], [capsLock]…) and [modifiers]. Main thread.
+  func set(code: Int64, flags: CGEventFlags) {
+    let f = flags.intersection(Self.modifiers)
+    locked {
+      self.code = code
+      self.flags = f
+    }
+    if code == Self.capsLock {
+      let ok = Self.capsLockOff()
+      locked { capsReset = ok }
+    }
+    if Self.isGlobal(code, f) { install() }
+  }
+
+  /// Hands the next key or combo pressed in Minerva's window to [done] instead of to the window
+  /// (nil for Escape, which cancels); nil stops waiting. Main thread.
+  func record(_ done: ((Int64?, CGEventFlags) -> Void)?) {
+    recorder = done
+  }
+
+  private var wanted: Bool { locked { on || Self.isGlobal(code, flags) } }
 
   private func install() {
-    guard thread == nil, AXIsProcessTrusted() else { return }
+    guard thread == nil else { return }
+    guard AXIsProcessTrusted() else { return retryLater() }
     let t = Thread { [weak self] in
       guard let self = self else { return }
       let mask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+        | (1 << CGEventType.flagsChanged.rawValue)
       guard let port = CGEvent.tapCreate(
         tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
         eventsOfInterest: CGEventMask(mask),
         callback: { _, type, event, info in
-          Unmanaged<SpaceKey>.fromOpaque(info!).takeUnretainedValue().handle(type, event)
+          Unmanaged<MuteKey>.fromOpaque(info!).takeUnretainedValue().handle(type, event)
         },
         userInfo: Unmanaged.passUnretained(self).toOpaque())
       else {
-        DispatchQueue.main.async { self.thread = nil }
+        DispatchQueue.main.async {
+          self.thread = nil
+          // Accessibility is not always enough to see the keyboard: ask for Input Monitoring too.
+          if !CGPreflightListenEventAccess() { _ = CGRequestListenEventAccess() }
+          self.retryLater()
+        }
         return
       }
-      self.tap = port
+      self.locked { self.tap = port }
+      DispatchQueue.main.async { self.onActive?() }
       CFRunLoopAddSource(CFRunLoopGetCurrent(), CFMachPortCreateRunLoopSource(nil, port, 0), .commonModes)
       CFRunLoopRun()
     }
-    t.name = "minerva.space"
+    t.name = "minerva.mutekey"
     thread = t
     t.start()
   }
 
+  /// Tries again in a while: the user may still grant the permission.
+  private func retryLater() {
+    guard !retrying else { return }
+    retrying = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+      guard let self = self else { return }
+      self.retrying = false
+      if self.wanted { self.install() }
+    }
+  }
+
+  private static var minervaInFront: Bool {
+    NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+  }
+
+  // The tap (its own thread): the other apps, and the global keys everywhere.
+
   private func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
     let pass = Unmanaged.passUnretained(event)
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-      if let tap = tap { CGEvent.tapEnable(tap: tap, enable: true) }
+      if let tap = locked({ tap }) { CGEvent.tapEnable(tap: tap, enable: true) }
       return pass
     }
-    guard event.getIntegerValueField(.keyboardEventKeycode) == Int64(kVK_Space) else { return pass }
-    if type == .keyUp {
-      let took = taking
-      taking = false
-      return took ? nil : pass
+    let code = event.getIntegerValueField(.keyboardEventKeycode)
+    if type == .flagsChanged {
+      if code == Self.capsLock { capsLockToggled(on: event.flags.contains(.maskAlphaShift)) }
+      return pass
     }
-    if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return taking ? nil : pass }
-    taking = false
-    guard enabled,
-      event.getIntegerValueField(.eventSourceUserData) != ComputerControl.syntheticEventTag,
-      event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn]).isEmpty,
-      NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-      !Self.typingInFocusedField()
-    else { return pass }
-    taking = true
+    if type == .keyUp {
+      guard code == taken else { return pass }
+      taken = nil
+      return nil
+    }
+    if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return code == taken ? nil : pass }
+    taken = nil
+    guard event.getIntegerValueField(.eventSourceUserData) != ComputerControl.syntheticEventTag else { return pass }
+    let (key, keyFlags, on, recording) = locked { (self.code, self.flags, self.on, recordingNow) }
+    // The key being recorded goes to Minerva's window.
+    if recording && Self.minervaInFront { return pass }
+    guard code == key, event.flags.intersection(Self.modifiers) == keyFlags, key != Self.capsLock else { return pass }
+    if !Self.isGlobal(key, keyFlags) {
+      // In Minerva's window the local monitor decides.
+      guard on, !Self.minervaInFront, !Self.typingInFocusedField() else { return pass }
+    }
+    taken = code
     DispatchQueue.main.async { [weak self] in self?.onPress?() }
     return nil
+  }
+
+  /// Caps Lock went on or off (tap thread). Each press counts while Caps Lock is the key; once
+  /// Minerva turns it off after a press, only the presses that turn it on are the user's.
+  private func capsLockToggled(on capsOn: Bool) {
+    let (key, reset) = locked { (code, capsReset) }
+    guard key == Self.capsLock, capsOn || !reset else { return }
+    DispatchQueue.main.async { [weak self] in
+      // While recording, the local monitor has it.
+      guard let self = self, self.recorder == nil || !Self.minervaInFront else { return }
+      self.capsPressed()
+    }
+  }
+
+  private func capsPressed() {
+    let ok = Self.capsLockOff()
+    locked { capsReset = ok }
+    onPress?()
+  }
+
+  // The local monitor (main thread): Minerva's own window.
+
+  private func local(_ e: NSEvent) -> NSEvent? {
+    let code = Int64(e.keyCode)
+    let pressed = e.cgEvent?.flags.intersection(Self.modifiers) ?? []
+    if e.type == .flagsChanged {
+      guard code == Self.capsLock else { return e }
+      if let done = recorder {
+        recorder = nil
+        done(Self.capsLock, [])
+      } else if !active, locked({ self.code }) == Self.capsLock,
+        e.modifierFlags.contains(.capsLock) || !locked({ capsReset })
+      {
+        capsPressed()
+      }
+      return e
+    }
+    if e.type == .keyUp {
+      guard code == takenHere else { return e }
+      takenHere = nil
+      return nil
+    }
+    if e.isARepeat { return code == takenHere ? nil : e }
+    takenHere = nil
+    if e.cgEvent?.getIntegerValueField(.eventSourceUserData) == ComputerControl.syntheticEventTag { return e }
+    if let done = recorder {
+      recorder = nil
+      takenHere = code
+      done(code == Int64(kVK_Escape) && pressed.isEmpty ? nil : code, pressed)
+      return nil
+    }
+    let (key, keyFlags) = locked { (self.code, self.flags) }
+    guard code == key, pressed == keyFlags, key != Self.capsLock else { return e }
+    // The tap already took a global key.
+    if Self.isGlobal(key, keyFlags) && active { return e }
+    if !Self.isGlobal(key, keyFlags) && (typing || webPageHasKeyboard) { return e }
+    takenHere = code
+    onPress?()
+    return nil
+  }
+
+  /// A custom page (a web view) on the display has the keyboard: its keys are its own.
+  private var webPageHasKeyboard: Bool {
+    var v = window?.firstResponder as? NSView
+    while let view = v {
+      if view is WKWebView { return true }
+      v = view.superview
+    }
+    return false
+  }
+
+  /// Turns Caps Lock off through the HID system; false when macOS does not let it.
+  static func capsLockOff() -> Bool {
+    let service = IOServiceGetMatchingService(mach_port_t(MACH_PORT_NULL), IOServiceMatching(kIOHIDSystemClass))
+    guard service != 0 else { return false }
+    defer { IOObjectRelease(service) }
+    var connect: io_connect_t = 0
+    guard IOServiceOpen(service, mach_task_self_, UInt32(kIOHIDParamConnectType), &connect) == KERN_SUCCESS
+    else { return false }
+    defer { IOServiceClose(connect) }
+    return IOHIDSetModifierLockState(connect, Int32(kIOHIDCapsLockState), false) == KERN_SUCCESS
+  }
+
+  /// [modifiers] as Dart sends them: 1 ⌘, 2 ⌃, 4 ⌥, 8 ⇧.
+  static func flags(_ bits: Int) -> CGEventFlags {
+    var f: CGEventFlags = []
+    if bits & 1 != 0 { f.insert(.maskCommand) }
+    if bits & 2 != 0 { f.insert(.maskControl) }
+    if bits & 4 != 0 { f.insert(.maskAlternate) }
+    if bits & 8 != 0 { f.insert(.maskShift) }
+    return f
+  }
+
+  static func bits(_ f: CGEventFlags) -> Int {
+    (f.contains(.maskCommand) ? 1 : 0) | (f.contains(.maskControl) ? 2 : 0)
+      | (f.contains(.maskAlternate) ? 4 : 0) | (f.contains(.maskShift) ? 8 : 0)
+  }
+
+  /// What [code] types on the current keyboard layout without modifiers, upper-cased; empty for
+  /// keys that type nothing visible. Main thread (Text Input Sources).
+  static func character(_ code: Int64) -> String {
+    guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+      let ptr = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+    else { return "" }
+    let data = Unmanaged<CFData>.fromOpaque(ptr).takeUnretainedValue() as Data
+    return data.withUnsafeBytes { raw -> String in
+      guard let layout = raw.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else { return "" }
+      var dead: UInt32 = 0
+      var chars = [UniChar](repeating: 0, count: 4)
+      var len = 0
+      guard UCKeyTranslate(
+        layout, UInt16(code), UInt16(kUCKeyActionDisplay), 0, UInt32(LMGetKbdType()),
+        OptionBits(kUCKeyTranslateNoDeadKeysBit), &dead, chars.count, &len, &chars) == noErr
+      else { return "" }
+      let s = String(utf16CodeUnits: chars, count: len)
+      return s.unicodeScalars.allSatisfy({ $0.properties.isWhitespace || $0.value < 32 || $0.value == 127 })
+        ? "" : s.uppercased()
+    }
   }
 
   private static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXSearchField", "AXComboBox"]

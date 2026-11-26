@@ -11,6 +11,7 @@ import 'app/assistant.dart';
 import 'app/desktop_window.dart';
 import 'app/main_view.dart';
 import 'app/model_picker.dart';
+import 'app/mute_key.dart';
 import 'app/overlay_shell.dart';
 import 'app/projects_panel.dart';
 import 'app/settings.dart';
@@ -49,8 +50,8 @@ class _MinervaAppState extends State<MinervaApp> {
   @override
   void initState() {
     super.initState();
-    HardwareKeyboard.instance.addHandler(_onKey);
-    _window.onSpace = () {
+    FocusManager.instance.addListener(_onFocus);
+    _window.onMuteKey = () {
       final a = _assistant.value;
       if (a != null && a.ready) a.toggleMute();
     };
@@ -70,19 +71,9 @@ class _MinervaAppState extends State<MinervaApp> {
     await a.start();
   }
 
-  /// While the window has focus (and the user is not typing in a field): Space toggles the mic.
-  /// (In other apps the native side takes the space bar: [DesktopWindow.onSpace].)
-  bool _onKey(KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return false;
-    final a = _assistant.value;
-    if (a == null || !a.ready || _typing()) return false;
-    final key = e.logicalKey;
-    if (key == LogicalKeyboardKey.space && e is KeyDownEvent) {
-      a.toggleMute();
-      return true;
-    }
-    return false;
-  }
+  /// The native side takes the mute key ([DesktopWindow.onMuteKey]), in this window too, but not
+  /// while the user types in one of its fields (unless the key is a global one).
+  void _onFocus() => _window.setTyping(_typing());
 
   static bool _typing() {
     final ctx = FocusManager.instance.primaryFocus?.context;
@@ -92,7 +83,7 @@ class _MinervaAppState extends State<MinervaApp> {
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_onKey);
+    FocusManager.instance.removeListener(_onFocus);
     _assistant.value?.dispose();
     _models.dispose();
     super.dispose();
@@ -139,6 +130,7 @@ class HomePage extends StatelessWidget {
             builder: (context, _) => Scaffold(
               body: MainView(
                 assistant: a,
+                muteKey: a.muteKey.label(AppLocalizations.of(context)),
                 // Once the panel has become the orb, the display shows as Minerva's widgets.
                 showDisplay: a.window.panelShown.value,
                 // Not in a narrow window, where the bar is full of buttons.
@@ -151,6 +143,7 @@ class HomePage extends StatelessWidget {
                   if (a.ready) ModelButton(assistant: a),
                   if (a.ready) _LanguageButton(assistant: a),
                   if (a.ready) _VoiceButton(assistant: a),
+                  if (a.ready) _MuteKeyButton(assistant: a),
                   if (a.ready) _PhoneButton(assistant: a),
                 ],
               ),
@@ -419,6 +412,96 @@ class _VoiceButton extends StatelessWidget {
         for (var v = 0; v < voiceCount; v++)
           CheckedPopupMenuItem(value: v, checked: assistant.voice == v, child: Text(voiceName(l, v))),
       ],
+    );
+  }
+}
+
+/// Opens the mute key setting.
+class _MuteKeyButton extends StatelessWidget {
+  const _MuteKeyButton({required this.assistant});
+
+  final Assistant assistant;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        tooltip: AppLocalizations.of(context).muteKey,
+        onPressed: () => showDialog<void>(context: context, builder: (_) => _MuteKeyDialog(assistant: assistant)),
+        icon: const Icon(Icons.keyboard_outlined, color: Colors.white54),
+      );
+}
+
+/// The key that mutes and unmutes the mic: the current one, recording another, Caps Lock, back to
+/// Space, and the permission it needs in other apps.
+class _MuteKeyDialog extends StatefulWidget {
+  const _MuteKeyDialog({required this.assistant});
+
+  final Assistant assistant;
+
+  @override
+  State<_MuteKeyDialog> createState() => _MuteKeyDialogState();
+}
+
+class _MuteKeyDialogState extends State<_MuteKeyDialog> {
+  bool _recording = false;
+
+  Assistant get _a => widget.assistant;
+
+  Future<void> _record() async {
+    setState(() => _recording = true);
+    final key = await _a.window.recordMuteKey();
+    if (!mounted) return;
+    setState(() => _recording = false);
+    if (key != null) _a.setMuteKey(key);
+  }
+
+  @override
+  void dispose() {
+    if (_recording) unawaited(_a.window.cancelMuteKeyRecord());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final t = Theme.of(context).textTheme;
+    return ListenableBuilder(
+      listenable: Listenable.merge([_a, _a.window]),
+      builder: (context, _) {
+        final key = _a.muteKey;
+        return AlertDialog(
+          title: Text(l.muteKey),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_recording ? l.muteKeyRecording : l.muteKeyCurrent(key.label(l)),
+                    style: t.titleMedium?.copyWith(color: _recording ? kAccent : null)),
+                const SizedBox(height: 12),
+                Text(l.muteKeyHint, style: t.bodySmall?.copyWith(color: Colors.white54)),
+                if (!_a.window.keyAccess || (key.global && !_a.window.keyActive)) ...[
+                  const SizedBox(height: 12),
+                  Text(l.muteKeyNoAccess, style: t.bodySmall?.copyWith(color: Colors.orangeAccent)),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(onPressed: _a.window.requestKeyAccess, child: Text(l.muteKeyGrant)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            if (key != MuteKey.space)
+              TextButton(onPressed: _recording ? null : () => _a.setMuteKey(MuteKey.space), child: Text(l.muteKeyReset)),
+            if (key != MuteKey.capsLock)
+              TextButton(
+                  onPressed: _recording ? null : () => _a.setMuteKey(MuteKey.capsLock), child: Text(l.muteKeyCapsLock)),
+            TextButton(onPressed: _recording ? null : _record, child: Text(l.muteKeyChange)),
+            FilledButton(onPressed: () => Navigator.pop(context), child: Text(l.close)),
+          ],
+        );
+      },
     );
   }
 }
