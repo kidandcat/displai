@@ -238,8 +238,11 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// Views that pop up as a widget over the other apps while the window is the orb.
   static const _widgetTools = {'show', 'html'};
 
-  /// The window is the corner orb because Minerva works in other apps of the Mac.
+  /// The window is the corner orb because Minerva works in other apps of the Mac (or the user does).
   bool _usingMac = false;
+
+  /// The window is the corner orb because the user went to another app.
+  bool _away = false;
 
   /// Views from this one on (by [DisplayViewEntry.seq]) pop up as a widget: the ones shown
   /// since the window became the orb.
@@ -415,6 +418,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       window.onOpenRequested = () => unawaited(_useMac(false));
       await window.init();
       window.addListener(_syncAudio);
+      window.addListener(_syncAway);
       _syncAudio();
       _earcon = _makeEarcon(_speaker.sampleRate);
       presence.addListener(_pushState);
@@ -1230,6 +1234,24 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     await Future<void>.delayed(const Duration(milliseconds: 350));
   }
 
+  /// The window became the orb because the user went to another app, or came back from it: while
+  /// it is, the views Minerva shows pop up as widgets over that app, as when Minerva works in
+  /// other apps.
+  void _syncAway() {
+    final away = !onPhone && window.overlay && window.reason == 'away';
+    if (away == _away) return;
+    _away = away;
+    if (away && !_usingMac) {
+      _usingMac = true;
+      _widgetFrom = display.lastSeq + 1;
+      _widgetClosed = null;
+      debugPrint('window: orb while the user is in another app');
+    } else if (!away && !window.overlay) {
+      _usingMac = false;
+    }
+    notifyListeners();
+  }
+
   /// Runs a display tool (or snapshot) on the phone; null when it did not answer.
   Future<ToolResult?> _onPhoneTool(String name, Map<String, dynamic> args) async {
     final m = await phone!.call(name, args);
@@ -1367,6 +1389,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     _typingTimer?.cancel();
     telegram?.dispose();
     window.removeListener(_syncAudio);
+    window.removeListener(_syncAway);
     window.dispose();
     presence.removeListener(_pushState);
     unawaited(phone?.close());

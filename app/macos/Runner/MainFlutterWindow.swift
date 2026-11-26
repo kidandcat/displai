@@ -5,16 +5,19 @@ import FlutterMacOS
 import WebKit
 import webview_flutter_wkwebview
 
-/// Minerva's only window. While it is on screen it covers the whole main screen, always on top,
-/// fully transparent and click-through: Flutter draws on it what the user sees (the full view's
+/// Minerva's only window. While it is on screen it covers the whole main screen, fully
+/// transparent and click-through: Flutter draws on it what the user sees (the full view's
 /// panel, the orb, the widgets Minerva pops) and reports their rects, and only there does the
 /// window take the mouse ([hitRects]); everywhere else clicks reach the apps below. States:
-///   open     the full view, a panel the user moves and resizes; the Mac listens and speaks
+///   open     the full view, a panel the user moves and resizes; the Mac listens and speaks. An
+///            ordinary window: the other apps come in front of it, and when the user goes to one
+///            it becomes the orb (reason "away") until they come back to Minerva
 ///   hidden   ordered out; the app keeps running in the background without the Mac's mic
-///   overlay  just the orb in the top-right corner (and Minerva's widgets), while a phone is
-///            connected (reason "phone") or while Minerva works in other apps of the Mac (reason
-///            "computer"). It never keeps the keyboard: the app the user (or Minerva) works in
-///            stays in front. It goes back to open or hidden afterwards.
+///   overlay  just the orb in the top-right corner (and Minerva's widgets), over every app and on
+///            every Space, while a phone is connected (reason "phone"), while Minerva works in
+///            other apps of the Mac (reason "computer") or while the user is in another app (reason
+///            "away"). It never keeps the keyboard: the app the user (or Minerva) works in stays
+///            in front. It goes back to open or hidden afterwards.
 /// While the window is on screen the space bar toggles the mic from any app ([SpaceKey]).
 ///
 /// Method channel `minerva/window`:
@@ -38,6 +41,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private(set) var overlayReason = "phone"
   /// The last other app in front, given the focus back while the window is the orb.
   private var lastOtherApp: NSRunningApplication?
+  /// When the window last came back from the orb to the full view.
+  private var fullSince = Date.distantPast
   /// Where the window takes the mouse, from its top-left.
   private var hitRects: [NSRect] = []
   private var hitTimer: Timer?
@@ -99,7 +104,11 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
         app.processIdentifier != ProcessInfo.processInfo.processIdentifier
       else { return }
       self?.lastOtherApp = app
+      self?.otherAppActivated()
     }
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { [weak self] _ in self?.appActivated() }
     NotificationCenter.default.addObserver(
       forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
     ) { [weak self] _ in
@@ -118,8 +127,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     backgroundColor = .clear
     hasShadow = false
     isMovable = false
-    level = .floating
-    collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+    applyLevel()
     // Stays on screen while other apps are in front, and when one of them hides the others.
     hidesOnDeactivate = false
     canHide = false
@@ -228,6 +236,10 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     userOpen = true
     // Minerva is working in another app: the user wants the window back.
     if overlay && overlayReason == "computer" { channel?.invokeMethod("openRequested", arguments: nil) }
+    if overlay && overlayReason == "away" {
+      setOverlay(false)
+      return
+    }
     if !overlay {
       NSApp.setActivationPolicy(.regular)
       present()
@@ -245,6 +257,10 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   /// The user closes the full view: the window goes away (the orb stays while it is one).
   func hideWindow() {
     userOpen = false
+    if overlay && overlayReason == "away" {
+      overlay = false
+      applyLevel()
+    }
     if !overlay { conceal() }
     notify()
   }
@@ -297,24 +313,67 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       return
     }
     overlay = on
-    // The orb stays over every app, their floating panels too; the full view only over their
-    // windows, so their dialogs still show above it.
-    level = on ? .statusBar : .floating
-    if on {
+    applyLevel()
+    if on && reason == "away" {
+      // The user is in another app already; Minerva stays in the Dock and the app switcher, to
+      // come back to.
+      present()
+    } else if on {
       NSApp.setActivationPolicy(.accessory)
       // After the policy switch, which deactivates the app.
       present()
       yieldFocus()
     } else if userOpen {
+      fullSince = Date()
       NSApp.setActivationPolicy(.regular)
       present()
       makeKeyAndOrderFront(nil)
       // Back from working in other apps: Minerva comes in front of them.
-      if overlayReason == "computer" { NSApp.activate(ignoringOtherApps: true) }
+      if overlayReason != "phone" { NSApp.activate(ignoringOtherApps: true) }
     } else {
       conceal()
     }
     notify()
+  }
+
+  /// The orb stays over every app and on every Space, their floating panels too; the full view is
+  /// an ordinary window, which the other apps come in front of.
+  private func applyLevel() {
+    level = overlay ? .statusBar : .normal
+    collectionBehavior =
+      overlay ? [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle] : [.managed, .fullScreenAuxiliary]
+  }
+
+  /// Another app came in front (the user switched to it, or opened it) with the full view open:
+  /// the window becomes the orb, so that app is seen. Minerva's own work in other apps makes it
+  /// the orb before it acts; right after the full view comes back, an app Minerva brought up may
+  /// still take the front, so that is checked again a moment later.
+  private func otherAppActivated() {
+    guard userOpen, !overlay else { return }
+    let wait = 1 - Date().timeIntervalSince(fullSince)
+    if wait > 0 {
+      DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+        guard let self = self, !NSApp.isActive,
+          NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else { return }
+        self.otherAppActivated()
+      }
+      return
+    }
+    setOverlay(true, reason: "away")
+  }
+
+  /// The user came back to Minerva (the Dock, the app switcher, Spotlight) while it is the orb
+  /// because they had gone to another app: the full view comes back. Not for a press on the orb or
+  /// a widget, which activates the app too (a tap on the orb brings the full view back from Dart).
+  private func appActivated() {
+    guard userOpen, overlay, overlayReason == "away" else { return }
+    if NSEvent.pressedMouseButtons != 0 {
+      let m = NSEvent.mouseLocation
+      let p = NSPoint(x: m.x - frame.minX, y: frame.maxY - m.y)
+      if hitRects.contains(where: { $0.contains(p) }) { return }
+    }
+    setOverlay(false)
   }
 
   /// Gives the keyboard back to the app in front before Minerva, so typing and key presses go

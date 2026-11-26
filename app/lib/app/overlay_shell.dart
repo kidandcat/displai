@@ -15,8 +15,8 @@ import 'main_view.dart';
 /// transparent and click-through (macos/Runner/MainFlutterWindow.swift):
 ///   - the full view: a panel the user moves (by its top strip) and resizes (by its corner),
 ///     holding the app's navigator ([child]), so its dialogs and menus stay inside it;
-///   - the orb in the top-right corner while the window is the overlay (tap: mute; drag: move;
-///     right click: Minerva's menu);
+///   - the orb in the top-right corner while the window is the overlay (tap: mute, or the full
+///     view back when the user only went to another app; drag: move; right click: Minerva's menu);
 ///   - the widget Minerva pops over the other apps while it works in them: the view it showed
 ///     last, on its own dark panel.
 /// Going to the orb, the panel closes around its own orb and flies with it to the corner; coming
@@ -276,7 +276,7 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
                   opacity: const Interval(0.75, 1).transform(t),
                   child: _Orb(
                     presence: a.presence,
-                    onTap: a.toggleMute,
+                    onTap: _window.reason == 'away' ? () => unawaited(_window.show()) : a.toggleMute,
                     onMove: (d) => setState(() => _orb = _fit(orb.shift(d), screen).topLeft),
                     onDone: () {
                       final o = _orb;

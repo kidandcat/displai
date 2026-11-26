@@ -126,7 +126,7 @@ class AppDelegate: FlutterAppDelegate, NSMenuDelegate {
   func menuWillOpen(_ menu: NSMenu) {
     guard let w = window else { return }
     let state =
-      w.overlay
+      w.overlay && w.overlayReason != "away"
       ? (w.overlayReason == "computer" ? "Using the Mac · Open Minerva to come back" : "Phone connected")
       : w.userOpen ? "Listening on this Mac" : "In the background · the Mac is not listening"
     menu.item(withTag: 1)?.title = Self.localized(state)

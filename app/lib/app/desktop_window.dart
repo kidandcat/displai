@@ -12,8 +12,9 @@ import '../l10n/l10n.dart';
 /// Minerva runs as a service: the window can be [open] (the Mac listens and speaks) or closed
 /// (the app keeps running without the Mac's mic). On screen, the window covers the whole main
 /// screen, transparent and click-through: the full view is a [panel] on it (see OverlayShell).
-/// While a phone is connected, or while Minerva works in other apps of the Mac, it is the
-/// [overlay]: just the orb in the top-right corner, and the widgets Minerva pops.
+/// While a phone is connected, while Minerva works in other apps of the Mac, or while the user is
+/// in another app (the native side turns the full view into the orb when they go to one), it is
+/// the [overlay]: just the orb in the top-right corner, and the widgets Minerva pops.
 class DesktopWindow extends ChangeNotifier {
   static const _channel = MethodChannel('minerva/window');
 
@@ -27,10 +28,11 @@ class DesktopWindow extends ChangeNotifier {
   /// The user has the window open (not closed).
   bool get open => _open;
 
-  /// The window is the corner orb shown while a phone is connected or Minerva uses the Mac.
+  /// The window is the corner orb shown while a phone is connected, Minerva uses the Mac or the
+  /// user is in another app.
   bool get overlay => _overlay;
 
-  /// Why it is the orb: 'phone' or 'computer'.
+  /// Why it is the orb: 'phone', 'computer' or 'away' (the user went to another app).
   String get reason => _reason;
 
   /// What the menu bar and the Dock cover of the screen.

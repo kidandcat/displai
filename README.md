@@ -75,7 +75,8 @@ See [Build and run](#build-and-run) for development, the login service and the r
   ([A2UI](https://a2ui.org) via Flutter GenUI). Every item gets a number, so "the second one" works by
   voice.
 - **Computer use**: shell commands, files, screenshots, the accessibility tree, mouse and keyboard, apps
-  and windows. While it works in other apps, Minerva shrinks to a floating orb.
+  and windows. While it works in other apps, Minerva shrinks to a floating orb; so it does when you
+  switch to another app, and comes back when you click the orb or switch back to Minerva.
 - **Phone remote (Android)**: pair with a QR code; the phone becomes the mic, speaker and display.
   Desktop and phone talk through a small relay with end-to-end encryption, so the relay only forwards
   ciphertext. The phone only listens, speaks and shows: every action still happens on the Mac.
