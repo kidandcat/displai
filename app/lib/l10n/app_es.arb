@@ -141,5 +141,10 @@
   "telegramTranscribeFailed": "No he podido transcribir ese audio. Prueba otra vez o escríbemelo.",
   "telegramNoSpeech": "No he entendido ninguna voz en ese audio.",
   "telegramBadToken": "Telegram ha rechazado el token del bot: guarda uno válido como credencial telegram (campo token).",
-  "telegramConflict": "Este bot de Telegram tiene un webhook o lo lee otro programa: Minerva necesita un bot propio."
+  "telegramConflict": "Este bot de Telegram tiene un webhook o lo lee otro programa: Minerva necesita un bot propio.",
+  "usageSessionLimit": "Límite de 5 horas",
+  "usageWeekLimit": "Límite semanal",
+  "usageOtherLimit": "Límite de {hours} horas",
+  "usageUsed": "{percent} % usado",
+  "usageResets": "se reinicia {when}"
 }

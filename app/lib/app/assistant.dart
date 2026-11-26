@@ -32,6 +32,7 @@ import '../tools/history_tools.dart';
 import '../tools/memory_tools.dart';
 import '../tools/skill_tools.dart';
 import '../tools/tool_provider.dart';
+import '../usage/usage.dart';
 import '../vault/vault.dart';
 import '../vault/vault_tools.dart';
 import '../workers/workers.dart';
@@ -76,6 +77,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   /// Providers out for now (usage limit or signed out), shared with the workers.
   late final ProviderLimits limits;
+
+  /// The plan usage of the providers the brain and the workers run on, for the status bar.
+  late final UsageMonitor usage;
 
   @override
   ProviderOut? providerOut(BrainProvider provider) => limits.out(provider);
@@ -407,6 +411,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       }
       unawaited(_listModels(BrainProvider.antigravity, AntigravitySession.listModels));
       unawaited(_listModels(BrainProvider.codex, CodexSession.listModels));
+      usage = UsageMonitor(providers: () => {for (final c in [...brainChain, ...workers.chain]) c.provider})..start();
       window.onOpenRequested = () => unawaited(_useMac(false));
       await window.init();
       window.addListener(_syncAudio);
@@ -1367,6 +1372,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     unawaited(phone?.close());
     webhooks?.dispose();
     if (ready) {
+      usage.dispose();
       routines.dispose();
       workers.dispose();
       _brainSub?.cancel();

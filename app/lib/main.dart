@@ -15,6 +15,7 @@ import 'app/overlay_shell.dart';
 import 'app/settings.dart';
 import 'l10n/l10n.dart';
 import 'store/legacy_data.dart';
+import 'usage/usage_rings.dart';
 import 'remote/phone_orb.dart';
 import 'remote/remote_app.dart';
 import 'vault/vault.dart';
@@ -146,6 +147,7 @@ class HomePage extends StatelessWidget {
                 assistant: a,
                 // Once the panel has become the orb, the display shows as Minerva's widgets.
                 showDisplay: a.window.panelShown.value,
+                leading: a.ready ? UsageRings(monitor: a.usage) : null,
                 actions: [
                   if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),
                   if (a.ready) _VaultButton(vault: a.vault),

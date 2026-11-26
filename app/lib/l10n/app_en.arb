@@ -590,5 +590,40 @@
   "telegramConflict": "This Telegram bot has a webhook set or another program reads it: Minerva needs a bot of its own.",
   "@telegramConflict": {
     "description": "Telegram channel status."
+  },
+  "usageSessionLimit": "5-hour limit",
+  "@usageSessionLimit": {
+    "description": "Usage rings tooltip (status bar): a provider's plan limit."
+  },
+  "usageWeekLimit": "Weekly limit",
+  "@usageWeekLimit": {
+    "description": "Usage rings tooltip (status bar): a provider's plan limit."
+  },
+  "usageOtherLimit": "{hours}-hour limit",
+  "@usageOtherLimit": {
+    "description": "Usage rings tooltip (status bar): a provider's plan limit.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "usageUsed": "{percent}% used",
+  "@usageUsed": {
+    "description": "Usage rings tooltip (status bar): a provider's plan limit.",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "usageResets": "resets {when}",
+  "@usageResets": {
+    "description": "Usage rings tooltip (status bar): a provider's plan limit.",
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
   }
 }

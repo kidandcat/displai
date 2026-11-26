@@ -23,6 +23,7 @@ class MainView extends StatelessWidget {
     super.key,
     required this.assistant,
     this.actions = const [],
+    this.leading,
     this.compactOrb = 180,
     this.showDisplay = true,
   });
@@ -31,6 +32,9 @@ class MainView extends StatelessWidget {
 
   /// Extra buttons at the end of the status bar.
   final List<Widget> actions;
+
+  /// What the status bar shows at its start (the providers' usage on the desktop).
+  final Widget? leading;
 
   /// Size of the corner orb while something is on screen.
   final double compactOrb;
@@ -103,17 +107,18 @@ class MainView extends StatelessWidget {
             ),
           ),
         ),
-        StatusBar(assistant: a, actions: actions),
+        StatusBar(assistant: a, actions: actions, leading: leading),
       ],
     );
   }
 }
 
 class StatusBar extends StatelessWidget {
-  const StatusBar({super.key, required this.assistant, this.actions = const []});
+  const StatusBar({super.key, required this.assistant, this.actions = const [], this.leading});
 
   final AssistantUi assistant;
   final List<Widget> actions;
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
@@ -126,6 +131,7 @@ class StatusBar extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: narrow ? 4 : 16),
       child: Row(
         children: [
+          if (leading != null && !narrow) leading!,
           const Spacer(),
           if (!a.ready) ...[
             Text(a.linkNote.isNotEmpty ? a.linkNote : l.loadingVoice,

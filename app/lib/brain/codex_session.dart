@@ -584,6 +584,24 @@ Tools in this session:
       s.dispose();
     }
   }
+
+  /// The account's rate limits (the app server's `account/rateLimits/read`), or null when Codex
+  /// is missing, not signed in or can't read them.
+  static Future<Map<String, dynamic>?> readRateLimits() async {
+    final s = CodexSession(model: '', systemPrompt: '', mcpUrl: '', workDir: Directory.systemTemp.path);
+    try {
+      await s._spawn().timeout(const Duration(seconds: 30));
+      final account = await s._request('account/read', {}).timeout(const Duration(seconds: 30));
+      if (account['account'] == null) return null;
+      return await s
+          ._request('account/rateLimits/read', {'excludeResetCreditDetails': true})
+          .timeout(const Duration(seconds: 30));
+    } catch (_) {
+      return null;
+    } finally {
+      s.dispose();
+    }
+  }
 }
 
 /// A JSON-RPC error from `codex app-server`.

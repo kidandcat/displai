@@ -456,6 +456,25 @@ Tools in this session:
       return null;
     }
   }
+
+  /// The account's quota (`agy -p /usage`, which the CLI answers itself without a model turn):
+  /// its `command.data`, or null when Antigravity is missing, not signed in or offline.
+  static Future<Map<String, dynamic>?> readUsage() async {
+    try {
+      final env = await loginEnvironment();
+      final agy = findExecutable('agy', env['PATH']!);
+      if (agy == null) return null;
+      env['AGY_CLI_DISABLE_AUTO_UPDATE'] = 'true';
+      final r = await Process.run(agy, ['-p', '/usage', '--output-format', 'json'],
+              environment: env, includeParentEnvironment: false, workingDirectory: Directory.systemTemp.path)
+          .timeout(const Duration(seconds: 60));
+      if (r.exitCode != 0) return null;
+      final data = ((jsonDecode(r.stdout as String) as Map)['command'] as Map?)?['data'];
+      return data is Map<String, dynamic> ? data : null;
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 /// A JSON-RPC error from `agy acp`.

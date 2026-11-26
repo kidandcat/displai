@@ -949,6 +949,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This Telegram bot has a webhook set or another program reads it: Minerva needs a bot of its own.'**
   String get telegramConflict;
+
+  /// Usage rings tooltip (status bar): a provider's plan limit.
+  ///
+  /// In en, this message translates to:
+  /// **'5-hour limit'**
+  String get usageSessionLimit;
+
+  /// Usage rings tooltip (status bar): a provider's plan limit.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekly limit'**
+  String get usageWeekLimit;
+
+  /// Usage rings tooltip (status bar): a provider's plan limit.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}-hour limit'**
+  String usageOtherLimit(int hours);
+
+  /// Usage rings tooltip (status bar): a provider's plan limit.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent}% used'**
+  String usageUsed(int percent);
+
+  /// Usage rings tooltip (status bar): a provider's plan limit.
+  ///
+  /// In en, this message translates to:
+  /// **'resets {when}'**
+  String usageResets(String when);
 }
 
 class _AppLocalizationsDelegate

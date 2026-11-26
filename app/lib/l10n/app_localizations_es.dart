@@ -515,4 +515,25 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get telegramConflict =>
       'Este bot de Telegram tiene un webhook o lo lee otro programa: Minerva necesita un bot propio.';
+
+  @override
+  String get usageSessionLimit => 'Límite de 5 horas';
+
+  @override
+  String get usageWeekLimit => 'Límite semanal';
+
+  @override
+  String usageOtherLimit(int hours) {
+    return 'Límite de $hours horas';
+  }
+
+  @override
+  String usageUsed(int percent) {
+    return '$percent % usado';
+  }
+
+  @override
+  String usageResets(String when) {
+    return 'se reinicia $when';
+  }
 }
