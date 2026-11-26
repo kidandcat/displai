@@ -186,6 +186,17 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// What the brain has said in the current turn (saved to the history when it ends).
   final _reply = StringBuffer();
 
+  /// What the current turn has given the voice so far.
+  final _turnSaid = StringBuffer();
+
+  /// What Minerva would have said while the mic was muted: told to the user when they unmute
+  /// (see [_drainNotices]).
+  final _unsaid = <String>[];
+
+  /// Goes with each message to the brain while the mic is muted.
+  static const _mutedNote = '[muted: the user muted the mic, so they are not listening and you cannot speak. '
+      'What you say now is held and told to them when they unmute; the display still works]';
+
   /// Wraps what Minerva shows (display and presence) so the brain can capture it.
   @override
   final GlobalKey screenKey = GlobalKey(debugLabel: 'minerva-screen');
@@ -801,8 +812,19 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     if (value == _muted) return;
     _muted = value;
     presence.muted = value;
-    if (value) _listener.flush();
+    if (value) {
+      _listener.flush();
+      // Minerva goes quiet too: what the answer in progress was saying is held with the rest.
+      if (speaking && !_telegramTurn) {
+        _hold(_turnSaid.toString());
+        _generation++;
+        _pendingTts = 0;
+        _stopAudio();
+      }
+      _turnSaid.clear();
+    }
     _updatePresence();
+    if (!value) _drainNotices();
     notifyListeners();
   }
 
@@ -921,12 +943,13 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// webhook (not something the user did, so it does not change where they are).
   void _ask(String text, {bool telegram = false, bool notice = false}) {
     final event = text.startsWith('[display]') || text.startsWith('[worker') || text.startsWith('[routine') ||
-        text.startsWith('[webhook');
+        text.startsWith('[webhook') || text.startsWith('[unmuted]');
     store.addMessage(event ? 'event' : 'user', telegram && !notice ? '[telegram] $text' : text);
     if (!notice) _lastOnTelegram = telegram;
     _generation++;
     _pendingTts = 0;
     _sentence.clear();
+    _turnSaid.clear();
     _firstAudioAt = null;
     _telegramTurn = telegram;
     _telegramText.clear();
@@ -938,10 +961,12 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         : p != null && p.active
             ? ' [phone ${p.width.round()}x${p.height.round()}]'
             : '';
+    // A Telegram answer is written, muted or not.
+    final quiet = _muted && !telegram ? ' $_mutedNote' : '';
     // Back to the first choice whose provider is not out (the preferred one once its limit is over).
     final want = limits.pick(brainChain, unavailable: unavailableProviders);
     if (want != activeBrainModel && !_brain.busy) _runBrainOn(want);
-    _lastSent = '[${formatStamp(DateTime.now())}]$where $text';
+    _lastSent = '[${formatStamp(DateTime.now())}]$where$quiet $text';
     _sendToBrain(_lastSent!);
     _updatePresence();
     notifyListeners();
@@ -1090,6 +1115,16 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       _ask(_telegramInbox.removeAt(0), telegram: true);
       return;
     }
+    if (!_muted && _unsaid.isNotEmpty) {
+      // The user unmuted: what Minerva could not say, told now in a few words.
+      final held = _unsaid.join(' ');
+      _unsaid.clear();
+      _turnSpeechEnd = null;
+      _ask('[unmuted] The user unmuted the mic and is listening again. While it was muted you could not '
+          'speak; this is what you would have said:\n$held\nTell them now, briefly: one short summary if '
+          'there are several things, and skip what no longer matters.', notice: true);
+      return;
+    }
     if (_notices.isEmpty) return;
     _turnSpeechEnd = null;
     final t = telegram;
@@ -1151,13 +1186,21 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     }
   }
 
-  /// Speaks [text] in the brain's language, or [lang] (for the app's own lines).
+  /// Speaks [text] in the brain's language, or [lang] (for the app's own lines); while the mic
+  /// is muted it is held for when the user unmutes.
   void _say(String text, {String? lang}) {
     if (Speaker.cleanForSpeech(text).isEmpty) return;
+    if (_muted) return _hold(text);
+    _turnSaid.write(text);
     _spokenStatus = '';
     _pendingTts++;
     _speaker.say(_generation, text, lang: lang);
     _updatePresence();
+  }
+
+  void _hold(String text) {
+    text = text.trim();
+    if (text.isNotEmpty) _unsaid.add(text);
   }
 
   // ---------------------------------------------------------------- tools
@@ -1358,8 +1401,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   int get _statusGeneration => -_generation - 1;
 
-  /// Nothing of the reply is queued or playing, and the user is not talking.
-  bool get _statusQuiet => ready && _pendingTts == 0 && !_playing && !_userSpeaking;
+  /// Nothing of the reply is queued or playing, the user is not talking and the mic is not muted.
+  bool get _statusQuiet => ready && _pendingTts == 0 && !_playing && !_userSpeaking && !_muted;
 
   /// "Thinking…" → "Thinking." (as [Speaker] cleans it, to match its audio).
   static String _statusSpeech(String status) {
