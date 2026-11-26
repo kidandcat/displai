@@ -9,7 +9,8 @@ import webview_flutter_wkwebview
 /// transparent and click-through: Flutter draws on it what the user sees (the full view's
 /// panel, the orb, the widgets Minerva pops) and reports their rects, and only there does the
 /// window take the mouse ([hitRects]); everywhere else clicks reach the apps below. States:
-///   open     the full view, a panel the user moves and resizes; the Mac listens and speaks. An
+///   open     the full view, a panel at the left edge (the user moves and resizes it, and it goes
+///            back to the left whenever it is full again); the Mac listens and speaks. An
 ///            ordinary window: the other apps come in front of it, and when the user goes to one
 ///            it becomes the orb (reason "away") until they come back to Minerva
 ///   hidden   ordered out; the app keeps running in the background without the Mac's mic
@@ -209,7 +210,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private static func rectList(_ r: NSRect) -> [CGFloat] { [r.minX, r.minY, r.width, r.height] }
 
   /// The full view's panel, from the window's top-left: where the user left it, else where the
-  /// normal window was, else centered.
+  /// normal window was, else at the left edge of the visible frame, the whole height. Flutter keeps
+  /// only its width: the full view always sits at the left (lib/app/overlay_shell.dart).
   private func panelFrame() -> NSRect {
     if let saved = UserDefaults.standard.string(forKey: Self.panelKey) { return NSRectFromString(saved) }
     let s = Self.screen.frame
@@ -219,8 +221,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
         return NSRect(x: n[0] - s.minX, y: s.maxY - n[1] - n[3], width: n[2], height: n[3])
       }
     }
-    let size = NSSize(width: min(1100, s.width - 80), height: min(760, s.height - 120))
-    return NSRect(x: (s.width - size.width) / 2, y: (s.height - size.height) / 2, width: size.width, height: size.height)
+    let v = Self.screen.visibleFrame
+    return NSRect(x: v.minX - s.minX, y: s.maxY - v.maxY, width: min(1100, v.width - 80), height: v.height)
   }
 
   private func notify() {

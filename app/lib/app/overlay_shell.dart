@@ -13,8 +13,11 @@ import 'main_view.dart';
 
 /// Everything Minerva draws on the desktop window, which covers the whole main screen,
 /// transparent and click-through (macos/Runner/MainFlutterWindow.swift):
-///   - the full view: a panel the user moves (by its top strip) and resizes (by its corner),
-///     holding the app's navigator ([child]), so its dialogs and menus stay inside it;
+///   - the full view: a panel holding the app's navigator ([child]), so its dialogs and menus
+///     stay inside it. It sits at the left edge of the screen, the whole height between the menu
+///     bar and the Dock, as wide as the user left it; they can move it (by its top strip) and
+///     resize it (by its corner), and it goes back to the left each time it comes back from the
+///     orb or the window is opened again;
 ///   - the orb in the top-right corner while the window is the overlay (tap: mute, or the full
 ///     view back when the user only went to another app; drag: move; right click: Minerva's menu);
 ///   - the widget Minerva pops over the other apps while it works in them: the view it showed
@@ -47,8 +50,9 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
   late final _morph = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
     ..addStatusListener((s) => _window.panelShown.value = s != AnimationStatus.completed);
 
-  /// The window's last overlay state.
+  /// The window's last overlay and open states.
   bool? _overlay;
+  bool? _open;
 
   DesktopWindow get _window => widget.window;
 
@@ -81,8 +85,11 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
   /// Morphs the panel into the orb and back when the window goes to the overlay and back; it
   /// jumps when there is no panel on screen to morph.
   void _onWindow() {
-    final overlay = _window.overlay, was = _overlay;
+    final overlay = _window.overlay, was = _overlay, wasOpen = _open;
     _overlay = overlay;
+    _open = _window.open;
+    // Back to full size: the panel goes back to the left edge.
+    if ((was == true && !overlay) || (wasOpen == false && _window.open)) _panel = null;
     if (overlay == was) return;
     if (was == null || !_window.open) {
       _morph.value = overlay ? 1 : 0;
@@ -112,15 +119,13 @@ class _OverlayShellState extends State<OverlayShell> with SingleTickerProviderSt
     );
   }
 
+  /// The panel: where the user moved it, else at the left edge of [usable], the whole height, as
+  /// wide as the user left it.
   Rect _panelRect(Rect usable) {
-    final r = _panel ??
-        _window.panel ??
-        Rect.fromCenter(
-          center: usable.center,
-          width: math.min(1100, usable.width - 80),
-          height: math.min(760, usable.height - 80),
-        );
-    return _fit(r, usable);
+    final moved = _panel;
+    if (moved != null) return _fit(moved, usable);
+    final width = _window.panel?.width ?? math.min(1100.0, usable.width - 80);
+    return _fit(Rect.fromLTWH(usable.left, usable.top, width, usable.height), usable);
   }
 
   Rect _orbRect(Rect usable, Rect screen) {

@@ -38,7 +38,8 @@ class DesktopWindow extends ChangeNotifier {
   /// What the menu bar and the Dock cover of the screen.
   EdgeInsets get insets => _insets;
 
-  /// Where the user left the full view's panel (null: not known yet).
+  /// Where the user left the full view's panel (null: not known yet); only its width is kept, the
+  /// panel goes back to the left edge of the screen.
   Rect? get panel => _panel;
 
   /// Where the user dragged the orb (null: the top-right corner).
