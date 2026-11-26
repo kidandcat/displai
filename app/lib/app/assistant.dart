@@ -187,9 +187,6 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// What the brain has said in the current turn (saved to the history when it ends).
   final _reply = StringBuffer();
 
-  /// What the current turn has given the voice so far.
-  final _turnSaid = StringBuffer();
-
   /// What Minerva would have said while the mic was muted: told to the user when they unmute
   /// (see [_drainNotices]).
   final _unsaid = <String>[];
@@ -289,6 +286,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   bool _muted = false;
   @override
   bool get muted => _muted;
+
+  /// The turn that was answering when the mic was muted: it is still spoken to its end.
+  int? _voicedTurn;
 
   /// Last thing the user said (shown in the status bar).
   @override
@@ -827,14 +827,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     presence.muted = value;
     if (value) {
       _listener.flush();
-      // Minerva goes quiet too: what the answer in progress was saying is held with the rest.
-      if (speaking && !_telegramTurn) {
-        _hold(_turnSaid.toString());
-        _generation++;
-        _pendingTts = 0;
-        _stopAudio();
-      }
-      _turnSaid.clear();
+      // Only the mic goes off: the answer in progress is still spoken (later ones are held).
+      _voicedTurn = busy && !_telegramTurn ? _generation : null;
     }
     _updatePresence();
     if (!value) _drainNotices();
@@ -962,7 +956,6 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     _generation++;
     _pendingTts = 0;
     _sentence.clear();
-    _turnSaid.clear();
     _firstAudioAt = null;
     _telegramTurn = telegram;
     _telegramText.clear();
@@ -1200,11 +1193,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   }
 
   /// Speaks [text] in the brain's language, or [lang] (for the app's own lines); while the mic
-  /// is muted it is held for when the user unmutes.
+  /// is muted it is held for when the user unmutes (unless it ends the answer it was muted in).
   void _say(String text, {String? lang}) {
     if (Speaker.cleanForSpeech(text).isEmpty) return;
-    if (_muted) return _hold(text);
-    _turnSaid.write(text);
+    if (_muted && _generation != _voicedTurn) return _hold(text);
     _spokenStatus = '';
     _pendingTts++;
     _speaker.say(_generation, text, lang: lang);
