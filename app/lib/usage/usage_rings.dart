@@ -9,10 +9,10 @@ import 'usage.dart';
 
 /// The usage limits of the providers Minerva runs on, at the start of the status bar: one dial
 /// per provider, its logo in the middle and a ring per limit around it (outermost the five
-/// hours, then the week, then a model's own week), each filled as far as it is spent and colored
-/// by whether it lasts until its reset at the pace so far (see [UsageProjection]). Hovering a
-/// dial enlarges it and opens a card with each limit's percent, reset and projection. Nothing
-/// when no provider could be read.
+/// hours, then the week, then a model's own week), each full and green with the whole limit left
+/// and emptying as it is spent, through amber to red when little is left (see [leftColor]).
+/// Hovering a dial enlarges it and opens a card with each limit's percent left, reset and
+/// projection. Nothing when no provider could be read.
 class UsageRings extends StatelessWidget {
   const UsageRings({super.key, required this.monitor});
 
@@ -37,13 +37,22 @@ class UsageRings extends StatelessWidget {
       );
 }
 
-/// The ring's color: green while the limit lasts until its reset, orange when it ends close to
-/// it, red when it runs out before.
+/// A projection's color (the card's outlook line): green while the limit lasts until its reset,
+/// orange when it ends close to it, red when it runs out before.
 Color usageColor(UsageLevel level) => switch (level) {
       UsageLevel.good => const Color(0xFF4ADE80),
       UsageLevel.fair => const Color(0xFFFFA94D),
       UsageLevel.bad => const Color(0xFFFF5C5C),
     };
+
+/// The ring's color for [left] percent of the limit left: green down to half, then amber at a
+/// quarter, then red as it runs out.
+Color leftColor(double left) {
+  const green = Color(0xFF4ADE80), amber = Color(0xFFFFB020), red = Color(0xFFFF5C5C);
+  if (left >= 50) return green;
+  if (left >= 25) return Color.lerp(amber, green, (left - 25) / 25)!;
+  return Color.lerp(red, amber, (left / 25).clamp(0, 1))!;
+}
 
 /// The rings from the outside in: the plan's own limits first (shortest window outermost), then
 /// the ones of a model or model group.
@@ -123,7 +132,7 @@ class _UsageDialState extends State<UsageDial> with SingleTickerProviderStateMix
               child: SizedBox.square(
                 dimension: widget.size,
                 child: CustomPaint(
-                  painter: _RingsPainter([for (final w in rings) (w.usedAt(now), usageColor(w.projectAt(now).level))]),
+                  painter: _RingsPainter([for (final w in rings) (w.leftAt(now), leftColor(w.leftAt(now)))]),
                   child: Center(
                     child: SizedBox.square(
                       dimension: _logoSize(widget.size, rings.length),
@@ -153,22 +162,22 @@ double _logoSize(double size, int count) {
 }
 
 class _RingsPainter extends CustomPainter {
-  _RingsPainter(this.used);
+  _RingsPainter(this.left);
 
-  /// Percent spent and color of each ring, outermost first.
-  final List<(double, Color)> used;
+  /// Percent left and color of each ring, outermost first.
+  final List<(double, Color)> left;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final (stroke, gap) = _ringMetrics(size.shortestSide, used.length);
+    final (stroke, gap) = _ringMetrics(size.shortestSide, left.length);
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round;
     var rect = (Offset.zero & size).deflate(stroke / 2);
-    for (final (u, color) in used) {
+    for (final (l, color) in left) {
       canvas.drawArc(rect, 0, 2 * math.pi, false, paint..color = Colors.white.withValues(alpha: 0.09));
-      final sweep = 2 * math.pi * (u / 100).clamp(0, 1);
+      final sweep = 2 * math.pi * (l / 100).clamp(0, 1);
       if (sweep > 0) canvas.drawArc(rect, -math.pi / 2, sweep, false, paint..color = color);
       rect = rect.deflate(stroke + gap);
     }
@@ -176,11 +185,11 @@ class _RingsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RingsPainter old) =>
-      old.used.length != used.length || [for (var i = 0; i < used.length; i++) old.used[i] != used[i]].any((d) => d);
+      old.left.length != left.length || [for (var i = 0; i < left.length; i++) old.left[i] != left[i]].any((d) => d);
 }
 
 /// The card a hovered dial opens: per ring (same order and color) which limit it is, the percent
-/// spent, when it starts over, and where it is heading (when it runs out, if before).
+/// left, when it starts over, and where it is heading (when it runs out, if before).
 class _UsageCard extends StatelessWidget {
   const _UsageCard({required this.usage, required this.rings, required this.now});
 
@@ -224,9 +233,9 @@ class _UsageCard extends StatelessWidget {
   }
 
   Widget _row(BuildContext context, AppLocalizations l, TextTheme t, UsageWindow w) {
-    final used = w.usedAt(now);
+    final left = w.leftAt(now);
     final p = w.projectAt(now);
-    final color = usageColor(p.level);
+    final color = leftColor(left);
     final limit = switch (w.kind) {
       UsageKind.session => l.usageSessionLimit,
       UsageKind.week => l.usageWeekLimit,
@@ -238,7 +247,7 @@ class _UsageCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox.square(dimension: 14, child: CustomPaint(painter: _RingsPainter([(used, color)]))),
+          SizedBox.square(dimension: 14, child: CustomPaint(painter: _RingsPainter([(left, color)]))),
           const SizedBox(width: 8),
           Flexible(
             child: Column(
@@ -251,12 +260,12 @@ class _UsageCard extends StatelessWidget {
                   Text(l.usageResets(_when(context, resets)),
                       style: t.bodySmall?.copyWith(color: Colors.white38, fontSize: 11)),
                 if (_outlook(context, l, p) case final outlook?)
-                  Text(outlook, style: t.bodySmall?.copyWith(color: color.withValues(alpha: 0.85), fontSize: 11)),
+                  Text(outlook, style: t.bodySmall?.copyWith(color: usageColor(p.level).withValues(alpha: 0.85), fontSize: 11)),
               ],
             ),
           ),
           const SizedBox(width: 16),
-          Text(l.usageUsed(used.round()),
+          Text(l.usageLeft(left.round()),
               style: t.bodySmall?.copyWith(color: color, fontWeight: FontWeight.w600)),
         ],
       ),

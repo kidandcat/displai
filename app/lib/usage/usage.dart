@@ -41,6 +41,9 @@ class UsageWindow {
   /// [used] as of [now]: nothing once the window has started over since it was read.
   double usedAt(DateTime now) => resetsAt != null && !resetsAt!.isAfter(now) ? 0 : used;
 
+  /// Percent of the limit left as of [now], 0–100.
+  double leftAt(DateTime now) => (100 - usedAt(now)).clamp(0, 100).toDouble();
+
   /// How long the window is.
   Duration? get length => switch (kind) {
         UsageKind.session => const Duration(hours: 5),

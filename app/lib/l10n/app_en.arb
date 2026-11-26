@@ -608,8 +608,8 @@
       }
     }
   },
-  "usageUsed": "{percent}% used",
-  "@usageUsed": {
+  "usageLeft": "{percent}% left",
+  "@usageLeft": {
     "description": "Usage rings tooltip (status bar): a provider's plan limit.",
     "placeholders": {
       "percent": {

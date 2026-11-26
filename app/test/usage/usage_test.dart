@@ -171,6 +171,17 @@ void main() {
       expect(session(99).projectAt(DateTime(2026, 11, 26, 16)).level, UsageLevel.good);
       expect(usageColor(UsageLevel.good), isNot(usageColor(UsageLevel.bad)));
     });
+
+    test('rings show what is left: green while plenty, amber, then red as it runs out', () {
+      final now = DateTime(2026, 11, 26, 12);
+      expect(session(30).leftAt(now), 70);
+      expect(session(100).leftAt(now), 0);
+      expect(session(99).leftAt(DateTime(2026, 11, 26, 16)), 100);
+      expect(leftColor(100), leftColor(50));
+      expect(leftColor(25), isNot(leftColor(50)));
+      expect(leftColor(0), isNot(leftColor(25)));
+      expect(leftColor(0), usageColor(UsageLevel.bad));
+    });
   });
 
   test('rings from the outside in: the plan\'s limits, shortest first, then a model\'s', () {
@@ -292,7 +303,7 @@ void main() {
       expect(find.text('5-hour limit'), findsOneWidget);
       expect(find.text('Weekly limit'), findsOneWidget);
       expect(find.text('Fable · Weekly limit'), findsOneWidget);
-      expect(find.text('40% used'), findsOneWidget);
+      expect(find.text('60% left'), findsOneWidget);
       // An hour into the five hours with 40 % spent: 200 %, out in an hour and a half.
       expect(find.textContaining('projected 200% by the reset · runs out around'), findsOneWidget);
 

@@ -528,8 +528,8 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
-  String usageUsed(int percent) {
-    return '$percent % usado';
+  String usageLeft(int percent) {
+    return 'queda un $percent %';
   }
 
   @override

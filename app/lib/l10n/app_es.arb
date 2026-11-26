@@ -145,7 +145,7 @@
   "usageSessionLimit": "Límite de 5 horas",
   "usageWeekLimit": "Límite semanal",
   "usageOtherLimit": "Límite de {hours} horas",
-  "usageUsed": "{percent} % usado",
+  "usageLeft": "queda un {percent} %",
   "usageResets": "se reinicia {when}",
   "usageProjection": "proyección: {percent} % al reiniciarse",
   "usageRunsOutAt": "se agota hacia las {time}",

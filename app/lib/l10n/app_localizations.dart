@@ -971,8 +971,8 @@ abstract class AppLocalizations {
   /// Usage rings tooltip (status bar): a provider's plan limit.
   ///
   /// In en, this message translates to:
-  /// **'{percent}% used'**
-  String usageUsed(int percent);
+  /// **'{percent}% left'**
+  String usageLeft(int percent);
 
   /// Usage rings tooltip (status bar): a provider's plan limit.
   ///
