@@ -536,4 +536,22 @@ class AppLocalizationsEs extends AppLocalizations {
   String usageResets(String when) {
     return 'se reinicia $when';
   }
+
+  @override
+  String usageProjection(int percent) {
+    return 'proyección: $percent % al reiniciarse';
+  }
+
+  @override
+  String usageRunsOutAt(String time) {
+    return 'se agota hacia las $time';
+  }
+
+  @override
+  String usageRunsOutOn(String when) {
+    return 'se agota hacia el $when';
+  }
+
+  @override
+  String get usageSpent => 'límite alcanzado';
 }

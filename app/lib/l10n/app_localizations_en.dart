@@ -533,4 +533,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String usageResets(String when) {
     return 'resets $when';
   }
+
+  @override
+  String usageProjection(int percent) {
+    return 'projected $percent% by the reset';
+  }
+
+  @override
+  String usageRunsOutAt(String time) {
+    return 'runs out around $time';
+  }
+
+  @override
+  String usageRunsOutOn(String when) {
+    return 'runs out around $when';
+  }
+
+  @override
+  String get usageSpent => 'limit reached';
 }

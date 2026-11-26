@@ -3,14 +3,16 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../app/main_view.dart' show kAccent;
+import '../brain/models.dart';
 import '../l10n/l10n.dart';
 import 'usage.dart';
 
-/// The usage limits of the providers Minerva runs on, at the start of the status bar: per
-/// provider its name and a small ring per limit (five hours, week, a model's week) with the
-/// percent spent. The details (and when it starts over) show on hover. Nothing when no provider
-/// could be read.
+/// The usage limits of the providers Minerva runs on, at the start of the status bar: one dial
+/// per provider, its logo in the middle and a ring per limit around it (outermost the five
+/// hours, then the week, then a model's own week), each filled as far as it is spent and colored
+/// by whether it lasts until its reset at the pace so far (see [UsageProjection]). Hovering a
+/// dial enlarges it and opens a card with each limit's percent, reset and projection. Nothing
+/// when no provider could be read.
 class UsageRings extends StatelessWidget {
   const UsageRings({super.key, required this.monitor});
 
@@ -22,18 +24,12 @@ class UsageRings extends StatelessWidget {
         builder: (context, _) {
           final shown = monitor.shown;
           if (shown.isEmpty) return const SizedBox.shrink();
-          final now = DateTime.now();
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               for (final (i, u) in shown.indexed) ...[
-                if (i > 0) const SizedBox(width: 14),
-                Text(u.provider.label,
-                    style: const TextStyle(fontSize: 10, color: Colors.white38, letterSpacing: 0.3)),
-                for (final w in u.windows) ...[
-                  const SizedBox(width: 6),
-                  _Ring(provider: u.provider.label, window: w, now: now),
-                ],
+                if (i > 0) const SizedBox(width: 10),
+                UsageDial(usage: u),
               ],
             ],
           );
@@ -41,70 +37,243 @@ class UsageRings extends StatelessWidget {
       );
 }
 
-/// The ring's color: the accent, amber from three quarters spent, red when nearly out.
-Color usageColor(double used) => used >= 90
-    ? Colors.redAccent
-    : used >= 75
-        ? Colors.amberAccent
-        : kAccent;
+/// The ring's color: green while the limit lasts until its reset, orange when it ends close to
+/// it, red when it runs out before.
+Color usageColor(UsageLevel level) => switch (level) {
+      UsageLevel.good => const Color(0xFF4ADE80),
+      UsageLevel.fair => const Color(0xFFFFA94D),
+      UsageLevel.bad => const Color(0xFFFF5C5C),
+    };
 
-/// The ring's short label: `5h`, `7d`, or the model it is for (`Fable 7d`).
-String usageLabel(UsageWindow w) {
-  final length = switch (w.kind) {
-    UsageKind.session => '5h',
-    UsageKind.week => '7d',
-    UsageKind.other => w.minutes == null
-        ? '?'
-        : w.minutes! % 1440 == 0
-            ? '${w.minutes! ~/ 1440}d'
-            : '${(w.minutes! / 60).round()}h',
-  };
-  return w.scope == null ? length : '${w.scope} $length';
+/// The rings from the outside in: the plan's own limits first (shortest window outermost), then
+/// the ones of a model or model group.
+List<UsageWindow> ringOrder(List<UsageWindow> windows) => [...windows]..sort((a, b) {
+    final s = (a.scope == null ? 0 : 1).compareTo(b.scope == null ? 0 : 1);
+    if (s != 0) return s;
+    final k = a.kind.index.compareTo(b.kind.index);
+    return k != 0 ? k : (a.minutes ?? 0).compareTo(b.minutes ?? 0);
+  });
+
+/// One provider's dial, and its card while hovered.
+class UsageDial extends StatefulWidget {
+  const UsageDial({super.key, required this.usage, this.size = 40});
+
+  final ProviderUsage usage;
+  final double size;
+
+  @override
+  State<UsageDial> createState() => _UsageDialState();
 }
 
-class _Ring extends StatelessWidget {
-  const _Ring({required this.provider, required this.window, required this.now});
+class _UsageDialState extends State<UsageDial> with SingleTickerProviderStateMixin {
+  final _card = OverlayPortalController();
+  final _link = LayerLink();
+  late final _hover = AnimationController(vsync: this, duration: const Duration(milliseconds: 180))
+    ..addStatusListener((s) {
+      if (s == AnimationStatus.dismissed && _card.isShowing) _card.hide();
+    });
+  late final _curve = CurvedAnimation(parent: _hover, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
 
-  final String provider;
-  final UsageWindow window;
+  void _enter() {
+    if (!_card.isShowing) _card.show();
+    _hover.forward();
+  }
+
+  @override
+  void dispose() {
+    _hover.dispose();
+    _curve.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final rings = ringOrder(widget.usage.windows);
+    return MouseRegion(
+      onEnter: (_) => _enter(),
+      onExit: (_) => _hover.reverse(),
+      child: OverlayPortal(
+        controller: _card,
+        overlayChildBuilder: (context) => CompositedTransformFollower(
+          link: _link,
+          targetAnchor: Alignment.topLeft,
+          followerAnchor: Alignment.bottomLeft,
+          offset: const Offset(-6, -8),
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: IgnorePointer(
+              child: FadeTransition(
+                opacity: _curve,
+                child: ScaleTransition(
+                  scale: Tween(begin: 0.85, end: 1.0).animate(_curve),
+                  alignment: Alignment.bottomLeft,
+                  child: _UsageCard(usage: widget.usage, rings: rings, now: now),
+                ),
+              ),
+            ),
+          ),
+        ),
+        child: CompositedTransformTarget(
+          link: _link,
+          child: ScaleTransition(
+            scale: Tween(begin: 1.0, end: 1.18).animate(_curve),
+            child: Semantics(
+              label: widget.usage.provider.label,
+              child: SizedBox.square(
+                dimension: widget.size,
+                child: CustomPaint(
+                  painter: _RingsPainter([for (final w in rings) (w.usedAt(now), usageColor(w.projectAt(now).level))]),
+                  child: Center(
+                    child: SizedBox.square(
+                      dimension: _logoSize(widget.size, rings.length),
+                      child: ProviderLogo(widget.usage.provider),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ring thickness and gap for [count] rings in a dial of [size].
+(double, double) _ringMetrics(double size, int count) {
+  final band = size / 2 * (count > 3 ? 0.62 : 0.5);
+  final step = band / math.max(count, 1);
+  return (math.min(3.2, step * 0.66), math.min(1.8, step * 0.34));
+}
+
+double _logoSize(double size, int count) {
+  final (stroke, gap) = _ringMetrics(size, count);
+  return math.max(10, size - 2 * count * (stroke + gap) - 2 * gap);
+}
+
+class _RingsPainter extends CustomPainter {
+  _RingsPainter(this.used);
+
+  /// Percent spent and color of each ring, outermost first.
+  final List<(double, Color)> used;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final (stroke, gap) = _ringMetrics(size.shortestSide, used.length);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+    var rect = (Offset.zero & size).deflate(stroke / 2);
+    for (final (u, color) in used) {
+      canvas.drawArc(rect, 0, 2 * math.pi, false, paint..color = Colors.white.withValues(alpha: 0.09));
+      final sweep = 2 * math.pi * (u / 100).clamp(0, 1);
+      if (sweep > 0) canvas.drawArc(rect, -math.pi / 2, sweep, false, paint..color = color);
+      rect = rect.deflate(stroke + gap);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingsPainter old) =>
+      old.used.length != used.length || [for (var i = 0; i < used.length; i++) old.used[i] != used[i]].any((d) => d);
+}
+
+/// The card a hovered dial opens: per ring (same order and color) which limit it is, the percent
+/// spent, when it starts over, and where it is heading (when it runs out, if before).
+class _UsageCard extends StatelessWidget {
+  const _UsageCard({required this.usage, required this.rings, required this.now});
+
+  final ProviderUsage usage;
+  final List<UsageWindow> rings;
   final DateTime now;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final used = window.usedAt(now);
-    final color = usageColor(used);
-    final limit = switch (window.kind) {
+    final t = Theme.of(context).textTheme;
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 240, maxWidth: 360),
+        padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xF2141019),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white12),
+          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16, offset: Offset(0, 4))],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox.square(dimension: 16, child: ProviderLogo(usage.provider)),
+                const SizedBox(width: 8),
+                Text(usage.provider.label, style: t.labelLarge?.copyWith(color: Colors.white)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (final w in rings) _row(context, l, t, w),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, AppLocalizations l, TextTheme t, UsageWindow w) {
+    final used = w.usedAt(now);
+    final p = w.projectAt(now);
+    final color = usageColor(p.level);
+    final limit = switch (w.kind) {
       UsageKind.session => l.usageSessionLimit,
       UsageKind.week => l.usageWeekLimit,
-      UsageKind.other => l.usageOtherLimit(((window.minutes ?? 0) / 60).round()),
+      UsageKind.other => l.usageOtherLimit(((w.minutes ?? 0) / 60).round()),
     };
-    final resets = window.resetsAt;
-    final tip = [
-      '$provider${window.scope == null ? '' : ' · ${window.scope}'} · $limit',
-      l.usageUsed(used.round()),
-      if (resets != null && resets.isAfter(now)) l.usageResets(_when(context, resets)),
-    ].join('\n');
-    return Tooltip(
-      message: tip,
-      child: Column(
+    final resets = w.resetsAt;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox.square(
-            dimension: 28,
-            child: CustomPaint(
-              painter: _RingPainter(used / 100, color),
-              child: Center(
-                child: Text('${used.round()}',
-                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: color.withValues(alpha: 0.9))),
-              ),
+          SizedBox.square(dimension: 14, child: CustomPaint(painter: _RingsPainter([(used, color)]))),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(w.scope == null ? limit : '${w.scope} · $limit',
+                    style: t.bodySmall?.copyWith(color: Colors.white70)),
+                if (resets != null && resets.isAfter(now))
+                  Text(l.usageResets(_when(context, resets)),
+                      style: t.bodySmall?.copyWith(color: Colors.white38, fontSize: 11)),
+                if (_outlook(context, l, p) case final outlook?)
+                  Text(outlook, style: t.bodySmall?.copyWith(color: color.withValues(alpha: 0.85), fontSize: 11)),
+              ],
             ),
           ),
-          const SizedBox(height: 2),
-          Text(usageLabel(window), style: const TextStyle(fontSize: 8.5, color: Colors.white38)),
+          const SizedBox(width: 16),
+          Text(l.usageUsed(used.round()),
+              style: t.bodySmall?.copyWith(color: color, fontWeight: FontWeight.w600)),
         ],
       ),
     );
+  }
+
+  /// "proyección: 130 % al reiniciarse · se agota hacia las 17:20", or "límite alcanzado".
+  String? _outlook(BuildContext context, AppLocalizations l, UsageProjection p) {
+    if (p.spent) return l.usageSpent;
+    final projected = p.projected;
+    if (projected == null) return null;
+    final runsOut = p.runsOutAt;
+    final today = runsOut != null && DateUtils.isSameDay(runsOut.toLocal(), now);
+    return [
+      l.usageProjection(projected.round()),
+      if (runsOut != null) today ? l.usageRunsOutAt(_when(context, runsOut)) : l.usageRunsOutOn(_when(context, runsOut)),
+    ].join(' · ');
   }
 
   /// "14:00" today, "jue 14:00" this week, else "3 dic".
@@ -119,25 +288,88 @@ class _Ring extends StatelessWidget {
   }
 }
 
-class _RingPainter extends CustomPainter {
-  _RingPainter(this.fraction, this.color);
+/// A provider's mark, drawn (not a bundled image): Claude's spark, OpenAI's knot for Codex and
+/// Gemini's four-point star for Antigravity.
+class ProviderLogo extends StatelessWidget {
+  const ProviderLogo(this.provider, {super.key});
 
-  final double fraction;
-  final Color color;
+  final BrainProvider provider;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(painter: _LogoPainter(provider));
+}
+
+class _LogoPainter extends CustomPainter {
+  _LogoPainter(this.provider);
+
+  final BrainProvider provider;
 
   @override
   void paint(Canvas canvas, Size size) {
-    const stroke = 2.6;
-    final rect = (Offset.zero & size).deflate(stroke / 2);
+    final c = size.center(Offset.zero);
+    final r = size.shortestSide / 2;
+    switch (provider) {
+      case BrainProvider.claude:
+        _spark(canvas, c, r);
+      case BrainProvider.codex:
+        _knot(canvas, c, r);
+      case BrainProvider.antigravity:
+        _star(canvas, c, r);
+    }
+  }
+
+  /// Claude: rounded rays of uneven length around the center.
+  static void _spark(Canvas canvas, Offset c, double r) {
     final paint = Paint()
+      ..color = const Color(0xFFD97757)
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = r * 0.2;
+    const lengths = [1.0, 0.78, 0.92, 0.72, 0.96, 0.8, 0.9, 0.74, 1.0, 0.82, 0.88, 0.76];
+    for (var i = 0; i < lengths.length; i++) {
+      final a = -math.pi / 2 + i * 2 * math.pi / lengths.length;
+      final d = Offset(math.cos(a), math.sin(a));
+      canvas.drawLine(c + d * r * 0.16, c + d * (r - paint.strokeWidth / 2) * lengths[i], paint);
+    }
+  }
+
+  /// OpenAI: six rounded links turning around a hexagon.
+  static void _knot(Canvas canvas, Offset c, double r) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.92)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(rect, 0, 2 * math.pi, false, paint..color = Colors.white12);
-    final sweep = 2 * math.pi * fraction.clamp(0, 1);
-    if (sweep > 0) canvas.drawArc(rect, -math.pi / 2, sweep, false, paint..color = color);
+      ..strokeWidth = r * 0.11;
+    final link = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(r * 0.12, -r * 0.42), width: r * 0.78, height: r * 0.62),
+      Radius.circular(r * 0.31),
+    );
+    for (var i = 0; i < 6; i++) {
+      canvas
+        ..save()
+        ..translate(c.dx, c.dy)
+        ..rotate(i * math.pi / 3)
+        ..drawRRect(link, paint)
+        ..restore();
+    }
+  }
+
+  /// Gemini: a four-point star with curved sides, blue to violet.
+  static void _star(Canvas canvas, Offset c, double r) {
+    final path = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..quadraticBezierTo(c.dx + r * 0.08, c.dy - r * 0.08, c.dx + r, c.dy)
+      ..quadraticBezierTo(c.dx + r * 0.08, c.dy + r * 0.08, c.dx, c.dy + r)
+      ..quadraticBezierTo(c.dx - r * 0.08, c.dy + r * 0.08, c.dx - r, c.dy)
+      ..quadraticBezierTo(c.dx - r * 0.08, c.dy - r * 0.08, c.dx, c.dy - r)
+      ..close();
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.bottomLeft,
+        end: Alignment.topRight,
+        colors: [Color(0xFF4796E3), Color(0xFF9177C7), Color(0xFFCA6673)],
+      ).createShader(Rect.fromCircle(center: c, radius: r));
+    canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(_RingPainter old) => old.fraction != fraction || old.color != color;
+  bool shouldRepaint(_LogoPainter old) => old.provider != provider;
 }

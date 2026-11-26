@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minerva/brain/models.dart';
@@ -74,7 +75,7 @@ void main() {
       (UsageKind.other, 3.0, 'GPT-6 Spark', 1440),
     ]);
     expect(w.first.resetsAt, DateTime.fromMillisecondsSinceEpoch(1795700000 * 1000));
-    expect(usageLabel(w[2]), 'GPT-6 Spark 1d');
+    expect(w[2].length, const Duration(days: 1));
   });
 
   test('Codex without the multi-limit view reads its single snapshot', () {
@@ -117,9 +118,68 @@ void main() {
     final w = UsageWindow(kind: UsageKind.session, used: 80, resetsAt: DateTime(2026, 11, 26, 12));
     expect(w.usedAt(DateTime(2026, 11, 26, 11)), 80);
     expect(w.usedAt(DateTime(2026, 11, 26, 12)), 0);
-    expect(usageLabel(w), '5h');
-    expect(usageColor(50), isNot(usageColor(80)));
-    expect(usageColor(95), Colors.redAccent);
+  });
+
+  group('projection', () {
+    // A five-hour window that started at 10:00 and a week that started a Monday at 9:00.
+    final reset5h = DateTime(2026, 11, 26, 15);
+    final resetWeek = DateTime(2026, 11, 30, 9);
+    UsageWindow session(double used) => UsageWindow(kind: UsageKind.session, used: used, resetsAt: reset5h);
+    UsageWindow week(double used) => UsageWindow(kind: UsageKind.week, used: used, resetsAt: resetWeek);
+
+    test("underuse is fine: day 6 of 7 with 30 % spent is green (about 35 % by the reset)", () {
+      final p = week(30).projectAt(DateTime(2026, 11, 29, 9));
+      expect(p.projected, closeTo(35, 0.01));
+      expect(p.level, UsageLevel.good);
+      expect(p.runsOutAt, isNull);
+    });
+
+    test('green up to 90 % projected, orange to 110 %, red beyond', () {
+      final half = DateTime(2026, 11, 26, 12, 30);
+      expect([
+        for (final used in <double>[10, 45, 46, 50, 55, 56])
+          if (session(used).projectAt(half) case final p) (p.projected!.round(), p.level),
+      ], [
+        (20, UsageLevel.good),
+        (90, UsageLevel.good),
+        (92, UsageLevel.fair),
+        (100, UsageLevel.fair),
+        (110, UsageLevel.fair),
+        (112, UsageLevel.bad),
+      ]);
+    });
+
+    test('when it would run out, if before the reset', () {
+      // An hour in (a fifth of the window), 40 % spent: 200 % by the reset, out at 12:30.
+      final p = session(40).projectAt(DateTime(2026, 11, 26, 11));
+      expect(p.projected, closeTo(200, 0.01));
+      expect(p.level, UsageLevel.bad);
+      expect(p.runsOutAt, DateTime(2026, 11, 26, 12, 30));
+      // Exactly 100 % at the reset: it does not run out before it.
+      expect(session(50).projectAt(DateTime(2026, 11, 26, 12, 30)).runsOutAt, isNull);
+    });
+
+    test('a spent limit is red; early in a window or with no reset, what is spent decides', () {
+      final spent = session(100).projectAt(DateTime(2026, 11, 26, 14));
+      expect((spent.level, spent.spent, spent.projected), (UsageLevel.bad, true, null));
+      // Twenty minutes in (under a tenth of the window): 15 % spent is no projection yet.
+      final early = session(15).projectAt(DateTime(2026, 11, 26, 10, 20));
+      expect((early.level, early.projected), (UsageLevel.good, null));
+      expect(session(95).projectAt(DateTime(2026, 11, 26, 10, 20)).level, UsageLevel.fair);
+      expect(const UsageWindow(kind: UsageKind.week, used: 50).projectAt(DateTime(2026, 11, 26)).level, UsageLevel.good);
+      // After the reset the window reads as unused.
+      expect(session(99).projectAt(DateTime(2026, 11, 26, 16)).level, UsageLevel.good);
+      expect(usageColor(UsageLevel.good), isNot(usageColor(UsageLevel.bad)));
+    });
+  });
+
+  test('rings from the outside in: the plan\'s limits, shortest first, then a model\'s', () {
+    final w = ringOrder(claudeWindows(_json(_claude)).reversed.toList());
+    expect([for (final x in w) (x.kind, x.scope)], [
+      (UsageKind.session, null),
+      (UsageKind.week, null),
+      (UsageKind.week, 'Fable'),
+    ]);
   });
 
   group('UsageMonitor', () {
@@ -205,19 +265,40 @@ void main() {
       m.dispose();
     });
 
-    testWidgets('the rings show each limit with its percent', (tester) async {
-      answers[BrainProvider.claude] = claudeWindows(_json(_claude));
+    testWidgets('a dial per provider; hovering it opens the card with each limit', (tester) async {
+      final now = DateTime.now();
+      answers[BrainProvider.claude] = [
+        UsageWindow(kind: UsageKind.session, used: 40, resetsAt: now.add(const Duration(hours: 4))),
+        UsageWindow(kind: UsageKind.week, used: 30, resetsAt: now.add(const Duration(days: 3))),
+        UsageWindow(kind: UsageKind.week, used: 5, resetsAt: now.add(const Duration(days: 3)), scope: 'Fable'),
+      ];
+      configured = {BrainProvider.claude, BrainProvider.antigravity};
       final m = monitor();
       await m.refresh();
-      // Before the resets in the fixture.
       await tester.pumpWidget(MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: UsageRings(monitor: m)),
+        home: Scaffold(body: Align(alignment: Alignment.bottomLeft, child: UsageRings(monitor: m))),
       ));
+      expect(find.byType(UsageDial), findsNWidgets(2));
+      expect(find.text('5-hour limit'), findsNothing);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(find.byType(UsageDial).first));
+      await tester.pumpAndSettle();
       expect(find.text('Claude'), findsOneWidget);
-      expect(find.text('5h'), findsOneWidget);
-      expect(find.text('Fable 7d'), findsOneWidget);
+      expect(find.text('5-hour limit'), findsOneWidget);
+      expect(find.text('Weekly limit'), findsOneWidget);
+      expect(find.text('Fable · Weekly limit'), findsOneWidget);
+      expect(find.text('40% used'), findsOneWidget);
+      // An hour into the five hours with 40 % spent: 200 %, out in an hour and a half.
+      expect(find.textContaining('projected 200% by the reset · runs out around'), findsOneWidget);
+
+      await mouse.moveTo(const Offset(600, 10));
+      await tester.pumpAndSettle();
+      expect(find.text('5-hour limit'), findsNothing);
       m.dispose();
     });
   });

@@ -979,6 +979,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'resets {when}'**
   String usageResets(String when);
+
+  /// Usage card (status bar): a limit's projection at the current pace.
+  ///
+  /// In en, this message translates to:
+  /// **'projected {percent}% by the reset'**
+  String usageProjection(int percent);
+
+  /// Usage card (status bar): a limit's projection at the current pace.
+  ///
+  /// In en, this message translates to:
+  /// **'runs out around {time}'**
+  String usageRunsOutAt(String time);
+
+  /// Usage card (status bar): a limit's projection at the current pace.
+  ///
+  /// In en, this message translates to:
+  /// **'runs out around {when}'**
+  String usageRunsOutOn(String when);
+
+  /// Usage card (status bar): a limit's projection at the current pace.
+  ///
+  /// In en, this message translates to:
+  /// **'limit reached'**
+  String get usageSpent;
 }
 
 class _AppLocalizationsDelegate

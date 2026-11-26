@@ -156,11 +156,15 @@ The **Conversation** and **Workers** tabs each have a provider switch, the model
 (read from the installed CLI, never hard-coded), the effort and, where the model has it, fast mode. The
 conversation and the workers can run on different providers.
 
-**Usage.** The start of the status bar shows, for each provider the conversation and the workers run
-on, a small ring per plan limit with the percent spent (five hours, week, a model's own week; hover for
-when it resets). Claude's comes from Claude Code's sign-in (the same usage endpoint as its `/usage`),
-Codex's from its app server (`account/rateLimits/read`) and Antigravity's from `agy -p /usage`. They
-are read every five minutes, less often after a failed read; a provider that can't be read is hidden.
+**Usage.** The start of the status bar has a dial per provider the conversation and the workers run
+on: its logo inside a ring per plan limit (outermost the five hours, then the week, then a model's own
+week), filled as far as it is spent. The color is the pace: green while the limit lasts until its reset,
+orange when it ends close to it (90–110 % projected), red when it runs out before (or already has).
+Hovering a dial enlarges it into a card with each limit's percent, reset, projection and, when it runs
+out early, around when. Claude's comes from Claude Code's sign-in (the same usage endpoint as its
+`/usage`), Codex's from its app server (`account/rateLimits/read`) and Antigravity's from
+`agy -p /usage`. They are read every five minutes, less often after a failed read; a provider that
+can't be read is hidden.
 
 **Fallbacks.** Like OpenBot, Minerva can use several subscriptions at once.
 Under each tab, **Fallbacks** is an ordered list of provider and model (one per provider). Minerva runs

@@ -625,5 +625,36 @@
         "type": "String"
       }
     }
+  },
+  "usageProjection": "projected {percent}% by the reset",
+  "@usageProjection": {
+    "description": "Usage card (status bar): a limit's projection at the current pace.",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "usageRunsOutAt": "runs out around {time}",
+  "@usageRunsOutAt": {
+    "description": "Usage card (status bar): a limit's projection at the current pace.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "usageRunsOutOn": "runs out around {when}",
+  "@usageRunsOutOn": {
+    "description": "Usage card (status bar): a limit's projection at the current pace.",
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "usageSpent": "limit reached",
+  "@usageSpent": {
+    "description": "Usage card (status bar): a limit's projection at the current pace."
   }
 }
