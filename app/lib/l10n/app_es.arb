@@ -150,5 +150,13 @@
   "usageProjection": "proyección: {percent} % al reiniciarse",
   "usageRunsOutAt": "se agota hacia las {time}",
   "usageRunsOutOn": "se agota hacia el {when}",
-  "usageSpent": "límite alcanzado"
+  "usageSpent": "límite alcanzado",
+  "workersTitle": "Trabajos en segundo plano",
+  "workerRunning": "Trabajando",
+  "workerDone": "Terminado",
+  "workerFailed": "Falló",
+  "workerStopped": "Detenido",
+  "workerInterrupted": "Interrumpido",
+  "workerStarting": "Empezando…",
+  "workersMore": "+{count} más"
 }

@@ -363,6 +363,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         limits: limits,
         unavailable: unavailableProviders,
         resolve: (c) => c.resolve(_catalogs[c.provider]),
+        describe: (c) => '${c.provider.label} · ${_catalogs[c.provider]?.find(c.model)?.name ?? c.model}',
       )
         ..addListener(notifyListeners)
         ..addListener(() => presence.workers = workers.runningIds);

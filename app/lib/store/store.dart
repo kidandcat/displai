@@ -103,6 +103,13 @@ class Store {
         PRAGMA user_version = 2;
       ''');
     }
+    if (version < 3) {
+      // The model a worker runs on, as the workers panel shows it.
+      db.execute('''
+        ALTER TABLE workers ADD COLUMN model TEXT;
+        PRAGMA user_version = 3;
+      ''');
+    }
   }
 
   static int now() => DateTime.now().millisecondsSinceEpoch;

@@ -12,4 +12,5 @@ export 'presence_view.dart'
         PresenceFrame,
         kPresenceAccent,
         kPresenceAccent2,
+        kPresenceWorkerAccent,
         kPresenceBackground;

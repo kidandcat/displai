@@ -31,8 +31,10 @@ class Workers extends ToolProvider with ChangeNotifier {
     ProviderLimits? limits,
     this.unavailable = const {},
     ({String model, String? effort, bool fast}) Function(ModelChoice choice)? resolve,
+    String Function(ModelChoice choice)? describe,
   })  : limits = limits ?? ProviderLimits(),
-        resolve = resolve ?? ((c) => c.resolve(null)) {
+        resolve = resolve ?? ((c) => c.resolve(null)),
+        describe = describe ?? ((c) => '${c.provider.label} · ${c.model}') {
     // Workers that were running when the app closed are gone; message_worker resumes them.
     store.db.execute("UPDATE workers SET status = 'interrupted' WHERE status = 'running'");
   }
@@ -62,6 +64,9 @@ class Workers extends ToolProvider with ChangeNotifier {
   /// The model, effort and speed a choice runs with (from its provider's catalog).
   final ({String model, String? effort, bool fast}) Function(ModelChoice choice) resolve;
 
+  /// The model a choice runs on, as the workers panel shows it.
+  final String Function(ModelChoice choice) describe;
+
   final _running = <int, _Worker>{};
 
   int get runningCount => _running.length;
@@ -71,7 +76,8 @@ class Workers extends ToolProvider with ChangeNotifier {
 
   static const _progressTool = McpTool(
     'report_progress',
-    'Record a one-line progress note (the assistant can read it if the user asks how you are doing).',
+    'Record a progress note of one or two sentences: what you did and what comes next (the user '
+        'sees it on screen; the assistant reads it if the user asks how you are doing).',
     {
       'type': 'object',
       'properties': {
@@ -88,7 +94,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
 - Use Minerva's tools for commands and files (run_command, read_file, write_file, list_dir), plus ${_fileTools[provider]} and the web. You have no screen and no mouse or keyboard.
 - Nobody confirms anything: your tools run at once. Do destructive actions (deleting files or data, sending messages or emails, buying or paying, publishing, overwriting, irreversible commands) only when the task clearly asks for them. Otherwise do not do them: say in your report what you would do, and let the assistant ask the user.
 - Credentials: vault_list shows the saved ones; write {{vault:name.field}} where a value goes in run_command or write_file (Minerva fills it in; you never see values). If one is missing, say so in your report.
-- Call report_progress at each milestone with a one-line note.
+- Call report_progress at each milestone with one or two sentences in the user's language: what you did and what comes next.
 - Final report: first line is the outcome (done, partly done, or failed, and why). Then the key results, short and concrete (paths, numbers, links). Write it in ${speechLanguages[speechLanguage] ?? 'English'}, the user's language. Never invent results.
 ''';
 
@@ -204,7 +210,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
       [title, task, sessionId, Store.now(), cwd],
     );
     final id = store.db.lastInsertRowId;
-    await _launch(id, title, sessionId, task, cwd: cwd, run: resolve(choice), handoff: task);
+    await _launch(id, title, sessionId, task, cwd: cwd, choice: choice, handoff: task);
     return id;
   }
 
@@ -228,14 +234,16 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     return (BrainProvider.claude, stored);
   }
 
-  /// Runs [text] in the worker's session [storedId]. [handoff] is what to start from on another
-  /// provider if this one is out; [tried]: providers it was on before.
+  /// Runs [text] in the worker's session [storedId] on [choice]. [handoff] is what to start from
+  /// on another provider if this one is out; [tried]: providers it was on before.
   Future<void> _launch(int id, String title, String storedId, String text,
       {required String? cwd,
-      required ({String model, String? effort, bool fast}) run,
+      required ModelChoice choice,
       required String handoff,
       Set<BrainProvider> tried = const {}}) async {
     final (provider, sessionId) = _parseStoredId(storedId);
+    final run = resolve(choice);
+    store.db.execute('UPDATE workers SET model = ? WHERE id = ?', [describe(choice), id]);
     final w = _Worker(id, title, provider, cwd, handoff, tried);
     final mcp = DisplayMcpServer(
       tools: [for (final p in hostTools) ...p.tools, _progressTool],
@@ -305,7 +313,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     unawaited(_launch(w.id, w.title, stored,
         '[note] This work was on ${w.provider.agent}, which is out; nothing of it carries over. '
         'Do it here from the start.\n\n${w.handoff}',
-        cwd: w.cwd, run: resolve(to), handoff: w.handoff, tried: tried));
+        cwd: w.cwd, choice: to, handoff: w.handoff, tried: tried));
     return true;
   }
 
@@ -371,8 +379,32 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
       'New message from the assistant: $text',
     ].join('\n\n');
     await _launch(id, r['title'] as String, stored, text,
-        cwd: r['cwd'] as String?, run: resolve(choice), handoff: handoff);
+        cwd: r['cwd'] as String?, choice: choice, handoff: handoff);
     return ToolResult('worker $id resumed with the new message');
+  }
+
+  /// The workers the panel shows: the running ones, then the ones that finished in the last
+  /// [recent], newest first, at most [limit].
+  List<WorkerInfo> board({Duration recent = const Duration(minutes: 15), int limit = 6}) {
+    final rows = store.db.select(
+      'SELECT id, title, status, started, finished, model, cwd, progress, result FROM workers '
+      "WHERE status = 'running' OR finished >= ? ORDER BY status = 'running' DESC, id DESC LIMIT ?",
+      [Store.now() - recent.inMilliseconds, limit],
+    );
+    return [
+      for (final r in rows)
+        WorkerInfo(
+          id: r['id'] as int,
+          title: r['title'] as String,
+          status: r['status'] as String,
+          started: DateTime.fromMillisecondsSinceEpoch(r['started'] as int),
+          finished: r['finished'] == null ? null : DateTime.fromMillisecondsSinceEpoch(r['finished'] as int),
+          model: r['model'] as String?,
+          project: r['cwd'] == null ? null : projects.label(r['cwd'] as String),
+          progress: r['progress'] as String?,
+          result: r['result'] as String?,
+        ),
+    ];
   }
 
   String _list() {
@@ -409,6 +441,55 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     }
     _running.clear();
     super.dispose();
+  }
+}
+
+/// A worker as the workers panel shows it.
+class WorkerInfo {
+  const WorkerInfo({
+    required this.id,
+    required this.title,
+    required this.status,
+    required this.started,
+    this.finished,
+    this.model,
+    this.project,
+    this.progress,
+    this.result,
+  });
+
+  final int id;
+  final String title;
+
+  /// 'running', 'done', 'failed', 'stopped' or 'interrupted' (the app closed while it ran).
+  final String status;
+  final DateTime started;
+  final DateTime? finished;
+
+  /// The model it runs on (null: started before that was kept).
+  final String? model;
+
+  /// Its project, or the folder it works in (null: the workers' own).
+  final String? project;
+
+  /// Its latest progress note, and its report once finished.
+  final String? progress;
+  final String? result;
+
+  bool get running => status == 'running';
+
+  /// How long it has been running, or ran.
+  Duration elapsed(DateTime now) => (running ? now : finished ?? now).difference(started);
+
+  /// What it is at, for the panel: the latest progress note while it runs; once it finished, the
+  /// first line of its report (the outcome), else that note.
+  String? get latest {
+    if (!running) {
+      final outcome = result?.trim().split('\n').first.replaceAll('**', '').replaceFirst(RegExp(r'^#+'), '').trim();
+      if (outcome != null && outcome.isNotEmpty) return outcome;
+    }
+    final p = progress?.trim();
+    return p == null || p.isEmpty ? null : p;
   }
 }
 

@@ -551,4 +551,30 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get usageSpent => 'limit reached';
+
+  @override
+  String get workersTitle => 'Background jobs';
+
+  @override
+  String get workerRunning => 'Working';
+
+  @override
+  String get workerDone => 'Done';
+
+  @override
+  String get workerFailed => 'Failed';
+
+  @override
+  String get workerStopped => 'Stopped';
+
+  @override
+  String get workerInterrupted => 'Interrupted';
+
+  @override
+  String get workerStarting => 'Getting started…';
+
+  @override
+  String workersMore(int count) {
+    return '+$count more';
+  }
 }

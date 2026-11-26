@@ -13,6 +13,7 @@ import 'app/main_view.dart';
 import 'app/model_picker.dart';
 import 'app/overlay_shell.dart';
 import 'app/settings.dart';
+import 'app/workers_panel.dart';
 import 'l10n/l10n.dart';
 import 'store/legacy_data.dart';
 import 'usage/usage_rings.dart';
@@ -148,6 +149,7 @@ class HomePage extends StatelessWidget {
                 // Once the panel has become the orb, the display shows as Minerva's widgets.
                 showDisplay: a.window.panelShown.value,
                 leading: a.ready ? UsageRings(monitor: a.usage) : null,
+                side: a.ready ? WorkersPanel(workers: a.workers) : null,
                 actions: [
                   if (a.ready && a.webhooks != null) _WebhookButton(webhooks: a.webhooks!),
                   if (a.ready) _VaultButton(vault: a.vault),

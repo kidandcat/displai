@@ -1003,6 +1003,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'limit reached'**
   String get usageSpent;
+
+  /// Workers panel (next to the orb): its heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Background jobs'**
+  String get workersTitle;
+
+  /// Workers panel: a worker's status while it runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get workerRunning;
+
+  /// Workers panel: a worker that finished.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get workerDone;
+
+  /// Workers panel: a worker that failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get workerFailed;
+
+  /// Workers panel: a worker that was stopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped'**
+  String get workerStopped;
+
+  /// Workers panel: a worker cut short when the app closed.
+  ///
+  /// In en, this message translates to:
+  /// **'Interrupted'**
+  String get workerInterrupted;
+
+  /// Workers panel: a running worker with no progress note yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Getting started…'**
+  String get workerStarting;
+
+  /// Workers panel: workers that do not fit.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} more'**
+  String workersMore(int count);
 }
 
 class _AppLocalizationsDelegate

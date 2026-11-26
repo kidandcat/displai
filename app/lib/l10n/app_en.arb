@@ -656,5 +656,42 @@
   "usageSpent": "limit reached",
   "@usageSpent": {
     "description": "Usage card (status bar): a limit's projection at the current pace."
+  },
+  "workersTitle": "Background jobs",
+  "@workersTitle": {
+    "description": "Workers panel (next to the orb): its heading."
+  },
+  "workerRunning": "Working",
+  "@workerRunning": {
+    "description": "Workers panel: a worker's status while it runs."
+  },
+  "workerDone": "Done",
+  "@workerDone": {
+    "description": "Workers panel: a worker that finished."
+  },
+  "workerFailed": "Failed",
+  "@workerFailed": {
+    "description": "Workers panel: a worker that failed."
+  },
+  "workerStopped": "Stopped",
+  "@workerStopped": {
+    "description": "Workers panel: a worker that was stopped."
+  },
+  "workerInterrupted": "Interrupted",
+  "@workerInterrupted": {
+    "description": "Workers panel: a worker cut short when the app closed."
+  },
+  "workerStarting": "Getting started…",
+  "@workerStarting": {
+    "description": "Workers panel: a running worker with no progress note yet."
+  },
+  "workersMore": "+{count} more",
+  "@workersMore": {
+    "description": "Workers panel: workers that do not fit.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

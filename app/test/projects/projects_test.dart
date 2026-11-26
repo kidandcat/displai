@@ -42,6 +42,12 @@ void main() {
     expect(projects.resolve('~/nope'), isNull);
   });
 
+  test('names folders by project, else from home', () {
+    expect(projects.label('${tmp.path}/projects/Casa'), 'Casa');
+    expect(projects.label('${tmp.path}/code/app'), '~/code/app');
+    expect(projects.label('/opt/x'), '/opt/x');
+  });
+
   test('a worker gets the folder and its main doc', () {
     write('${tmp.path}/projects/Casa/README.md', 'Presupuesto: 12000 euros.');
     final s = projects.workerSection('${tmp.path}/projects/Casa');

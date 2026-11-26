@@ -54,6 +54,13 @@ class Projects {
     return Directory('$dir/$p').existsSync() ? '$dir/$p' : null;
   }
 
+  /// How the folder at [path] is named to the user: a project's name, else its path from `~`.
+  String label(String path) {
+    if (path.startsWith('$dir/')) return path.substring(dir.length + 1);
+    if (path == home) return '~';
+    return path.startsWith('$home/') ? '~/${path.substring(home.length + 1)}' : path;
+  }
+
   /// The main doc of the folder at [path], or null when it has none.
   static ({String name, String text})? mainDoc(String path) {
     for (final name in mainDocs) {
