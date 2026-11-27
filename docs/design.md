@@ -318,9 +318,17 @@ brain's built-ins), so any MCP-capable brain gets the same capabilities.
 | `minerva_window` | Minerva's own window: `orb` or `full` (see 3.8, it also switches on its own). |
 | `set_language` | Minerva's language (UI and voice): `system`, `en` or `es` (see 7.1). |
 | `vault_list`, `vault_request`, `vault_delete` | Saved credentials, used through `{{vault:name.field}}` placeholders (see 3.9). |
+| `camera` | A photo the brain looks at: `device` `mac` or `phone` (default: where the user is, the phone while it is connected), `facing` `back` (default) or `front` on the phone. Saved full size as `$TMPDIR/minerva-camera/photo-<time>.jpg` (path in the result, for `telegram_send_file`); the model gets a JPEG of at most 1568 px a side. |
 
 The native side is `macos/Runner/ComputerControl.swift` (method channel `minerva/computer`); it needs
 the Accessibility and Screen Recording permissions.
+
+The camera's native side is `macos/Runner/CameraCapture.swift` (method channel `minerva/camera`): AVFoundation
+takes one photo from the built-in camera (else the system's preferred one, never an iPhone first) after
+1.2 s of warm-up, and ImageIO turns any photo upright by its EXIF orientation and makes the model's copy
+(`prepare`, also for the phone's photos). It needs the Camera permission (`NSCameraUsageDescription`,
+entitlement `com.apple.security.device.camera`); macOS asks the first time, and a refusal comes back as an
+error telling the brain to have the user allow it in System Settings. On the phone, see 3.7.
 
 **No confirmations (Jairo's choice): every tool runs at once.** There is no confirm card, no yes/no
 step and no `risky` flag; the safety rules live in the prompts instead. The brain's system prompt
@@ -354,6 +362,7 @@ and the user not speaking.
 The same Flutter app runs on Android as a remote: the phone is the mic, the speaker and the display;
 speech recognition, the brain, the voice and all tools stay on the desktop. Same conversation, same memory.
 The phone has no tools of its own and the brain never acts on it: every action happens on the desktop.
+The one exception is its camera: the brain's `camera` tool (3.5) takes a photo with it while it is connected.
 
 - **Relay** (`relay/`, Go, `wss://minerva.kidandcat.com/ws?role=host|remote`): both sides dial out, so neither
   needs a public address. `Authorization: Bearer <room token>` (≥ 32 chars); the room is `sha256(token)`. It
@@ -380,10 +389,10 @@ The phone has no tools of its own and the brain never acts on it: every action h
 - **Protocol** (`app/lib/remote/protocol.dart`), inside the encrypted channel: audio frames are byte 0 =
   kind (1 mic, phone→desktop; 2 voice, desktop→phone) then PCM16LE. JSON messages:
   - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,muted}`, `stop`, `reset`,
-    `tool{id?,name,args}` (no id = replay), `partial{name,json}`, `cancel_partial`,
+    `tool{id?,name,args}` (no id = replay; name `camera` with `{facing}` takes a photo), `partial{name,json}`, `cancel_partial`,
     `settings{brain,workers,catalog,fast_unavailable,language,voice,vault,webhooks?}` (whenever they change;
     credential and field names only, never values);
-  - phone→desktop: `hello{w,h,platform}`, `result{id,text,error,png?}`, `idle{n}`, `event{text}`,
+  - phone→desktop: `hello{w,h,platform}`, `result{id,text,error,png?,jpeg?}`, `idle{n}`, `event{text}`,
     `mute{on}`, `vault{name,description,fields}` (a credential typed in a vault form, see 3.9),
     `set{brain?,workers?,language?,voice?}`, `vault_delete{name}`.
 - **Settings on the phone**: the phone's settings screen (tune button) has what the desktop's status bar has
@@ -401,6 +410,13 @@ The phone has no tools of its own and the brain never acts on it: every action h
 - **Phone audio** (`VoiceAudio.kt`): `AudioRecord` with the `VOICE_COMMUNICATION` source at 16 kHz and an
   `AudioTrack` for voice communication on the loudspeaker, so the platform's echo processing allows barge-in.
   The phone reports `idle{n}` when the voice it got has played, which ends the desktop's "speaking" state.
+- **Camera** (`app/lib/camera/phone_camera.dart`, the `camera` plugin on CameraX): for `tool{name:camera}` the
+  phone opens the back or front camera without a preview at 1080p (`ResolutionPreset.veryHigh`), waits
+  0.8 s for exposure and focus, and answers with the JPEG as the camera wrote it (the desktop applies the
+  EXIF orientation). The desktop waits 45 s, time for Android's camera permission prompt the first time
+  (`CAMERA` is already in the manifest for the pairing QR scanner). It works while the app is open: Android
+  does not give the camera to apps in the background. A phone app from before the camera answers "unknown
+  display tool", which the desktop turns into "install the new version".
 - `app/tool/remote_smoke.dart` is a headless remote for testing without a phone.
 
 **Webhooks** (`relay/cmd/minerva-webhooks`, `relay/tunnel`, `relay/passthrough.go`, `app/lib/webhooks/`):

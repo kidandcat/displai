@@ -221,6 +221,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get activitySendingFile => 'Sending it on Telegram…';
 
   @override
+  String get activityTakingPhoto => 'Taking a photo…';
+
+  @override
   String get activityRunningCommand => 'Running a command…';
 
   @override

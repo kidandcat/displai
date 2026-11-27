@@ -14,16 +14,19 @@ class McpTool {
   final Map<String, dynamic> inputSchema;
 }
 
-/// What a tool returns: text, optionally a PNG image (screenshots), and an error flag.
+/// What a tool returns: text, optionally an image (PNG for screenshots, JPEG for photos), and an
+/// error flag.
 class ToolResult {
-  const ToolResult(this.text, {this.png, this.isError = false});
+  const ToolResult(this.text, {this.png, this.jpeg, this.isError = false});
 
   const ToolResult.error(this.text)
       : png = null,
+        jpeg = null,
         isError = true;
 
   final String text;
   final Uint8List? png;
+  final Uint8List? jpeg;
   final bool isError;
 }
 
@@ -82,11 +85,12 @@ class DisplayMcpServer {
           } catch (e) {
             r = ToolResult.error('error: $e');
           }
-          final png = r.png;
+          final png = r.png, jpeg = r.jpeg;
           return CallToolResult(
             content: [
               TextContent(text: r.text),
               if (png != null) ImageContent(data: base64Encode(png), mimeType: 'image/png'),
+              if (jpeg != null) ImageContent(data: base64Encode(jpeg), mimeType: 'image/jpeg'),
             ],
             isError: r.isError,
           );

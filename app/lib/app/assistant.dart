@@ -15,6 +15,7 @@ import '../brain/codex_session.dart';
 import '../brain/fallback.dart';
 import '../brain/models.dart';
 import '../brain/system_prompt.dart';
+import '../camera/camera_tools.dart';
 import '../display/display.dart';
 import '../display/display_runner.dart';
 import '../l10n/l10n.dart';
@@ -401,6 +402,11 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         routines,
         if (webhooks != null) WebhookTools(webhooks!),
         if (telegram != null) TelegramTools(telegram!),
+        CameraTools(
+          onPhone: () => onPhone,
+          // Time for the phone to ask for the camera permission and focus.
+          phone: (args) async => phone?.call(CameraTools.tool.name, args, timeout: const Duration(seconds: 45)),
+        ),
       ];
       _speaker = await Speaker.start(modelDir: models.supertonic, voice: voice, language: speechLanguage);
       _listener = await Listener.start(vadModel: models.vad, parakeetDir: models.parakeet);
@@ -1350,6 +1356,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         'create_routine' || 'list_routines' || 'update_routine' || 'delete_routine' => l.activityScheduling,
         'webhook_create' || 'webhook_list' || 'webhook_delete' => l.activityWebhooks,
         'telegram_send_file' => l.activitySendingFile,
+        'camera' => l.activityTakingPhoto,
         'run_command' => l.activityRunningCommand,
         'read_file' || 'list_dir' => l.activityReadingFiles,
         'write_file' => l.activityWritingFile,

@@ -17,6 +17,8 @@ import 'dart:typed_data';
 ///                     stop                            drop the queued voice (barge-in)
 ///                     reset                           clear the display (before a replay)
 ///                     tool {id?, name, args}          run a display tool; reply when id is set
+///                                                     (name camera, args {facing: back|front}:
+///                                                     take a photo with the phone's camera)
 ///                     partial {name, json}            streaming tool input (progressive show)
 ///                     cancel_partial
 ///                     settings {brain, workers, catalog, fast_unavailable, language, voice,
@@ -29,7 +31,10 @@ import 'dart:typed_data';
 ///                                                     the plan usage of the desktop's providers,
 ///                                                     when it changes (times: ms since epoch)
 ///   remote → host:    hello {w, h, platform}          logical screen size of the remote display
-///                     result {id, text, error?, png?} a display tool's result (png: base64)
+///                     result {id, text, error?, png?, jpeg?}
+///                                                     a display tool's result (png: base64); a
+///                                                     camera photo as jpeg (base64, as the camera
+///                                                     wrote it, EXIF orientation not applied)
 ///                     idle {n}                        voice queue drained after n voice frames
 ///                     event {text}                    a display action ("[display] ...")
 ///                     mute {on}                       the user muted or unmuted the phone mic

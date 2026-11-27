@@ -60,6 +60,7 @@
   "activityScheduling": "Programando…",
   "activityWebhooks": "Configurando webhooks…",
   "activitySendingFile": "Enviándolo por Telegram…",
+  "activityTakingPhoto": "Sacando una foto…",
   "activityRunningCommand": "Ejecutando un comando…",
   "activityReadingFiles": "Leyendo ficheros…",
   "activityWritingFile": "Escribiendo un fichero…",

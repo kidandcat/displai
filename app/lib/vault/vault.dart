@@ -363,6 +363,6 @@ class Vault extends ChangeNotifier {
   ToolResult scrubResult(ToolResult r) {
     final text = scrub(r.text);
     if (identical(text, r.text) || text == r.text) return r;
-    return ToolResult(text, png: r.png, isError: r.isError);
+    return ToolResult(text, png: r.png, jpeg: r.jpeg, isError: r.isError);
   }
 }

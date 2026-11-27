@@ -10,6 +10,7 @@ import '../app/settings.dart';
 import '../audio/native_audio.dart';
 import '../brain/fallback.dart';
 import '../brain/models.dart';
+import '../camera/phone_camera.dart';
 import '../display/display.dart';
 import '../display/display_runner.dart';
 import '../l10n/l10n.dart';
@@ -22,7 +23,8 @@ import 'remote_link.dart';
 /// the processing (speech recognition, the brain, the voice). See [RemoteProtocol].
 ///
 /// Its settings are the desktop's: shown as the desktop last sent them, and changed by asking it.
-/// Every action runs on the desktop; the phone only listens, speaks and shows.
+/// Every action runs on the desktop; the phone only listens, speaks and shows (and takes a photo
+/// when the desktop's brain asks for one: [capturePhoto]).
 class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSettings {
   RemoteAssistant({required this.relay, required this.key});
 
@@ -332,10 +334,30 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     }
   }
 
+  /// Takes the photos the desktop's `camera` tool asks for (replaced in tests).
+  @visibleForTesting
+  Future<Uint8List> Function({bool front}) capturePhoto = PhoneCamera.capture;
+
+  /// The result of the `camera` tool: the photo as base64 JPEG, or the error.
+  @visibleForTesting
+  Future<Map<String, Object?>> photoResult(Map<String, dynamic> args) async {
+    try {
+      final jpeg = await capturePhoto(front: args['facing'] == 'front');
+      return {'text': 'photo', 'jpeg': base64Encode(jpeg)};
+    } catch (e) {
+      return {'text': 'error: $e', 'error': true};
+    }
+  }
+
   Future<void> _runTool(Map<String, dynamic> m) async {
     final id = m['id'];
     final name = '${m['name']}';
     final args = (m['args'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+    if (name == 'camera') {
+      // Never replayed: a photo is taken only when asked for.
+      if (id != null) link.send({'t': 'result', 'id': id, ...await photoResult(args)});
+      return;
+    }
     if (name == 'snapshot') {
       final shot = await DisplayRunner.capture(screenKey);
       if (id == null) return;

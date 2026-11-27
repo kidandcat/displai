@@ -37,6 +37,7 @@ import webview_flutter_wkwebview
 class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var audio: VoiceAudio?
   private var computer: ComputerControl?
+  private var camera: CameraCapture?
   private var channel: FlutterMethodChannel?
   private let muteKey = MuteKey()
   /// The pending recordMuteKey call.
@@ -76,6 +77,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     RegisterGeneratedPlugins(registry: flutterViewController)
     audio = VoiceAudio(messenger: engine.binaryMessenger)
     computer = ComputerControl(messenger: engine.binaryMessenger)
+    camera = CameraCapture(messenger: engine.binaryMessenger)
     let pages = FlutterMethodChannel(name: "minerva/webview", binaryMessenger: engine.binaryMessenger)
     pages.setMethodCallHandler { [weak flutterViewController] call, result in
       guard let controller = flutterViewController else {

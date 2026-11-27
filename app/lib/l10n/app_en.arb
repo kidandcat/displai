@@ -285,6 +285,10 @@
   "@activitySendingFile": {
     "description": "What the assistant is doing (spoken aloud)."
   },
+  "activityTakingPhoto": "Taking a photo…",
+  "@activityTakingPhoto": {
+    "description": "What the assistant is doing (spoken aloud)."
+  },
   "activityRunningCommand": "Running a command…",
   "@activityRunningCommand": {
     "description": "What the assistant is doing (spoken aloud)."
