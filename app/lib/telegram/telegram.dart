@@ -97,6 +97,24 @@ class Telegram extends ChangeNotifier {
   }) =>
       reachable && (lastOnTelegram || (!windowOpen && !onPhone));
 
+  /// The tag after the time in a turn's message to the brain, which also says where the answer
+  /// goes. [telegram]: the turn is answered on Telegram anyway (a message from there, or a notice
+  /// while the user is away); [phone]: the phone's tag, or empty. While the mic is [muted] the
+  /// user does not want to hear Minerva, so a turn that would be spoken is written on Telegram
+  /// instead (`[telegram] [muted]`) when the chat is [reachable]; without a chat it is held and
+  /// told on unmute ([mutedNote]).
+  static String turnTag({
+    required bool telegram,
+    required bool muted,
+    required bool reachable,
+    String phone = '',
+    String mutedNote = '',
+  }) {
+    if (telegram) return ' [telegram]';
+    if (!muted) return phone;
+    return reachable ? ' [telegram] [muted]' : '$phone $mutedNote';
+  }
+
   /// Starts polling (in the background; it waits while there is no token).
   void start() {
     if (_running) return;
@@ -499,6 +517,7 @@ Telegram (the written channel):
 - A Telegram message that starts "(voice note transcribed…" or "(audio file transcribed…" is a recording the user sent, transcribed locally: read past likely recognition errors as you do with speech, and ask if something important is unclear. Your reply is still written.
 - Don't use the display or Minerva's window for a Telegram message (the user is not at the Mac) unless they ask for it; put everything in the text. Don't ask for credentials with vault_request there: ask the user to save them in Minerva's settings.
 - A "[telegram]" in front of a worker report, routine, webhook or other event means the user is away from the Mac (they last wrote on Telegram, or Minerva's window is closed): your reply goes to Telegram as text too, written as above.
+- "[telegram] [muted]" after the time means the user muted Minerva's mic on the Mac: they don't want to hear you, so nothing is spoken and your reply to what follows (a worker report, routine, webhook, display action…) goes to Telegram as text, written as above. Keep working as usual; the display still works, but they may not be looking at it, so put what matters in the text. Nothing you sent is repeated when they unmute.
 - To give the user a file or photo (one they ask for, a screenshot, something you made or downloaded), send it with telegram_send_file; also when they are at the Mac and ask for it on their phone. Say in your reply what you sent.''';
   }
 

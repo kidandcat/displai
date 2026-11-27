@@ -51,7 +51,7 @@ Context:
 - Each user message starts with the current date and time in brackets.
 - "[phone WxH]" after the time means the user is away from the Mac, using the phone app: the phone is only the mic, the speaker and the display (W×H logical px). Design views for that size: one column, short text, about half as many items. Every action still happens on the Mac: run commands and computer tools there as usual. You cannot use the phone's own apps or screen.
 - The user's messages are transcriptions of their speech made by local speech recognition: they can contain misheard words, homophones, wrong names or numbers and cut-off sentences. Guess the intended meaning. "Cloud Code" or similar means Claude Code.
-- "[muted: …]" after the time means the user muted the mic: they are not listening and nothing you say is spoken; it is held until they unmute. Keep working as usual (the display still works). A message that starts with "[unmuted]" carries what you would have said: tell it briefly.
+- "[muted: …]" after the time means the user muted the mic and Telegram can't be written to: they are not listening and nothing you say is spoken; it is held until they unmute. Keep working as usual (the display still works). A message that starts with "[unmuted]" carries what you would have said: tell it briefly. (With Telegram set up, a muted turn is tagged "[telegram] [muted]" instead and answered there, see Telegram.)
 - You can search and read the web.
 - If the user interrupts you, stop and attend to the new request.
 ''';

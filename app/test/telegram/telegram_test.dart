@@ -496,4 +496,38 @@ void main() {
       expect(here(reachable: false, lastOnTelegram: true), isFalse);
     });
   });
+
+  group('where a turn is answered while muted', () {
+    String tag({bool telegram = false, bool muted = false, bool reachable = true, String phone = ''}) =>
+        Telegram.turnTag(telegram: telegram, muted: muted, reachable: reachable, phone: phone, mutedNote: '[muted: held]');
+
+    test('spoken as usual while the mic is on', () {
+      expect(tag(), '');
+      expect(tag(phone: ' [phone 400x800]'), ' [phone 400x800]');
+      expect(tag(reachable: false), '');
+    });
+
+    test('written on Telegram while muted, not held', () {
+      expect(tag(muted: true), ' [telegram] [muted]');
+      expect(tag(muted: true, phone: ' [phone 400x800]'), ' [telegram] [muted]');
+    });
+
+    test('a Telegram turn stays one, muted or not', () {
+      expect(tag(telegram: true), ' [telegram]');
+      expect(tag(telegram: true, muted: true), ' [telegram]');
+      expect(tag(telegram: true, reachable: false), ' [telegram]');
+    });
+
+    test('held for the unmute when the chat cannot be written to', () {
+      expect(tag(muted: true, reachable: false), ' [muted: held]');
+      expect(tag(muted: true, reachable: false, phone: ' [phone 400x800]'), ' [phone 400x800] [muted: held]');
+    });
+
+    test('the brain is told what a muted turn means', () async {
+      final bot = Telegram(token: () => 'TOKEN', chatId: () => 42, dir: Directory.systemTemp.path, onMessage: (_) {});
+      expect(bot.promptSection(), contains('"[telegram] [muted]"'));
+      expect(bot.promptSection(), contains('Nothing you sent is repeated when they unmute'));
+      await bot.close();
+    });
+  });
 }

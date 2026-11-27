@@ -188,11 +188,12 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// What the brain has said in the current turn (saved to the history when it ends).
   final _reply = StringBuffer();
 
-  /// What Minerva would have said while the mic was muted: told to the user when they unmute
-  /// (see [_drainNotices]).
+  /// What Minerva would have said while the mic was muted and Telegram could not be written to:
+  /// told to the user when they unmute (see [_drainNotices]).
   final _unsaid = <String>[];
 
-  /// Goes with each message to the brain while the mic is muted.
+  /// Goes with each message to the brain while the mic is muted and there is no Telegram chat
+  /// (with one, the answer is written there: [Telegram.turnTag]).
   static const _mutedNote = '[muted: the user muted the mic, so they are not listening and you cannot speak. '
       'What you say now is held and told to them when they unmute; the display still works]';
 
@@ -963,32 +964,34 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   }
 
   /// Starts a turn. [telegram]: it is answered on Telegram; [notice]: a worker report, routine or
-  /// webhook (not something the user did, so it does not change where they are).
+  /// webhook (not something the user did, so it does not change where they are). While the mic
+  /// is muted it is answered on Telegram too, when the chat can be written to.
   void _ask(String text, {bool telegram = false, bool notice = false}) {
     final event = text.startsWith('[display]') || text.startsWith('[worker') || text.startsWith('[routine') ||
         text.startsWith('[webhook') || text.startsWith('[unmuted]');
     store.addMessage(event ? 'event' : 'user', telegram && !notice ? '[telegram] $text' : text);
     if (!notice) _lastOnTelegram = telegram;
+    final p = phone;
+    final where = Telegram.turnTag(
+      telegram: telegram,
+      muted: _muted,
+      reachable: this.telegram?.reachable ?? false,
+      phone: p != null && p.active ? ' [phone ${p.width.round()}x${p.height.round()}]' : '',
+      mutedNote: _mutedNote,
+    );
+    final written = where.startsWith(' [telegram]');
     _generation++;
     _pendingTts = 0;
     _sentence.clear();
     _firstAudioAt = null;
-    _telegramTurn = telegram;
+    _telegramTurn = written;
     _telegramText.clear();
-    if (telegram) _startTyping();
+    if (written) _startTyping();
     _setActivity(strings.activityThinking);
-    final p = phone;
-    final where = telegram
-        ? ' [telegram]'
-        : p != null && p.active
-            ? ' [phone ${p.width.round()}x${p.height.round()}]'
-            : '';
-    // A Telegram answer is written, muted or not.
-    final quiet = _muted && !telegram ? ' $_mutedNote' : '';
     // Back to the first choice whose provider is not out (the preferred one once its limit is over).
     final want = limits.pick(brainChain, unavailable: unavailableProviders);
     if (want != activeBrainModel && !_brain.busy) _runBrainOn(want);
-    _lastSent = '[${formatStamp(DateTime.now())}]$where$quiet $text';
+    _lastSent = '[${formatStamp(DateTime.now())}]$where $text';
     _sendToBrain(_lastSent!);
     _updatePresence();
     notifyListeners();
@@ -1210,6 +1213,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
 
   /// Speaks [text] in the brain's language, or [lang] (for the app's own lines); while the mic
   /// is muted it is held for when the user unmutes (unless it ends the answer it was muted in).
+  /// Muted turns are written on Telegram instead when it can be ([_ask]): only those without a
+  /// chat get here.
   void _say(String text, {String? lang}) {
     if (Speaker.cleanForSpeech(text).isEmpty) return;
     if (_muted && _generation != _voicedTurn) return _hold(text);

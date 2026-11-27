@@ -539,6 +539,12 @@ own (`app/lib/telegram/`).
     and no phone is connected. The corner orb while Minerva works in other apps counts as open (the
     window is still the user's, they are at the Mac); the orb while a phone is connected answers on
     the phone by voice.
+- **While muted**: muting the mic means the user doesn't want to hear Minerva either. The answer in
+  progress is still spoken to its end, but every later turn that would be spoken (worker reports,
+  routines, webhooks, display actions…) is answered on Telegram instead, tagged `[telegram] [muted]`
+  (`Telegram.turnTag`; the prompt says the display still works but may not be looked at). Nothing
+  sent there is repeated on unmute. Without a token and chat, what Minerva would say is held
+  (`[muted: …]`) and told briefly on unmute (an `[unmuted]` turn).
 - **Voice at the same time**: a Telegram answer has nothing to talk over, so speech starting does not
   barge in; a real utterance stops it and the voice takes over.
 
@@ -605,8 +611,10 @@ barge-in.
   and the new one are merged and sent as one turn. Latency stays low and split sentences are fixed;
   tested live.
 - **Activation**: always listening while the app runs. The **mute key** toggles mute; tapping the
-  orb does the same. It is **Space** by default and can be changed in the status bar's keyboard
-  button: record any key or combo, pick **Caps Lock**, or go back to Space (stored as `mute_key`).
+  orb does the same. While muted Minerva doesn't speak either: it writes on Telegram (3.10, "While
+  muted"), or holds what it would say for the unmute. It is **Space** by default and can be changed
+  in the status bar's keyboard button: record any key or combo, pick **Caps Lock**, or go back to
+  Space (stored as `mute_key`).
   A key that types (Space, a letter, ⌥ or ⇧ combos) works while Minerva is on screen, in its window
   and in other apps, but not while a text field has the keyboard (Minerva's own, a custom page's, or
   the focused element of the app in front, read through Accessibility). Caps Lock and combos with ⌘
