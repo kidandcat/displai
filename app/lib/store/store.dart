@@ -110,6 +110,14 @@ class Store {
         PRAGMA user_version = 3;
       ''');
     }
+    if (version < 4) {
+      // The model the assistant asked a worker to run on (a ModelChoice's JSON; null: the
+      // workers' model in settings), to resume it on that model.
+      db.execute('''
+        ALTER TABLE workers ADD COLUMN choice TEXT;
+        PRAGMA user_version = 4;
+      ''');
+    }
   }
 
   static int now() => DateTime.now().millisecondsSinceEpoch;

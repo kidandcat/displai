@@ -71,6 +71,30 @@ void main() {
     expect(recent.elapsed(DateTime.now()).inMinutes, 7);
   });
 
+  test('models asked for by name map to the latest ids; others are refused', () async {
+    expect(Workers.modelId('Fable'), 'claude-fable-5-1');
+    expect(Workers.modelId('opus'), 'claude-opus-5-5');
+    expect(Workers.modelId('sonnet'), 'claude-sonnet-5-5');
+    expect(Workers.modelId('haiku'), 'claude-haiku-5-5');
+    expect(Workers.modelId('claude-haiku-5-5'), 'claude-haiku-5-5');
+    expect(Workers.modelId('gpt-6'), isNull);
+    final r = await workers.call('start_worker', {'title': 't', 'task': 'do it', 'model': 'gpt-6'});
+    expect(r.isError, isTrue);
+    expect(r.text, contains('unknown model'));
+    expect(store.db.select('SELECT id FROM workers'), isEmpty);
+  });
+
+  test('list_workers and worker_status show the model', () async {
+    add('busy', 'running', ago: const Duration(minutes: 4), model: 'Claude · Fable 5.1', progress: 'Reading.');
+    add('old', 'done', ago: const Duration(hours: 2), finishedAgo: const Duration(hours: 1));
+    final list = (await workers.call('list_workers', {})).text;
+    expect(list, contains('1 «busy» running on Claude · Fable 5.1 — Reading.'));
+    expect(list, contains('2 «old» done'));
+    expect(list, isNot(contains('2 «old» done on')));
+    final status = (await workers.call('worker_status', {'id': 1})).text;
+    expect(status, contains('model: Claude · Fable 5.1'));
+  });
+
   testWidgets('the panel shows each worker and nothing without them', (tester) async {
     Widget app() => MaterialApp(
           locale: const Locale('es'),

@@ -66,6 +66,13 @@ void main() {
     expect(catalog.all, hasLength(13));
   });
 
+  test('a model is found by its value, else by the id it resolves to', () {
+    expect(catalog.find('claude-opus-5-5')!.value, 'opus');
+    expect(catalog.find('claude-fable-5-1')!.name, 'Fable 5.1');
+    expect(catalog.find('claude-fable-5-2')!.value, 'claude-fable-5-2');
+    expect(catalog.find('claude-nope-1'), isNull);
+  });
+
   test('effort fits the model', () {
     expect(effortFor(catalog.find('opus'), 'xhigh'), 'xhigh');
     expect(effortFor(catalog.find('claude-sonnet-4-6'), 'xhigh'), 'high');

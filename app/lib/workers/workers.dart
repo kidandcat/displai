@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -105,6 +106,29 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     BrainProvider.codex: 'a read-only shell to look at files',
   };
 
+  /// The Claude models the assistant can ask for by name, each the latest of its family.
+  static const modelAliases = {
+    'fable': 'claude-fable-5-1',
+    'opus': 'claude-opus-5-5',
+    'sonnet': 'claude-sonnet-5-5',
+    'haiku': 'claude-haiku-5-5',
+  };
+
+  /// The model id [name] stands for: an alias of [modelAliases] or a full Claude id; null for
+  /// anything else.
+  static String? modelId(String name) {
+    final n = name.trim().toLowerCase();
+    return modelAliases[n] ?? (n.startsWith('claude-') ? n : null);
+  }
+
+  static const _modelProperty = {
+    'type': 'string',
+    'description': 'Optional, only when the user explicitly asks for a model (e.g. "con Fable"): '
+        'fable, opus, sonnet or haiku (the latest of each), or a full id such as claude-fable-5-1, '
+        'claude-opus-5-5, claude-sonnet-5-5 or claude-haiku-5-5. Otherwise leave it out: the worker '
+        'runs on the workers\' model in settings.',
+  };
+
   @override
   final List<McpTool> tools = const [
     McpTool(
@@ -124,18 +148,20 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
             'description': 'Optional: a project\'s name or a folder path. The worker starts in that '
                 'folder with its README.md as context.',
           },
+          'model': _modelProperty,
         },
         'required': ['title', 'task'],
       },
     ),
     McpTool(
       'list_workers',
-      'List running workers and the latest finished ones (id, title, status, last progress note).',
+      'List running workers and the latest finished ones (id, title, status, model, last progress '
+          'note).',
       {'type': 'object', 'properties': {}},
     ),
     McpTool(
       'worker_status',
-      'Status, latest progress note and (when finished) the full report of a worker.',
+      'Status, model, latest progress note and (when finished) the full report of a worker.',
       {
         'type': 'object',
         'properties': {
@@ -147,12 +173,14 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     McpTool(
       'message_worker',
       'Send a follow-up to a worker: new instructions while it runs, or more work after it '
-          'finished (it keeps its whole context).',
+          'finished (it keeps its whole context). With model, a finished worker goes on on that '
+          'model.',
       {
         'type': 'object',
         'properties': {
           'id': {'type': 'integer'},
           'text': {'type': 'string'},
+          'model': _modelProperty,
         },
         'required': ['id', 'text'],
       },
@@ -173,6 +201,12 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
   @override
   Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     final id = (args['id'] as num?)?.toInt();
+    final model = (args['model'] as String? ?? '').trim();
+    final modelId = model.isEmpty ? null : Workers.modelId(model);
+    if (model.isNotEmpty && modelId == null) {
+      return ToolResult.error('error: unknown model "$model". Models: ${modelAliases.keys.join(', ')}, '
+          'or a full id such as ${modelAliases.values.join(', ')}');
+    }
     switch (name) {
       case 'start_worker':
         final title = (args['title'] as String? ?? '').trim();
@@ -184,8 +218,8 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
           return ToolResult.error('error: no project or folder "$project". Projects: '
               '${projects.list().map((p) => p.name).join(', ')}');
         }
-        final wid = await start(title, task, cwd: cwd);
-        return ToolResult('started worker $wid${cwd == null ? '' : ' in $cwd'}');
+        final wid = await start(title, task, cwd: cwd, model: modelId);
+        return ToolResult('started worker $wid on ${_model(wid)}${cwd == null ? '' : ' in $cwd'}');
       case 'list_workers':
         return ToolResult(_list());
       case 'worker_status':
@@ -193,7 +227,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
         return _status(id);
       case 'message_worker':
         if (id == null) return const ToolResult.error('error: id is required');
-        return _message(id, (args['text'] as String? ?? '').trim());
+        return _message(id, (args['text'] as String? ?? '').trim(), model: modelId);
       case 'stop_worker':
         if (id == null) return const ToolResult.error('error: id is required');
         return stop(id) ? ToolResult('stopped worker $id') : ToolResult.error('error: worker $id is not running');
@@ -201,18 +235,35 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     return ToolResult.error('error: unknown tool $name');
   }
 
-  /// Starts a worker on [task], in the folder [cwd] (a project) or else the workers' own.
-  Future<int> start(String title, String task, {String? cwd}) async {
+  /// Starts a worker on [task], in the folder [cwd] (a project) or else the workers' own, on
+  /// the Claude [model] (a full id) or else the workers' model.
+  Future<int> start(String title, String task, {String? cwd, String? model}) async {
+    final pinned = model == null ? null : _pin(model);
+    final chain = _chainFor(pinned);
     final choice = limits.pick(chain, unavailable: unavailable);
     final sessionId = _newStoredId(choice.provider);
     store.db.execute(
-      "INSERT INTO workers(title, task, status, session_id, started, cwd) VALUES (?, ?, 'running', ?, ?, ?)",
-      [title, task, sessionId, Store.now(), cwd],
+      'INSERT INTO workers(title, task, status, session_id, started, cwd, choice) '
+      "VALUES (?, ?, 'running', ?, ?, ?, ?)",
+      [title, task, sessionId, Store.now(), cwd, pinned == null ? null : jsonEncode(pinned.toJson())],
     );
     final id = store.db.lastInsertRowId;
-    await _launch(id, title, sessionId, task, cwd: cwd, choice: choice, handoff: task);
+    await _launch(id, title, sessionId, task, cwd: cwd, choice: choice, chain: chain, handoff: task);
     return id;
   }
+
+  /// The workers' Claude choice (its effort and speed) on [model].
+  ModelChoice _pin(String model) =>
+      (chain.where((c) => c.provider == BrainProvider.claude).firstOrNull ?? defaultWorkerModel)
+          .copyWith(model: model);
+
+  /// What a worker runs on: [pinned] (the model the assistant asked for) with the workers'
+  /// backups on other providers, else the workers' chain.
+  List<ModelChoice> _chainFor(ModelChoice? pinned) => pinned == null ? chain : fallbackChain(pinned, chain);
+
+  /// The model worker [id] runs on, as the panel shows it.
+  String _model(int id) =>
+      store.db.select('SELECT model FROM workers WHERE id = ?', [id]).firstOrNull?['model'] as String? ?? '?';
 
   /// The session_id of a new session: Claude Code takes the id it is given; Antigravity and Codex
   /// pick their own once started.
@@ -234,17 +285,19 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     return (BrainProvider.claude, stored);
   }
 
-  /// Runs [text] in the worker's session [storedId] on [choice]. [handoff] is what to start from
-  /// on another provider if this one is out; [tried]: providers it was on before.
+  /// Runs [text] in the worker's session [storedId] on [choice], the first usable of [chain].
+  /// [handoff] is what to start from on the next of [chain] if this one is out; [tried]:
+  /// providers it was on before.
   Future<void> _launch(int id, String title, String storedId, String text,
       {required String? cwd,
       required ModelChoice choice,
+      required List<ModelChoice> chain,
       required String handoff,
       Set<BrainProvider> tried = const {}}) async {
     final (provider, sessionId) = _parseStoredId(storedId);
     final run = resolve(choice);
     store.db.execute('UPDATE workers SET model = ? WHERE id = ?', [describe(choice), id]);
-    final w = _Worker(id, title, provider, cwd, handoff, tried);
+    final w = _Worker(id, title, provider, cwd, chain, handoff, tried);
     final mcp = DisplayMcpServer(
       tools: [for (final p in hostTools) ...p.tools, _progressTool],
       handler: (name, args) => _handle(w, name, args),
@@ -303,7 +356,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     }
     limits.hit(w.provider, limit);
     final tried = {...w.tried, w.provider};
-    final to = limits.next(chain, w.provider, unavailable: {...unavailable, ...tried});
+    final to = limits.next(w.chain, w.provider, unavailable: {...unavailable, ...tried});
     if (to == null || _running[w.id] != w) return false;
     _running.remove(w.id);
     unawaited(w.dispose());
@@ -313,7 +366,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     unawaited(_launch(w.id, w.title, stored,
         '[note] This work was on ${w.provider.agent}, which is out; nothing of it carries over. '
         'Do it here from the start.\n\n${w.handoff}',
-        cwd: w.cwd, choice: to, handoff: w.handoff, tried: tried));
+        cwd: w.cwd, choice: to, chain: w.chain, handoff: w.handoff, tried: tried));
     return true;
   }
 
@@ -354,9 +407,15 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     return true;
   }
 
-  Future<ToolResult> _message(int id, String text) async {
+  /// Sends [text] to worker [id]; a finished one goes on on the Claude [model] (a full id) when
+  /// given, else on the model it was on.
+  Future<ToolResult> _message(int id, String text, {String? model}) async {
     if (text.isEmpty) return const ToolResult.error('error: empty text');
     final running = _running[id];
+    if (running != null && model != null) {
+      return ToolResult.error('error: worker $id is running; its model can change once it finished '
+          '(send without model, or stop it first)');
+    }
     if (running != null) {
       // The agent answers it within the current turn or after it.
       running.sent++;
@@ -364,23 +423,38 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
       await running.session.send(text);
       return ToolResult('sent to worker $id');
     }
-    final rows = store.db.select('SELECT title, task, result, session_id, cwd FROM workers WHERE id = ?', [id]);
+    final rows =
+        store.db.select('SELECT title, task, result, session_id, cwd, choice FROM workers WHERE id = ?', [id]);
     if (rows.isEmpty) return ToolResult.error('error: no worker $id');
-    store.db.execute("UPDATE workers SET status = 'running', finished = NULL WHERE id = ?", [id]);
-    // Resumed on the provider it was on, with that provider's choice in the chain, else its
-    // default model.
     final r = rows.first;
-    final stored = r['session_id'] as String;
+    var pinned = r['choice'] == null ? null : ModelChoice.fromJson(jsonDecode(r['choice'] as String));
+    if (model != null) {
+      pinned = _pin(model);
+      store.db.execute('UPDATE workers SET choice = ? WHERE id = ?', [jsonEncode(pinned.toJson()), id]);
+    }
+    store.db.execute("UPDATE workers SET status = 'running', finished = NULL WHERE id = ?", [id]);
+    final chain = _chainFor(pinned);
+    var stored = r['session_id'] as String;
     final (was, _) = _parseStoredId(stored);
-    final choice = chain.where((c) => c.provider == was).firstOrNull ?? defaultModel(was, workers: true);
     final handoff = [
       'Your task: ${r['task']}',
       if (r['result'] != null) 'Your report then:\n${r['result']}',
       'New message from the assistant: $text',
     ].join('\n\n');
-    await _launch(id, r['title'] as String, stored, text,
-        cwd: r['cwd'] as String?, choice: choice, handoff: handoff);
-    return ToolResult('worker $id resumed with the new message');
+    // Resumed on the provider it was on, with that provider's choice in its chain, else its
+    // default model; a model asked for on another provider starts over there from the handoff.
+    var choice = chain.where((c) => c.provider == was).firstOrNull ?? defaultModel(was, workers: true);
+    var send = text;
+    if (model != null && pinned!.provider != was) {
+      choice = pinned;
+      stored = _newStoredId(choice.provider);
+      store.db.execute('UPDATE workers SET session_id = ? WHERE id = ?', [stored, id]);
+      send = '[note] This work was on ${was.agent}; nothing of it carries over. Go on here from what '
+          'follows.\n\n$handoff';
+    }
+    await _launch(id, r['title'] as String, stored, send,
+        cwd: r['cwd'] as String?, choice: choice, chain: chain, handoff: handoff);
+    return ToolResult('worker $id resumed with the new message on ${_model(id)}');
   }
 
   /// The workers the panel shows: the running ones, then the ones that finished in the last
@@ -443,12 +517,13 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
 
   String _list() {
     final rows = store.db.select(
-      "SELECT id, title, status, progress, cwd FROM workers WHERE status = 'running' "
+      "SELECT id, title, status, model, progress, cwd FROM workers WHERE status = 'running' "
       'OR id IN (SELECT id FROM workers ORDER BY id DESC LIMIT 8) ORDER BY id DESC',
     );
     if (rows.isEmpty) return 'no workers';
     return rows
         .map((r) => '${r['id']} «${r['title']}» ${r['status']}'
+            '${r['model'] == null ? '' : ' on ${r['model']}'}'
             '${r['cwd'] == null ? '' : ' (in ${r['cwd']})'}'
             '${r['progress'] == null ? '' : ' — ${r['progress']}'}')
         .join('\n');
@@ -462,6 +537,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     final mins = DateTime.now().difference(started).inMinutes;
     return ToolResult([
       'worker $id «${r['title']}»: ${r['status']} (started $mins min ago)',
+      if (r['model'] != null) 'model: ${r['model']}',
       if (r['cwd'] != null) 'folder: ${r['cwd']}',
       if (r['progress'] != null) 'progress: ${r['progress']}',
       if (r['result'] != null) 'report:\n${r['result']}',
@@ -553,12 +629,15 @@ class ProjectInfo {
 }
 
 class _Worker {
-  _Worker(this.id, this.title, this.provider, this.cwd, this.handoff, this.tried);
+  _Worker(this.id, this.title, this.provider, this.cwd, this.chain, this.handoff, this.tried);
 
   final int id;
   final String title;
   final BrainProvider provider;
   final String? cwd;
+
+  /// What it runs on, then its backups.
+  final List<ModelChoice> chain;
 
   /// What it starts from on another provider (the task and what came after), and the providers
   /// it was on before this one.

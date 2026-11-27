@@ -209,9 +209,14 @@ class ModelCatalog {
 
   List<BrainModel> get all => [...latest, ...previous];
 
+  /// The model [value] names: by its value, else by the id it resolves to (`claude-opus-5-5`
+  /// finds `opus`).
   BrainModel? find(String value) {
     for (final m in all) {
       if (m.value == value) return m;
+    }
+    for (final m in all) {
+      if (m.resolved == value) return m;
     }
     return null;
   }
