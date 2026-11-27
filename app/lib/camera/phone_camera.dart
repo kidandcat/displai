@@ -9,9 +9,22 @@ class PhoneCamera {
   /// The camera runs this long before the photo, so exposure and focus settle.
   static const warmUp = Duration(milliseconds: 800);
 
+  static bool _busy = false;
+
   /// One JPEG (as the camera wrote it: the desktop turns it upright by its EXIF orientation).
   /// Throws a [String] saying what went wrong.
   static Future<Uint8List> capture({bool front = false}) async {
+    // The first photo can wait on Android's permission prompt for longer than the desktop waits.
+    if (_busy) throw 'the phone is still taking the previous photo (it may be asking the user to allow the camera)';
+    _busy = true;
+    try {
+      return await _capture(front);
+    } finally {
+      _busy = false;
+    }
+  }
+
+  static Future<Uint8List> _capture(bool front) async {
     final List<CameraDescription> cameras;
     try {
       cameras = await availableCameras();

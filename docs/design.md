@@ -415,7 +415,8 @@ The one exception is its camera: the brain's `camera` tool (3.5) takes a photo w
   0.8 s for exposure and focus, and answers with the JPEG as the camera wrote it (the desktop applies the
   EXIF orientation). The desktop waits 45 s, time for Android's camera permission prompt the first time
   (`CAMERA` is already in the manifest for the pairing QR scanner). It works while the app is open: Android
-  does not give the camera to apps in the background. A phone app from before the camera answers "unknown
+  does not give the camera to apps in the background. One photo at a time: a request while the previous one still
+  waits on the permission prompt gets an error. A phone app from before the camera answers "unknown
   display tool", which the desktop turns into "install the new version".
 - `app/tool/remote_smoke.dart` is a headless remote for testing without a phone.
 
