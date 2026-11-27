@@ -735,6 +735,26 @@ stays.
   reply in (unless the user speaks another one) and the reminder phrase ("Te recuerdo" / "Just a
   reminder"). Workers write their reports in the same language.
 
+### 7.2 Usage rings
+
+The start of the status bar (desktop and phone; the phone gets the desktop's readings in a `usage`
+message) has a dial per provider: its logo and two rings, the plan's five hours outside and its week
+inside (`hasRing`); a model's own week and windows of other lengths are only in the dial's card.
+`app/lib/usage/usage_rings.dart` draws them, the same code on both.
+
+- **Fill** = what is left (full with the whole limit, emptying as it is spent).
+- **Color** = the **projection**, never what is left (user rule, 2026-11-26 and 2026-11-27): the
+  percent the limit would reach by its reset at the pace so far (`UsageWindow.projectAt`,
+  `UsageProjection.percent`). **≥ 100 % → full red** (it runs out before the reset, or already
+  has). Below it a gradient (`paceColor`): green up to 70 %, to amber at 85 %, to red as it nears
+  100 %. Spending less than the limit is never a problem: it stays green. In the first tenth of a
+  window, or without a reset time, the pace means little and what is spent stands in for it.
+- **Several limits**: each dial ring takes the worst projection of its own limit and of the
+  provider's limits without a ring, each counted on the ring closest in length (`dialRings`), so the
+  small dial never looks better than the provider's worst limit.
+- The card (hover, or tap on the phone) shows each limit's ring, percent left and outlook line, all
+  in its own projection's color.
+
 ## 8. v0 scope
 
 In:

@@ -158,11 +158,13 @@ The **Conversation** and **Workers** tabs each have a provider switch, the model
 conversation and the workers can run on different providers.
 
 **Usage.** The start of the status bar has a dial per provider the conversation and the workers run
-on: its logo inside a ring per plan limit (outermost the five hours, then the week, then a model's own
-week), filled as far as it is spent. The color is the pace: green while the limit lasts until its reset,
-orange when it ends close to it (90–110 % projected), red when it runs out before (or already has).
-Hovering a dial enlarges it into a card with each limit's percent, reset, projection and, when it runs
-out early, around when. Claude's comes from Claude Code's sign-in (the same usage endpoint as its
+on: its logo inside two rings, the plan's five hours outside and its week inside, each full with the
+whole limit left and emptying as it is spent. The color is the projection (where the spending leads by
+the reset at the pace so far), not what is left: green up to 70 % projected, amber at 85 %, redder as
+it nears 100 %, full red from 100 % (it runs out before the reset, or already has). A ring also takes
+the worst projection of the provider's limits without a ring (a model's own week), so the dial never
+looks better than the worst one. Hovering (or tapping) a dial enlarges it into a card with each
+limit's percent left, reset, projection and, when it runs out early, around when. Claude's comes from Claude Code's sign-in (the same usage endpoint as its
 `/usage`), Codex's from its app server (`account/rateLimits/read`) and Antigravity's from
 `agy -p /usage`. They are read every five minutes, less often after a failed read; a provider that
 can't be read is hidden.

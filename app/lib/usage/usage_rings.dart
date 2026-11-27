@@ -10,10 +10,12 @@ import 'usage.dart';
 
 /// The usage limits of the providers Minerva runs on, at the start of the status bar: one dial
 /// per provider, its logo in the middle and two rings around it, the plan's five hours outside
-/// and its week inside (see [hasRing]), each full and green with the whole limit left and emptying
-/// as it is spent, through amber to red when little is left (see [leftColor]). Hovering a dial
-/// (tapping it on a touch screen) enlarges it and opens a card with each limit's percent left,
-/// reset and projection, a model's own limits too. Nothing when no provider could be read.
+/// and its week inside (see [hasRing]), each full with the whole limit left and emptying as it is
+/// spent. Their color is where the spending is heading by the reset, not what is left: green,
+/// through amber to red as the projection nears 100 %, red from there (see [paceColor] and
+/// [dialRings]). Hovering a dial (tapping it on a touch screen) enlarges it and opens a card with
+/// each limit's percent left, reset and projection, a model's own limits too. Nothing when no
+/// provider could be read.
 class UsageRings extends StatelessWidget {
   const UsageRings({super.key, required this.monitor, this.dialSize = 40});
 
@@ -40,21 +42,16 @@ class UsageRings extends StatelessWidget {
       );
 }
 
-/// A projection's color (the card's outlook line): green while the limit lasts until its reset,
-/// orange when it ends close to it, red when it runs out before.
-Color usageColor(UsageLevel level) => switch (level) {
-      UsageLevel.good => const Color(0xFF4ADE80),
-      UsageLevel.fair => const Color(0xFFFFA94D),
-      UsageLevel.bad => const Color(0xFFFF5C5C),
-    };
-
-/// The ring's color for [left] percent of the limit left: green down to half, then amber at a
-/// quarter, then red as it runs out.
-Color leftColor(double left) {
+/// A limit's color (its ring, its percent left, its outlook line) for the percent it is projected
+/// to reach by the reset ([UsageProjection.percent]): green up to 70 %, amber at 85 %, nearing red
+/// as it approaches 100 %, and full red from 100 % on (it runs out before the reset, or already
+/// has). Spending less than the limit is never a problem: it stays green.
+Color paceColor(double projected) {
   const green = Color(0xFF4ADE80), amber = Color(0xFFFFB020), red = Color(0xFFFF5C5C);
-  if (left >= 50) return green;
-  if (left >= 25) return Color.lerp(amber, green, (left - 25) / 25)!;
-  return Color.lerp(red, amber, (left / 25).clamp(0, 1))!;
+  if (projected >= 100) return red;
+  if (projected >= 85) return Color.lerp(amber, red, (projected - 85) / 15)!;
+  if (projected >= 70) return Color.lerp(green, amber, (projected - 70) / 15)!;
+  return green;
 }
 
 /// The rings from the outside in: the plan's own limits first (shortest window outermost), then
@@ -69,6 +66,35 @@ List<UsageWindow> ringOrder(List<UsageWindow> windows) => [...windows]..sort((a,
 /// Whether a limit gets a ring in the dial: only the plan's own five hours and week. The others
 /// (a model's or model group's week, a window of another length) are only in the card.
 bool hasRing(UsageWindow w) => w.scope == null && w.kind != UsageKind.other;
+
+/// The dial's rings, outermost first, each with the projection its color goes by: the worst of its
+/// own and of the provider's limits without a ring (a model's week, a window of another length),
+/// each counted on the ring closest to it in length. So the dial never looks better than the
+/// provider's worst limit.
+List<(UsageWindow, double)> dialRings(List<UsageWindow> windows, DateTime now) {
+  final rings = ringOrder(windows).where(hasRing).toList();
+  if (rings.isEmpty) return const [];
+  final pace = [for (final w in rings) w.projectAt(now).percent];
+  for (final w in windows) {
+    if (hasRing(w)) continue;
+    final i = _closestRing(rings, w);
+    pace[i] = math.max(pace[i], w.projectAt(now).percent);
+  }
+  return [for (final (i, w) in rings.indexed) (w, pace[i])];
+}
+
+/// The index of the ring in [rings] whose window is closest in length to [w]'s (the longest when
+/// [w]'s is unknown).
+int _closestRing(List<UsageWindow> rings, UsageWindow w) {
+  final minutes = w.length?.inMinutes ?? 0;
+  if (minutes <= 0) return rings.length - 1;
+  double gap(UsageWindow r) => math.log(r.length!.inMinutes / minutes).abs();
+  var best = 0;
+  for (var i = 1; i < rings.length; i++) {
+    if (gap(rings[i]) < gap(rings[best])) best = i;
+  }
+  return best;
+}
 
 /// One provider's dial, and its card while hovered (or, on a touch screen, from a tap on it
 /// until the next tap anywhere).
@@ -120,7 +146,7 @@ class _UsageDialState extends State<UsageDial> with SingleTickerProviderStateMix
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final limits = ringOrder(widget.usage.windows);
-    final rings = limits.where(hasRing).toList();
+    final rings = dialRings(widget.usage.windows, now);
     // On a touch screen a tap opens the card, and the next tap anywhere closes it.
     return TapRegion(
       onTapOutside: (_) => _hover.reverse(),
@@ -160,7 +186,7 @@ class _UsageDialState extends State<UsageDial> with SingleTickerProviderStateMix
                   child: SizedBox.square(
                     dimension: widget.size,
                     child: CustomPaint(
-                      painter: _RingsPainter([for (final w in rings) (w.leftAt(now), leftColor(w.leftAt(now)))]),
+                      painter: _RingsPainter([for (final (w, pace) in rings) (w.leftAt(now), paceColor(pace))]),
                       child: Center(
                         child: SizedBox.square(
                           dimension: _logoSize(widget.size, rings.length),
@@ -270,7 +296,7 @@ class _UsageCard extends StatelessWidget {
   Widget _row(BuildContext context, AppLocalizations l, TextTheme t, UsageWindow w) {
     final left = w.leftAt(now);
     final p = w.projectAt(now);
-    final color = leftColor(left);
+    final color = paceColor(p.percent);
     final limit = switch (w.kind) {
       UsageKind.session => l.usageSessionLimit,
       UsageKind.week => l.usageWeekLimit,
@@ -295,7 +321,7 @@ class _UsageCard extends StatelessWidget {
                   Text(l.usageResets(_when(context, resets)),
                       style: t.bodySmall?.copyWith(color: Colors.white38, fontSize: 11)),
                 if (_outlook(context, l, p) case final outlook?)
-                  Text(outlook, style: t.bodySmall?.copyWith(color: usageColor(p.level).withValues(alpha: 0.85), fontSize: 11)),
+                  Text(outlook, style: t.bodySmall?.copyWith(color: color.withValues(alpha: 0.85), fontSize: 11)),
               ],
             ),
           ),

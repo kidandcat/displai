@@ -130,57 +130,85 @@ void main() {
     test("underuse is fine: day 6 of 7 with 30 % spent is green (about 35 % by the reset)", () {
       final p = week(30).projectAt(DateTime(2026, 11, 29, 9));
       expect(p.projected, closeTo(35, 0.01));
-      expect(p.level, UsageLevel.good);
+      expect(p.percent, p.projected);
+      expect(paceColor(p.percent), paceColor(0));
       expect(p.runsOutAt, isNull);
     });
 
-    test('green up to 90 % projected, orange to 110 %, red beyond', () {
+    test('the color goes by the projection: green to 70 %, amber at 85 %, red from 100 %', () {
       final half = DateTime(2026, 11, 26, 12, 30);
-      expect([
-        for (final used in <double>[10, 45, 46, 50, 55, 56])
-          if (session(used).projectAt(half) case final p) (p.projected!.round(), p.level),
-      ], [
-        (20, UsageLevel.good),
-        (90, UsageLevel.good),
-        (92, UsageLevel.fair),
-        (100, UsageLevel.fair),
-        (110, UsageLevel.fair),
-        (112, UsageLevel.bad),
-      ]);
+      expect([for (final used in <double>[10, 35, 45, 50, 55]) session(used).projectAt(half).percent.round()],
+          [20, 70, 90, 100, 110]);
+      expect(paceColor(70), paceColor(0));
+      expect(paceColor(85), const Color(0xFFFFB020));
+      expect(paceColor(100), const Color(0xFFFF5C5C));
+      expect(paceColor(273), paceColor(100));
+      // Redder (less green) the closer it gets to 100 %.
+      final greens = [for (final p in <double>[70, 78, 85, 92, 99, 100]) paceColor(p).g];
+      for (var i = 1; i < greens.length; i++) {
+        expect(greens[i], lessThan(greens[i - 1]));
+      }
     });
 
     test('when it would run out, if before the reset', () {
       // An hour in (a fifth of the window), 40 % spent: 200 % by the reset, out at 12:30.
       final p = session(40).projectAt(DateTime(2026, 11, 26, 11));
       expect(p.projected, closeTo(200, 0.01));
-      expect(p.level, UsageLevel.bad);
+      expect(paceColor(p.percent), paceColor(100));
       expect(p.runsOutAt, DateTime(2026, 11, 26, 12, 30));
-      // Exactly 100 % at the reset: it does not run out before it.
-      expect(session(50).projectAt(DateTime(2026, 11, 26, 12, 30)).runsOutAt, isNull);
+      // Exactly 100 % at the reset: it does not run out before it, but it is red.
+      final exact = session(50).projectAt(DateTime(2026, 11, 26, 12, 30));
+      expect((exact.runsOutAt, paceColor(exact.percent)), (null, paceColor(100)));
     });
 
     test('a spent limit is red; early in a window or with no reset, what is spent decides', () {
       final spent = session(100).projectAt(DateTime(2026, 11, 26, 14));
-      expect((spent.level, spent.spent, spent.projected), (UsageLevel.bad, true, null));
+      expect((spent.percent, spent.spent, spent.projected), (100, true, null));
       // Twenty minutes in (under a tenth of the window): 15 % spent is no projection yet.
       final early = session(15).projectAt(DateTime(2026, 11, 26, 10, 20));
-      expect((early.level, early.projected), (UsageLevel.good, null));
-      expect(session(95).projectAt(DateTime(2026, 11, 26, 10, 20)).level, UsageLevel.fair);
-      expect(const UsageWindow(kind: UsageKind.week, used: 50).projectAt(DateTime(2026, 11, 26)).level, UsageLevel.good);
+      expect((early.percent, early.projected), (15, null));
+      expect(session(95).projectAt(DateTime(2026, 11, 26, 10, 20)).percent, 95);
+      expect(const UsageWindow(kind: UsageKind.week, used: 50).projectAt(DateTime(2026, 11, 26)).percent, 50);
       // After the reset the window reads as unused.
-      expect(session(99).projectAt(DateTime(2026, 11, 26, 16)).level, UsageLevel.good);
-      expect(usageColor(UsageLevel.good), isNot(usageColor(UsageLevel.bad)));
+      expect(session(99).projectAt(DateTime(2026, 11, 26, 16)).percent, 0);
     });
 
-    test('rings show what is left: green while plenty, amber, then red as it runs out', () {
+    test('rings show what is left', () {
       final now = DateTime(2026, 11, 26, 12);
       expect(session(30).leftAt(now), 70);
       expect(session(100).leftAt(now), 0);
       expect(session(99).leftAt(DateTime(2026, 11, 26, 16)), 100);
-      expect(leftColor(100), leftColor(50));
-      expect(leftColor(25), isNot(leftColor(50)));
-      expect(leftColor(0), isNot(leftColor(25)));
-      expect(leftColor(0), usageColor(UsageLevel.bad));
+    });
+
+    test("Antigravity's small week with plenty left but 273 % projected is red, its fresh five hours green", () {
+      // Friday 18:33: the five hours reset at 22:35 with 3 % spent, the week on Thursday 08:41 with
+      // 45 % left (the phone's card that showed both green).
+      final now = DateTime(2026, 11, 27, 18, 33);
+      final rings = dialRings([
+        UsageWindow(kind: UsageKind.week, used: 55, resetsAt: DateTime(2026, 12, 3, 8, 41)),
+        UsageWindow(kind: UsageKind.session, used: 3, resetsAt: DateTime(2026, 11, 27, 22, 35)),
+      ], now);
+      expect([for (final (w, pace) in rings) (w.kind, pace.round())], [(UsageKind.session, 16), (UsageKind.week, 273)]);
+      expect([for (final (w, pace) in rings) (w.leftAt(now).round(), paceColor(pace))], [
+        (97, paceColor(0)),
+        (45, paceColor(100)),
+      ]);
+    });
+
+    test("a dial's ring shows the worst of its limit and of the ones without a ring", () {
+      final now = DateTime(2026, 11, 26, 12, 30);
+      final rings = dialRings([
+        session(10), // 20 %
+        week(10), // 3 days 3.5 hours into the week: about 22 %
+        UsageWindow(kind: UsageKind.week, used: 70, resetsAt: resetWeek, scope: 'Fable'), // about 156 %
+        const UsageWindow(kind: UsageKind.other, used: 95, minutes: 1440, scope: 'Spark'), // 95 %, no reset
+      ], now);
+      expect([for (final (w, pace) in rings) (w.kind, w.scope, pace.round())], [
+        (UsageKind.session, null, 95),
+        (UsageKind.week, null, 156),
+      ]);
+      // Only a model's limit, no ring of the plan's: no rings.
+      expect(dialRings([UsageWindow(kind: UsageKind.week, used: 70, resetsAt: resetWeek, scope: 'Fable')], now), isEmpty);
     });
   });
 
@@ -309,6 +337,10 @@ void main() {
       expect(find.text('60% left'), findsOneWidget);
       // An hour into the five hours with 40 % spent: 200 %, out in an hour and a half.
       expect(find.textContaining('projected 200% by the reset · runs out around'), findsOneWidget);
+      // Colored by the projection, not by what is left: 60 % left is red at 200 %, 70 % left of a
+      // week four days in (about 52 %) is green.
+      expect(tester.widget<Text>(find.text('60% left')).style?.color, paceColor(100));
+      expect(tester.widget<Text>(find.text('70% left')).style?.color, paceColor(0));
 
       await mouse.moveTo(const Offset(600, 10));
       await tester.pumpAndSettle();

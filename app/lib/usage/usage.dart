@@ -56,18 +56,18 @@ class UsageWindow {
     final spent = usedAt(now);
     final reset = resetsAt;
     final len = length;
-    if (spent >= 100) return const UsageProjection(UsageLevel.bad, spent: true);
+    if (spent >= 100) return UsageProjection(spent, spent: true);
     // No reset time (a window that has not started) or no length: judged by what is spent.
-    if (reset == null || len == null || !reset.isAfter(now)) return UsageProjection(UsageProjection.levelOf(spent));
+    if (reset == null || len == null || !reset.isAfter(now)) return UsageProjection(spent);
     final start = reset.subtract(len);
     final elapsed = now.difference(start);
     final fraction = elapsed.inMilliseconds / len.inMilliseconds;
     // Too early in the window for the pace to mean much: judged by what is spent.
-    if (fraction < UsageProjection.earliest) return UsageProjection(UsageProjection.levelOf(spent));
+    if (fraction < UsageProjection.earliest) return UsageProjection(spent);
     final projected = spent / fraction.clamp(0, 1);
     final runsOut = spent > 0 ? start.add(elapsed * (100 / spent)) : null;
     return UsageProjection(
-      UsageProjection.levelOf(projected),
+      projected,
       projected: projected,
       runsOutAt: runsOut != null && runsOut.isBefore(reset) ? runsOut : null,
     );
@@ -98,39 +98,25 @@ class UsageWindow {
   String toString() => 'UsageWindow(${kind.name}${scope == null ? '' : ' $scope'}, $used%, resets $resetsAt)';
 }
 
-/// Whether a limit lasts until its reset: [good] (green) it does with room to spare (spending
-/// less is never a problem), [fair] (orange) it ends close to the limit, [bad] (red) at this pace
-/// it runs out before the reset, or it already has.
-enum UsageLevel { good, fair, bad }
-
 /// A limit's spending projected to the end of its window, at the pace so far: [projected] is
 /// the percent it would reach by the reset (null when it can't tell: no reset time, or the window
 /// has barely started), [runsOutAt] when it would reach 100 % if that is before the reset.
-/// [spent]: it already ran out.
+/// [spent]: it already ran out. [percent] is what the limit's color goes by (see
+/// usage_rings.dart's `paceColor`): the projection, else what is spent.
 class UsageProjection {
-  const UsageProjection(this.level, {this.projected, this.runsOutAt, this.spent = false});
+  const UsageProjection(this.percent, {this.projected, this.runsOutAt, this.spent = false});
 
-  final UsageLevel level;
+  final double percent;
   final double? projected;
   final DateTime? runsOutAt;
   final bool spent;
 
   /// Before this fraction of the window has gone by, the pace is not projected (a little use
-  /// early on would read as a lot): the level goes by what is spent.
+  /// early on would read as a lot): [percent] is what is spent.
   static const earliest = 0.10;
 
-  /// Orange above this projected percent, red above [badAbove].
-  static const fairAbove = 90.0;
-  static const badAbove = 110.0;
-
-  static UsageLevel levelOf(double percent) => percent > badAbove
-      ? UsageLevel.bad
-      : percent > fairAbove
-          ? UsageLevel.fair
-          : UsageLevel.good;
-
   @override
-  String toString() => 'UsageProjection(${level.name}, $projected%, runs out $runsOutAt)';
+  String toString() => 'UsageProjection($percent%, projected $projected%, runs out $runsOutAt)';
 }
 
 /// A provider's limits as last read.
