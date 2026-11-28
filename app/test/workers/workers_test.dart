@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minerva/app/projects_panel.dart';
 import 'package:minerva/app/workers_panel.dart';
+import 'package:minerva/brain/models.dart';
 import 'package:minerva/l10n/l10n.dart';
 import 'package:minerva/projects/projects.dart';
 import 'package:minerva/store/store.dart';
@@ -82,6 +83,56 @@ void main() {
     expect(r.isError, isTrue);
     expect(r.text, contains('unknown model'));
     expect(store.db.select('SELECT id FROM workers'), isEmpty);
+  });
+
+  test('Antigravity models asked for by id or short name; others are refused', () async {
+    String? id(String name, {ModelCatalog? catalog}) {
+      final c = Workers.antigravityModel(name, catalog: catalog);
+      return c == null ? null : '${c.provider.name}:${c.model}-${c.effort}';
+    }
+
+    expect(id('gemini neon'), 'antigravity:gemini-4-neon-high');
+    expect(id('Gemini Neon XHigh'), 'antigravity:gemini-4-neon-xhigh');
+    expect(id('gemini-4-neon-xhigh'), 'antigravity:gemini-4-neon-xhigh');
+    expect(id('gemini-4-carbon'), 'antigravity:gemini-4-carbon-high');
+    expect(id('gemini'), 'antigravity:gemini-4-neon-high');
+    expect(id('neon low'), 'antigravity:gemini-4-neon-low');
+    expect(id('Gemini 3.8 Flash (Medium)'), 'antigravity:gemini-3.8-flash-medium');
+    expect(id('gemini flash'), 'antigravity:gemini-3.8-flash-high');
+    expect(id('gpt-6'), isNull);
+    expect(id('opus'), isNull);
+    final catalog = ModelCatalog.antigravity(version: '1', models: [
+      ('gemini-5-ion-high', 'Gemini 5 Ion (High)'),
+      ('gemini-5-ion-low', 'Gemini 5 Ion (Low)'),
+      ('gemini-pro-orchestrator', 'Orchestrator'),
+    ]);
+    expect(id('gemini ion', catalog: catalog), 'antigravity:gemini-5-ion-high');
+    expect(id('gemini-pro-orchestrator', catalog: catalog), 'antigravity:gemini-pro-orchestrator-high');
+    expect(id('gemini neon', catalog: catalog), isNull);
+    expect(id('gemini', catalog: catalog), isNull);
+
+    var r = await workers.call('start_worker', {'title': 't', 'task': 'do it', 'provider': 'antigravity', 'model': 'opus'});
+    expect(r.text, contains('unknown Antigravity model'));
+    r = await workers.call('start_worker', {'title': 't', 'task': 'do it', 'provider': 'claude', 'model': 'gemini neon'});
+    expect(r.text, contains('unknown Claude model'));
+    r = await workers.call('start_worker', {'title': 't', 'task': 'do it', 'provider': 'openai'});
+    expect(r.text, contains('unknown provider'));
+    r = await workers.call('message_worker', {'id': 9, 'text': 'more', 'model': 'gemini zzz'});
+    expect(r.text, contains('unknown model'));
+    expect(r.isError, isTrue);
+    expect(store.db.select('SELECT id FROM workers'), isEmpty);
+
+    final offline = Workers(
+      store: store,
+      hostTools: const [],
+      projects: Projects('${tmp.path}/projects', home: tmp.path),
+      notify: (_) {},
+      unavailable: {BrainProvider.antigravity},
+    );
+    r = await offline.call('start_worker', {'title': 't', 'task': 'do it', 'model': 'gemini neon'});
+    expect(r.isError, isTrue);
+    expect(r.text, contains('Antigravity is not available'));
+    offline.dispose();
   });
 
   test('list_workers and worker_status show the model', () async {

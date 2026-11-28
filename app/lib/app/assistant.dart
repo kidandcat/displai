@@ -397,7 +397,13 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         limits: limits,
         unavailable: unavailableProviders,
         resolve: (c) => c.resolve(_catalogs[c.provider]),
-        describe: (c) => '${c.provider.label} · ${_catalogs[c.provider]?.find(c.model)?.name ?? c.model}',
+        describe: (c) {
+          final m = _catalogs[c.provider]?.find(c.model);
+          // Antigravity's thinking level is part of its model (gemini-4-neon-high).
+          final level = c.provider == BrainProvider.antigravity ? effortFor(m, c.effort) : null;
+          return '${c.provider.label} · ${m?.name ?? c.model}${level == null ? '' : ' ($level)'}';
+        },
+        catalog: catalogFor,
       )
         ..addListener(notifyListeners)
         ..addListener(() => presence.workers = workers.runningIds);
@@ -1379,9 +1385,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       if (p.handles(name)) {
         _setActivity(_activityFor(name, strings));
         if (ComputerTools.needsScreen(name, args)) await _useMac(true);
-        // The work goes to a worker: the full view comes back, as with minerva_window full.
-        if (name == 'start_worker' && !onPhone && window.open) await _useMac(false);
-        return p.call(name, args);
+        final r = await p.call(name, args);
+        if (name == 'start_worker' && !r.isError) await _toIdle();
+        return r;
       }
     }
     if (name == VaultTools.requestTool.name) return _requestCredential(args);
@@ -1414,6 +1420,19 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     if (text.startsWith('error:')) return ToolResult.error(text);
     _displayLog.record(name, args);
     return ToolResult(text);
+  }
+
+  /// The work went to a worker: Minerva goes back to its idle screen. The view on screen (and the
+  /// widget it was over other apps) is cleared, here and on the phone, and the full view comes
+  /// back, as with minerva_window full.
+  Future<void> _toIdle() async {
+    if (onPhone) await _onPhoneTool('clear', const {});
+    display.callTool('clear', const {});
+    _displayLog.record('clear', const {});
+    if (onPhone || !window.open) return notifyListeners();
+    await _useMac(false);
+    if (window.overlay) await window.setOverlay(false);
+    notifyListeners();
   }
 
   /// vault_request: a form whose submission goes to the vault ([_onVaultSubmission]).

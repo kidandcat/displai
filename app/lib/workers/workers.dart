@@ -33,8 +33,10 @@ class Workers extends ToolProvider with ChangeNotifier {
     this.unavailable = const {},
     ({String model, String? effort, bool fast}) Function(ModelChoice choice)? resolve,
     String Function(ModelChoice choice)? describe,
+    ModelCatalog? Function(BrainProvider provider)? catalog,
   })  : limits = limits ?? ProviderLimits(),
         resolve = resolve ?? ((c) => c.resolve(null)),
+        catalog = catalog ?? ((_) => null),
         describe = describe ?? ((c) => '${c.provider.label} · ${c.model}') {
     // Workers that were running when the app closed are gone; message_worker resumes them.
     store.db.execute("UPDATE workers SET status = 'interrupted' WHERE status = 'running'");
@@ -67,6 +69,10 @@ class Workers extends ToolProvider with ChangeNotifier {
 
   /// The model a choice runs on, as the workers panel shows it.
   final String Function(ModelChoice choice) describe;
+
+  /// The models a provider's agent last reported (null: not known yet), to check the model the
+  /// assistant asks for.
+  final ModelCatalog? Function(BrainProvider provider) catalog;
 
   final _running = <int, _Worker>{};
 
@@ -121,12 +127,67 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     return modelAliases[n] ?? (n.startsWith('claude-') ? n : null);
   }
 
+  /// The providers the assistant can ask a worker to run on, by name (Gemini runs on Antigravity).
+  static const providerNames = {
+    'claude': BrainProvider.claude,
+    'antigravity': BrainProvider.antigravity,
+    'agy': BrainProvider.antigravity,
+    'gemini': BrainProvider.antigravity,
+  };
+
+  /// Antigravity's models (without their thinking level) while its catalog is not known yet; once
+  /// it is, the catalog's own.
+  static const _antigravityModels = [
+    'gemini-4-neon',
+    'gemini-4-carbon',
+    'gemini-4-argon',
+    'gemini-4-hydrogen',
+    'gemini-3.8-flash',
+  ];
+
+  /// The thinking level of an Antigravity model asked for without one ("gemini neon").
+  static const antigravityLevel = 'high';
+
+  static final _level = RegExp(r'-(low|medium|high|xhigh|max)$');
+
+  /// [name] on Antigravity: a model id with or without its thinking level (gemini-4-neon-high,
+  /// gemini-4-neon) or a short name ("Gemini Neon", "neon xhigh", "flash"; plain "gemini" is its
+  /// default model), at [antigravityLevel] when it names none. Null when [catalog] (or, before it
+  /// is known, [_antigravityModels]) has no such model.
+  static ModelChoice? antigravityModel(String name, {ModelCatalog? catalog}) {
+    final n = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+    final m = _level.firstMatch(n) ?? RegExp(r'^(low|medium|high|xhigh|max)$').firstMatch(n);
+    var base = m == null ? n : n.substring(0, m.start);
+    if (_short(base).isEmpty) base = antigravityWorkerModel.model;
+    final listed = [for (final x in catalog?.all ?? const <BrainModel>[]) x.value];
+    final known = listed.isEmpty ? _antigravityModels : listed;
+    final found = known.contains(base) ? base : known.where((v) => _short(v) == _short(base)).firstOrNull;
+    if (found == null) return null;
+    return ModelChoice(provider: BrainProvider.antigravity, model: found, effort: m?[1] ?? antigravityLevel);
+  }
+
+  /// A model id without `gemini-` and its version: `gemini-4-neon` is `neon`.
+  static String _short(String id) =>
+      id.replaceFirst(RegExp(r'^gemini(-|$)'), '').replaceFirst(RegExp(r'^\d+(\.\d+)?(-|$)'), '');
+
+  static const _providerProperty = {
+    'type': 'string',
+    'enum': ['claude', 'antigravity'],
+    'description': 'Optional, only when the user asks for a provider or a model (e.g. "con Gemini", "con '
+        'Antigravity"): claude (Claude Code) or antigravity (Google Antigravity CLI, Gemini models, on '
+        'the user\'s subscription). Left out: the provider of model, else the workers\' settings.',
+  };
+
   static const _modelProperty = {
     'type': 'string',
-    'description': 'Optional, only when the user explicitly asks for a model (e.g. "con Fable"): '
-        'fable, opus, sonnet or haiku (the latest of each), or a full id such as claude-fable-5-1, '
-        'claude-opus-5-5, claude-sonnet-5-5 or claude-haiku-5-5. Otherwise leave it out: the worker '
-        'runs on the workers\' model in settings.',
+    'description': 'Optional, only when the user explicitly asks for a model (e.g. "con Fable", "con '
+        'Gemini Neon"). Claude: fable, opus, sonnet or haiku (the latest of each), or a full id such as '
+        'claude-fable-5-1, claude-opus-5-5, claude-sonnet-5-5 or claude-haiku-5-5. Antigravity: a Gemini '
+        'id such as gemini-4-neon-high, gemini-4-neon-xhigh, gemini-4-carbon-high, gemini-4-argon-high, '
+        'gemini-4-hydrogen-high or gemini-3.8-flash-high (the suffix is the thinking level: low, medium, '
+        'high, xhigh where the model has it), or a short name such as "gemini neon" or "gemini flash" '
+        '(at high). Otherwise leave it out: the worker runs on the workers\' model in settings (with '
+        'provider alone, on that provider\'s).',
   };
 
   @override
@@ -137,7 +198,8 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
           'minute or two). It is a separate AI session with commands, files, the web and read-only '
           'memories, but no display and no mouse or keyboard. Give it a complete, self-contained '
           'task: goal, context, constraints and what a finished result looks like. Returns its id. '
-          'When it finishes you get a "[worker" message with its report.',
+          'When it finishes you get a "[worker" message with its report. Starting it takes Minerva '
+          'back to its idle screen (the view on screen is cleared).',
       {
         'type': 'object',
         'properties': {
@@ -148,6 +210,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
             'description': 'Optional: a project\'s name or a folder path. The worker starts in that '
                 'folder with its README.md as context.',
           },
+          'provider': _providerProperty,
           'model': _modelProperty,
         },
         'required': ['title', 'task'],
@@ -155,13 +218,13 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     ),
     McpTool(
       'list_workers',
-      'List running workers and the latest finished ones (id, title, status, model, last progress '
-          'note).',
+      'List running workers and the latest finished ones (id, title, status, provider and model, last '
+          'progress note).',
       {'type': 'object', 'properties': {}},
     ),
     McpTool(
       'worker_status',
-      'Status, model, latest progress note and (when finished) the full report of a worker.',
+      'Status, provider and model, latest progress note and (when finished) the full report of a worker.',
       {
         'type': 'object',
         'properties': {
@@ -173,13 +236,15 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     McpTool(
       'message_worker',
       'Send a follow-up to a worker: new instructions while it runs, or more work after it '
-          'finished (it keeps its whole context). With model, a finished worker goes on on that '
-          'model.',
+          'finished (it keeps its whole context). With provider and/or model, a finished worker goes '
+          'on on that model (on another provider it starts over there from its task, report and this '
+          'message).',
       {
         'type': 'object',
         'properties': {
           'id': {'type': 'integer'},
           'text': {'type': 'string'},
+          'provider': _providerProperty,
           'model': _modelProperty,
         },
         'required': ['id', 'text'],
@@ -201,12 +266,9 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
   @override
   Future<ToolResult> call(String name, Map<String, dynamic> args) async {
     final id = (args['id'] as num?)?.toInt();
-    final model = (args['model'] as String? ?? '').trim();
-    final modelId = model.isEmpty ? null : Workers.modelId(model);
-    if (model.isNotEmpty && modelId == null) {
-      return ToolResult.error('error: unknown model "$model". Models: ${modelAliases.keys.join(', ')}, '
-          'or a full id such as ${modelAliases.values.join(', ')}');
-    }
+    final (asked, error) =
+        _asked((args['provider'] as String? ?? '').trim(), (args['model'] as String? ?? '').trim());
+    if (error != null) return ToolResult.error(error);
     switch (name) {
       case 'start_worker':
         final title = (args['title'] as String? ?? '').trim();
@@ -218,7 +280,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
           return ToolResult.error('error: no project or folder "$project". Projects: '
               '${projects.list().map((p) => p.name).join(', ')}');
         }
-        final wid = await start(title, task, cwd: cwd, model: modelId);
+        final wid = await start(title, task, cwd: cwd, choice: asked);
         return ToolResult('started worker $wid on ${_model(wid)}${cwd == null ? '' : ' in $cwd'}');
       case 'list_workers':
         return ToolResult(_list());
@@ -227,7 +289,7 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
         return _status(id);
       case 'message_worker':
         if (id == null) return const ToolResult.error('error: id is required');
-        return _message(id, (args['text'] as String? ?? '').trim(), model: modelId);
+        return _message(id, (args['text'] as String? ?? '').trim(), asked: asked);
       case 'stop_worker':
         if (id == null) return const ToolResult.error('error: id is required');
         return stop(id) ? ToolResult('stopped worker $id') : ToolResult.error('error: worker $id is not running');
@@ -235,27 +297,80 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     return ToolResult.error('error: unknown tool $name');
   }
 
+  /// The choice the assistant asked for with [provider] and [model] (each optional, the model
+  /// checked on its provider), else an error for it; (null, null) when it asked for neither.
+  (ModelChoice?, String?) _asked(String provider, String model) {
+    BrainProvider? p;
+    if (provider.isNotEmpty) {
+      p = providerNames[provider.toLowerCase()];
+      if (p == null) return (null, 'error: unknown provider "$provider". Providers: claude, antigravity');
+    }
+    if (p == null && model.isEmpty) return (null, null);
+    ModelChoice? c;
+    if (p == BrainProvider.claude || p == null && modelId(model) != null) {
+      final id = model.isEmpty ? null : modelId(model);
+      if (model.isNotEmpty && id == null) return (null, 'error: unknown Claude model "$model". $_claudeModels');
+      c = _workersChoice(BrainProvider.claude);
+      if (id != null) c = c.copyWith(model: id);
+    } else if (p == BrainProvider.antigravity || p == null) {
+      final ac = catalog(BrainProvider.antigravity);
+      c = model.isEmpty
+          ? chain.where((c) => c.provider == BrainProvider.antigravity).firstOrNull ??
+              antigravityModel('', catalog: ac) ??
+              defaultModel(BrainProvider.antigravity, workers: true, catalog: ac)
+          : antigravityModel(model, catalog: ac);
+      if (c == null) {
+        return (
+          null,
+          p == null
+              ? 'error: unknown model "$model". Claude: $_claudeModels. Antigravity: ${_antigravityHint()}'
+              : 'error: unknown Antigravity model "$model". ${_antigravityHint()}',
+        );
+      }
+    } else {
+      return (null, 'error: provider ${p.name} can\'t be asked for. Providers: claude, antigravity');
+    }
+    if (unavailable.contains(c.provider)) {
+      return (null, 'error: ${c.provider.label} is not available on this Mac (${c.provider.agent} missing or '
+          'not signed in)');
+    }
+    return (c, null);
+  }
+
+  static final _claudeModels = 'Models: ${modelAliases.keys.join(', ')}, or a full id such as '
+      '${modelAliases.values.join(', ')}';
+
+  /// Antigravity's models, for an error.
+  String _antigravityHint() {
+    final listed = catalog(BrainProvider.antigravity)?.all ?? const <BrainModel>[];
+    final models = listed.isEmpty
+        ? _antigravityModels
+        : [for (final m in listed) m.efforts.isEmpty ? m.value : '${m.value}-{${m.efforts.join(',')}}'];
+    return 'Models: ${models.join(', ')} (a thinking level suffix such as -high where the model has '
+        'levels), or a short name such as "gemini neon"';
+  }
+
+  /// The workers' choice on [provider] (its model, effort and speed in settings), else that
+  /// provider's default.
+  ModelChoice _workersChoice(BrainProvider provider) =>
+      chain.where((c) => c.provider == provider).firstOrNull ?? defaultModel(provider, workers: true);
+
   /// Starts a worker on [task], in the folder [cwd] (a project) or else the workers' own, on
-  /// the Claude [model] (a full id) or else the workers' model.
-  Future<int> start(String title, String task, {String? cwd, String? model}) async {
-    final pinned = model == null ? null : _pin(model);
+  /// [choice] (with the workers' backups on other providers) or else the workers' model.
+  Future<int> start(String title, String task, {String? cwd, ModelChoice? choice}) async {
+    final pinned = choice;
     final chain = _chainFor(pinned);
-    final choice = limits.pick(chain, unavailable: unavailable);
-    final sessionId = _newStoredId(choice.provider);
+    final picked = limits.pick(chain, unavailable: unavailable);
+    final sessionId = _newStoredId(picked.provider);
     store.db.execute(
       'INSERT INTO workers(title, task, status, session_id, started, cwd, choice) '
       "VALUES (?, ?, 'running', ?, ?, ?, ?)",
       [title, task, sessionId, Store.now(), cwd, pinned == null ? null : jsonEncode(pinned.toJson())],
     );
     final id = store.db.lastInsertRowId;
-    await _launch(id, title, sessionId, task, cwd: cwd, choice: choice, chain: chain, handoff: task);
+    await _launch(id, title, sessionId, task, cwd: cwd, choice: picked, chain: chain, handoff: task);
     return id;
   }
-
-  /// The workers' Claude choice (its effort and speed) on [model].
-  ModelChoice _pin(String model) =>
-      (chain.where((c) => c.provider == BrainProvider.claude).firstOrNull ?? defaultWorkerModel)
-          .copyWith(model: model);
 
   /// What a worker runs on: [pinned] (the model the assistant asked for) with the workers'
   /// backups on other providers, else the workers' chain.
@@ -407,12 +522,12 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     return true;
   }
 
-  /// Sends [text] to worker [id]; a finished one goes on on the Claude [model] (a full id) when
-  /// given, else on the model it was on.
-  Future<ToolResult> _message(int id, String text, {String? model}) async {
+  /// Sends [text] to worker [id]; a finished one goes on on [asked] when given, else on the model
+  /// it was on.
+  Future<ToolResult> _message(int id, String text, {ModelChoice? asked}) async {
     if (text.isEmpty) return const ToolResult.error('error: empty text');
     final running = _running[id];
-    if (running != null && model != null) {
+    if (running != null && asked != null) {
       return ToolResult.error('error: worker $id is running; its model can change once it finished '
           '(send without model, or stop it first)');
     }
@@ -428,8 +543,8 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     if (rows.isEmpty) return ToolResult.error('error: no worker $id');
     final r = rows.first;
     var pinned = r['choice'] == null ? null : ModelChoice.fromJson(jsonDecode(r['choice'] as String));
-    if (model != null) {
-      pinned = _pin(model);
+    if (asked != null) {
+      pinned = asked;
       store.db.execute('UPDATE workers SET choice = ? WHERE id = ?', [jsonEncode(pinned.toJson()), id]);
     }
     store.db.execute("UPDATE workers SET status = 'running', finished = NULL WHERE id = ?", [id]);
@@ -445,8 +560,8 @@ You are a background worker of Minerva, a voice assistant on the user's Mac. The
     // default model; a model asked for on another provider starts over there from the handoff.
     var choice = chain.where((c) => c.provider == was).firstOrNull ?? defaultModel(was, workers: true);
     var send = text;
-    if (model != null && pinned!.provider != was) {
-      choice = pinned;
+    if (asked != null && asked.provider != was) {
+      choice = asked;
       stored = _newStoredId(choice.provider);
       store.db.execute('UPDATE workers SET session_id = ? WHERE id = ?', [stored, id]);
       send = '[note] This work was on ${was.agent}; nothing of it carries over. Go on here from what '
