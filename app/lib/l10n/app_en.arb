@@ -795,5 +795,79 @@
         "type": "int"
       }
     }
+  },
+  "modelSpeaker": "Voice identification (CAM++)",
+  "@modelSpeaker": {
+    "description": "Name of the speaker-embedding model."
+  },
+  "wakeMode": "Wake word",
+  "@wakeMode": {
+    "description": "Setting: Minerva only reacts to what begins with \"Minerva\"."
+  },
+  "wakeModeOff": "Off",
+  "@wakeModeOff": {
+    "description": "Wake word mode: off, Minerva takes everything said."
+  },
+  "wakeModeOn": "Always",
+  "@wakeModeOn": {
+    "description": "Wake word mode: always on."
+  },
+  "wakeModeAuto": "By voice",
+  "@wakeModeAuto": {
+    "description": "Wake word mode: on while another voice than the owner's is around."
+  },
+  "wakeActive": "Wake word on: say \"Minerva…\"",
+  "@wakeActive": {
+    "description": "Tooltip while wake word mode is filtering."
+  },
+  "wakeTimeout": "Back off after",
+  "@wakeTimeout": {
+    "description": "Setting: minutes automatic wake word mode stays on after another voice."
+  },
+  "wakeTimeoutMinutes": "Back off after {minutes} min",
+  "@wakeTimeoutMinutes": {
+    "description": "Menu item: automatic wake word mode turns off after this many minutes without another voice.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "minutes": "{minutes} min",
+  "@minutes": {
+    "description": "A number of minutes.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceIdLoading": "Loading voice identification…",
+  "@voiceIdLoading": {
+    "description": "Voice profile: the model is loading."
+  },
+  "voiceIdEnrolling": "Learning your voice ({done}/{total})",
+  "@voiceIdEnrolling": {
+    "description": "Voice profile: enrolling.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceIdReady": "Your voice is learned",
+  "@voiceIdReady": {
+    "description": "Voice profile: ready."
+  },
+  "voiceIdFailed": "Voice identification unavailable",
+  "@voiceIdFailed": {
+    "description": "Voice profile: the model failed."
+  },
+  "voiceIdReset": "Learn my voice again",
+  "@voiceIdReset": {
+    "description": "Action: forget the owner's voice profile and enroll it again."
   }
 }

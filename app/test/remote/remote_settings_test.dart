@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:minerva/app/settings.dart';
 import 'package:minerva/brain/fallback.dart';
 import 'package:minerva/brain/models.dart';
 import 'package:minerva/l10n/l10n.dart';
@@ -98,6 +99,49 @@ void main() {
     await tester.tap(find.text('Sonnet 5.5').last);
     await tester.pumpAndSettle();
     expect(a.brainModel.model, 'sonnet');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the phone shows and changes the wake word mode, and its orb turns blue with it', (tester) async {
+    tester.view.physicalSize = const Size(377, 702);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final a = RemoteAssistant(relay: 'wss://example.invalid', key: 'k' * 43);
+    a
+      ..handleMessage({'t': 'hello'})
+      ..handleMessage(_settings()
+        ..['wake_mode'] = 'auto'
+        ..['wake_timeout'] = 10
+        ..['voice_id'] = 'enrolling'
+        ..['voice_samples'] = 2);
+    expect(a.wakeMode, WakeMode.auto);
+    expect(a.wakeTimeout, 10);
+    expect(a.voiceId, VoiceIdState.enrolling);
+    a.handleMessage({'t': 'state', 'mode': 'listening', 'wake': true});
+    expect(a.wakeActive, isTrue);
+    expect(a.presence.wake, isTrue);
+    a.handleMessage({'t': 'state', 'mode': 'listening'});
+    expect(a.presence.wake, isFalse);
+
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('es'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: RemoteSettingsPage(assistant: a),
+    ));
+    await tester.pumpAndSettle();
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Aprendiendo tu voz (2/5)'), 100, scrollable: list);
+    expect(find.text('Por voz'), findsOneWidget);
+    expect(find.text('10 min'), findsOneWidget);
+    await tester.tap(find.text('Por voz'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Siempre').last);
+    await tester.pumpAndSettle();
+    expect(a.wakeMode, WakeMode.on);
+    // Not automatic: no timeout nor voice profile.
+    expect(find.text('10 min'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });

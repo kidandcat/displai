@@ -13,7 +13,8 @@ import 'dart:typed_data';
 /// JSON messages have a "t" field:
 ///   link → both:      peer {up}                       the encrypted session came up or went down
 ///   host → remote:    hello {rate}                    sent when the remote joins
-///                     state {mode, activity, heard, jobs, workers, muted}
+///                     state {mode, activity, heard, jobs, workers, muted, wake}
+///                                                     (wake: wake word mode is on now)
 ///                     stop                            drop the queued voice (barge-in)
 ///                     reset                           clear the display (before a replay)
 ///                     tool {id?, name, args}          run a display tool; reply when id is set
@@ -22,6 +23,8 @@ import 'dart:typed_data';
 ///                     partial {name, json}            streaming tool input (progressive show)
 ///                     cancel_partial
 ///                     settings {brain, workers, catalog, fast_unavailable, language, voice,
+///                               wake_mode (off|on|auto), wake_timeout (minutes),
+///                               voice_id (off|loading|enrolling|ready|failed), voice_samples,
 ///                               vault: {error, credentials: [{name, description, fields}]},
 ///                               webhooks?: {on, status, hooks: [{name, description, url}]}}
 ///                                                     the desktop's settings, when they change
@@ -42,10 +45,12 @@ import 'dart:typed_data';
 ///                                                     a credential typed in a vault form; the
 ///                                                     host saves it in its vault, never in the
 ///                                                     brain's conversation
-///                     set {brain?, workers?, language?, voice?}
+///                     set {brain?, workers?, language?, voice?, wake_mode?, wake_timeout?,
+///                          voice_reset?}
 ///                                                     the user changed settings on the phone
 ///                                                     (brain/workers: {model, effort, fast};
-///                                                     language null: follow the OS)
+///                                                     language null: follow the OS;
+///                                                     voice_reset true: learn the voice again)
 ///                     vault_delete {name}             the user deleted a credential
 class RemoteProtocol {
   static const kindMic = 1;

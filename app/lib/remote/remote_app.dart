@@ -8,6 +8,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../app/main_view.dart';
+import '../app/wake_button.dart';
 import '../l10n/l10n.dart';
 import '../usage/usage_rings.dart';
 import 'protocol.dart';
@@ -25,7 +26,7 @@ class RemoteApp extends StatelessWidget {
         builder: (context, language, _) => MaterialApp(
           title: 'Minerva',
           debugShowCheckedModeBanner: false,
-          theme: minervaTheme(),
+          theme: minervaTheme(background: Colors.black),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: language == null ? null : Locale(language),
@@ -165,6 +166,7 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
                       return MainView(
                         assistant: a,
                         compactOrb: 96,
+                        background: Colors.black,
                         leading: a.ready
                             ? Padding(
                                 padding: const EdgeInsets.only(left: 8),
@@ -172,6 +174,7 @@ class _RemoteHomeState extends State<RemoteHome> with WidgetsBindingObserver {
                               )
                             : null,
                         actions: [
+                          if (a.ready && a.settingsKnown) WakeButton(assistant: a),
                           IconButton(
                             tooltip: AppLocalizations.of(context).settings,
                             icon: const Icon(Icons.tune, color: Colors.white54),

@@ -1159,6 +1159,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{yesterday} other{{count} days ago}}'**
   String timeDaysAgo(int count);
+
+  /// Name of the speaker-embedding model.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice identification (CAM++)'**
+  String get modelSpeaker;
+
+  /// Setting: Minerva only reacts to what begins with "Minerva".
+  ///
+  /// In en, this message translates to:
+  /// **'Wake word'**
+  String get wakeMode;
+
+  /// Wake word mode: off, Minerva takes everything said.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get wakeModeOff;
+
+  /// Wake word mode: always on.
+  ///
+  /// In en, this message translates to:
+  /// **'Always'**
+  String get wakeModeOn;
+
+  /// Wake word mode: on while another voice than the owner's is around.
+  ///
+  /// In en, this message translates to:
+  /// **'By voice'**
+  String get wakeModeAuto;
+
+  /// Tooltip while wake word mode is filtering.
+  ///
+  /// In en, this message translates to:
+  /// **'Wake word on: say \"Minerva…\"'**
+  String get wakeActive;
+
+  /// Setting: minutes automatic wake word mode stays on after another voice.
+  ///
+  /// In en, this message translates to:
+  /// **'Back off after'**
+  String get wakeTimeout;
+
+  /// Menu item: automatic wake word mode turns off after this many minutes without another voice.
+  ///
+  /// In en, this message translates to:
+  /// **'Back off after {minutes} min'**
+  String wakeTimeoutMinutes(int minutes);
+
+  /// A number of minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min'**
+  String minutes(int minutes);
+
+  /// Voice profile: the model is loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading voice identification…'**
+  String get voiceIdLoading;
+
+  /// Voice profile: enrolling.
+  ///
+  /// In en, this message translates to:
+  /// **'Learning your voice ({done}/{total})'**
+  String voiceIdEnrolling(int done, int total);
+
+  /// Voice profile: ready.
+  ///
+  /// In en, this message translates to:
+  /// **'Your voice is learned'**
+  String get voiceIdReady;
+
+  /// Voice profile: the model failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice identification unavailable'**
+  String get voiceIdFailed;
+
+  /// Action: forget the owner's voice profile and enroll it again.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn my voice again'**
+  String get voiceIdReset;
 }
 
 class _AppLocalizationsDelegate

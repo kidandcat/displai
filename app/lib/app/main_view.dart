@@ -9,10 +9,12 @@ import 'assistant_ui.dart';
 const kBackground = Color(0xFF07050A);
 const kAccent = Color(0xFFA87CFF);
 
-ThemeData minervaTheme() => ThemeData(
+/// The app's theme. The phone passes true black as [background], so an OLED screen switches
+/// those pixels off.
+ThemeData minervaTheme({Color background = kBackground}) => ThemeData(
       brightness: Brightness.dark,
       colorScheme: ColorScheme.fromSeed(seedColor: kAccent, brightness: Brightness.dark),
-      scaffoldBackgroundColor: kBackground,
+      scaffoldBackgroundColor: background,
     );
 
 /// The main screen, the same on the desktop and on the phone: the presence orb, always in the
@@ -30,6 +32,7 @@ class MainView extends StatelessWidget {
     this.compactOrb = 180,
     this.showDisplay = true,
     this.muteKey,
+    this.background,
   });
 
   final AssistantUi assistant;
@@ -59,6 +62,10 @@ class MainView extends StatelessWidget {
 
   /// The name of the key that unmutes the mic, for the status bar (null: the space bar's note).
   final String? muteKey;
+
+  /// Behind the orb and behind a view on the display (null: their own near-black ones). The phone
+  /// uses true black, for OLED screens.
+  final Color? background;
 
   void _tapOrb() {
     if (!assistant.ready) return;
@@ -97,18 +104,19 @@ class MainView extends StatelessWidget {
                 RepaintBoundary(
                   key: showDisplay ? a.screenKey : null,
                   child: ColoredBox(
-                    color: Theme.of(context).scaffoldBackgroundColor,
+                    color: background ?? Theme.of(context).scaffoldBackgroundColor,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
                         AnimatedOpacity(
                           opacity: showing ? 0 : 1,
                           duration: const Duration(milliseconds: 350),
-                          child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence),
+                          child: showing ? const SizedBox.expand() : PresenceView(signal: a.presence, background: background ?? kPresenceBackground),
                         ),
                         // The header of each view leaves room for the corner orb.
                         if (showDisplay)
-                          DisplayView(controller: a.display, cornerReserve: Size.square(12 + compactOrb)),
+                          DisplayView(
+                              controller: a.display, cornerReserve: Size.square(12 + compactOrb), background: background),
                         // The full orb: the sphere and its inner rings, ~0.3 of the short side around the center.
                         // Tapping it (or the corner orb) mutes or unmutes the mic.
                         if (!showing)

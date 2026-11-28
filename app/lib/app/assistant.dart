@@ -42,6 +42,8 @@ import '../voice/audio_file.dart';
 import '../voice/listener.dart';
 import '../voice/model_store.dart';
 import '../voice/speaker.dart';
+import '../voice/voice_profile.dart';
+import '../voice/wake_word.dart';
 import '../webhooks/webhook_tools.dart';
 import '../webhooks/webhooks.dart';
 import 'assistant_ui.dart';
@@ -113,6 +115,29 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// store once started.
   @override
   int voice;
+
+  /// Wake word mode (see [AssistantSettings.wakeMode]), saved in the store.
+  @override
+  WakeMode wakeMode = WakeMode.off;
+  @override
+  int wakeTimeout = defaultWakeTimeout;
+  @override
+  VoiceIdState voiceId = VoiceIdState.off;
+  @override
+  int get voiceSamples => ready ? _profile.samples : 0;
+
+  final _wake = WakeWord();
+
+  /// The owner's voice, which tells others' apart in automatic wake word mode.
+  late final VoiceProfile _profile;
+
+  /// A voice that is not the owner's was heard less than [wakeTimeout] minutes ago.
+  bool _foreign = false;
+  Timer? _foreignTimer;
+  int _voiceIdRun = 0;
+
+  @override
+  bool get wakeActive => wakeMode == WakeMode.on || (wakeMode == WakeMode.auto && _foreign);
 
   /// The user can resume talking this long after the answer became audible and it still
   /// counts as the same turn (design §5, continuation merge).
@@ -350,6 +375,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       activeBrainModel = limits.pick(brainChain);
       voice = validVoice(int.tryParse(store.get('voice') ?? '')) ?? voice;
       _muteKey = MuteKey.decode(store.get('mute_key')) ?? MuteKey.space;
+      wakeMode = WakeMode.values.where((m) => m.name == store.get('wake_mode')).firstOrNull ?? WakeMode.off;
+      wakeTimeout = int.tryParse(store.get('wake_timeout') ?? '') ?? defaultWakeTimeout;
+      _profile = VoiceProfile('${store.dir}/voice_profile.json', model: speakerFile);
+      await _profile.load();
       vault = await Vault.open('${store.dir}/vault');
       vault.addListener(_pushSettings);
       projects = Projects('${store.dir}/projects');
@@ -459,6 +488,8 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
         ..add(display.userEvents.listen(_onDisplayEvent))
         ..add(display.vaultSubmissions.listen(_onVaultSubmission));
       ready = true;
+      presence.wake = wakeActive;
+      unawaited(_syncVoiceId());
       _updatePresence();
       routines.start();
       telegram?.start();
@@ -513,6 +544,84 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     this.voice = v;
     store.set('voice', v == defaultVoice ? null : '$v');
     _speaker.voice = v;
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------- wake word
+
+  @override
+  void setWakeMode(WakeMode mode) {
+    wakeMode = mode;
+    store.set('wake_mode', mode == WakeMode.off ? null : mode.name);
+    unawaited(_syncVoiceId());
+    _wakeChanged();
+  }
+
+  @override
+  void setWakeTimeout(int minutes) {
+    if (minutes < 1) return;
+    wakeTimeout = minutes;
+    store.set('wake_timeout', minutes == defaultWakeTimeout ? null : '$minutes');
+    if (_foreign) _setForeign(true);
+    notifyListeners();
+  }
+
+  @override
+  void resetVoiceProfile() {
+    _setForeign(false);
+    unawaited(_profile.reset().then((_) {
+      if (voiceId == VoiceIdState.ready) voiceId = VoiceIdState.enrolling;
+      notifyListeners();
+    }));
+  }
+
+  /// Speaker identification runs only in automatic mode: the model is downloaded the first time
+  /// and loaded into the listener. If it fails, automatic mode does nothing (as off).
+  Future<void> _syncVoiceId() async {
+    final run = ++_voiceIdRun;
+    final on = wakeMode == WakeMode.auto;
+    if (!on) _setForeign(false);
+    if (on == (voiceId != VoiceIdState.off && voiceId != VoiceIdState.failed)) return;
+    voiceId = on ? VoiceIdState.loading : VoiceIdState.off;
+    notifyListeners();
+    try {
+      await _listener.identifySpeakers(on ? await models.speaker() : null);
+      if (run != _voiceIdRun || !on) return;
+      voiceId = _profile.ready ? VoiceIdState.ready : VoiceIdState.enrolling;
+    } catch (e) {
+      debugPrint('voice id: $e');
+      if (run != _voiceIdRun || !on) return;
+      voiceId = VoiceIdState.failed;
+    }
+    notifyListeners();
+  }
+
+  /// Compares the utterance's voice with the owner's, learning it meanwhile; another voice turns
+  /// wake word mode on for [wakeTimeout] minutes.
+  void _hearVoice(Utterance e) {
+    final v = e.voice;
+    if (wakeMode != WakeMode.auto || v == null) return;
+    if (voiceId != VoiceIdState.enrolling && voiceId != VoiceIdState.ready) return;
+    final learned = _profile.samples;
+    final match = _profile.hear(v, e.seconds);
+    debugPrint('voice: ${match.name} (${e.seconds.toStringAsFixed(1)}s, profile of ${_profile.samples})');
+    if (match == VoiceMatch.foreign) _setForeign(true);
+    if (_profile.ready) voiceId = VoiceIdState.ready;
+    if (_profile.samples != learned) notifyListeners();
+  }
+
+  void _setForeign(bool on) {
+    _foreignTimer?.cancel();
+    _foreignTimer = on ? Timer(Duration(minutes: wakeTimeout), () => _setForeign(false)) : null;
+    if (on == _foreign) return;
+    _foreign = on;
+    debugPrint('wake word: ${on ? 'on, another voice' : 'off, no other voice for $wakeTimeout min'}');
+    _wakeChanged();
+  }
+
+  void _wakeChanged() {
+    presence.wake = wakeActive;
+    if (!wakeActive) _wake.reset();
     notifyListeners();
   }
 
@@ -756,6 +865,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       // Ids of the running workers, for the orb's satellites.
       'workers': ready ? workers.runningIds.toList() : const <int>[],
       'muted': _muted,
+      'wake': wakeActive,
     });
   }
 
@@ -781,6 +891,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       'fast_unavailable': fastUnavailable,
       'language': languageSetting.value,
       'voice': voice,
+      'wake_mode': wakeMode.name,
+      'wake_timeout': wakeTimeout,
+      'voice_id': voiceId.name,
+      'voice_samples': voiceSamples,
       // Names and field names only: credential values never leave the vault.
       'vault': {
         'error': vault.loadError,
@@ -824,6 +938,11 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     }
     final v = m['voice'];
     if (v is num && v.toInt() != voice) setVoice(v.toInt());
+    final wake = WakeMode.values.where((w) => w.name == m['wake_mode']).firstOrNull;
+    if (wake != null && wake != wakeMode) setWakeMode(wake);
+    final timeout = m['wake_timeout'];
+    if (timeout is num && timeout.toInt() != wakeTimeout) setWakeTimeout(timeout.toInt());
+    if (m['voice_reset'] == true) resetVoiceProfile();
   }
 
   /// The user deleted a credential on the phone.
@@ -874,14 +993,32 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       case SpeechStarted():
         _userSpeaking = true;
         // A Telegram answer is not spoken: nothing to talk over (a real utterance takes over below).
-        if (busy && !_barged && !_telegramTurn) _bargeIn();
+        // With the wake word, only an utterance that begins with it interrupts, once heard.
+        if (busy && !_barged && !_telegramTurn && !wakeActive) _bargeIn();
       case SpeechDropped():
         _heardNothing();
       case Utterance():
         _userSpeaking = false;
         final wasBargeIn = _barged;
         _barged = false;
-        if (busy && !wasBargeIn) {
+        // Not what is heard over Minerva's own voice (it may carry its echo).
+        if (!busy || wasBargeIn) _hearVoice(e);
+        var said = e.text;
+        if (wakeActive) {
+          // Only what begins with "Minerva" (or follows "Minerva" alone) is for her.
+          final rest = _wake.take(said, DateTime.now());
+          if (rest == null) {
+            debugPrint('wake word: ignored ${e.seconds.toStringAsFixed(1)}s ("$said")');
+            return _heardNothing();
+          }
+          if (busy && !wasBargeIn) _stopTurn();
+          if (rest.isEmpty && said.isNotEmpty) {
+            debugPrint('wake word: "$said", the next utterance is for Minerva');
+            _earconTick();
+            return _heardNothing();
+          }
+          said = rest;
+        } else if (busy && !wasBargeIn) {
           if (!_telegramTurn || e.text.isEmpty) {
             debugPrint('ignored ${e.seconds.toStringAsFixed(1)}s of audio while speaking (no barge-in)');
             return;
@@ -889,7 +1026,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
           // The user talks at the Mac while a Telegram answer is being written: they are back.
           _stopTurn();
         }
-        var text = e.text;
+        var text = said;
         if (text.isEmpty) {
           // A short word Parakeet could not make out. If it cut off the answer to what the user
           // had just said, that is asked again rather than lost; otherwise back to listening.
@@ -1464,6 +1601,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       s.cancel();
     }
     _noticeTimer?.cancel();
+    _foreignTimer?.cancel();
     _statusTimer?.cancel();
     _typingTimer?.cancel();
     telegram?.dispose();

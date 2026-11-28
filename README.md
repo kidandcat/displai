@@ -70,6 +70,10 @@ See [Build and run](#build-and-run) for development, the login service and the r
   run, not bundled.
 - **Full duplex**: echo-cancelled audio (macOS voice processing), so you can interrupt Minerva by
   talking over it.
+- **Wake word mode** (optional, the ear button): Minerva only answers what starts with "Minerva" and
+  ignores the rest; the orb turns blue meanwhile. Always, or **by voice**: it learns your voice on the
+  Mac (a local speaker-ID model, profile never leaves the Mac) and turns the mode on while someone
+  else is talking, off again after a few quiet minutes.
 - **AI-controlled display**: the brain shows cards, tables, stats, forms, video, or HTML pages it writes
   itself (games, simulations, custom charts), rendered from a fixed themed catalog
   ([A2UI](https://a2ui.org) via Flutter GenUI). Every item gets a number, so "the second one" works by
@@ -306,4 +310,5 @@ personal data.
 ## License
 
 [MIT](LICENSE) © 2026 kidandcat. Speech models are downloaded from their own sources under their own
-licenses (Parakeet: CC-BY-4.0; Supertonic 3: code MIT, weights OpenRAIL-M; Silero VAD: MIT).
+licenses (Parakeet: CC-BY-4.0; Supertonic 3: code MIT, weights OpenRAIL-M; Silero VAD: MIT;
+3D-Speaker CAM++: Apache-2.0).

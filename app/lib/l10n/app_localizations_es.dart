@@ -655,4 +655,52 @@ class AppLocalizationsEs extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get modelSpeaker => 'Identificación de voz (CAM++)';
+
+  @override
+  String get wakeMode => 'Palabra de activación';
+
+  @override
+  String get wakeModeOff => 'Desactivada';
+
+  @override
+  String get wakeModeOn => 'Siempre';
+
+  @override
+  String get wakeModeAuto => 'Por voz';
+
+  @override
+  String get wakeActive => 'Palabra de activación: di «Minerva…»';
+
+  @override
+  String get wakeTimeout => 'Desactivar tras';
+
+  @override
+  String wakeTimeoutMinutes(int minutes) {
+    return 'Desactivar tras $minutes min';
+  }
+
+  @override
+  String minutes(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get voiceIdLoading => 'Cargando la identificación de voz…';
+
+  @override
+  String voiceIdEnrolling(int done, int total) {
+    return 'Aprendiendo tu voz ($done/$total)';
+  }
+
+  @override
+  String get voiceIdReady => 'Tu voz está aprendida';
+
+  @override
+  String get voiceIdFailed => 'Identificación de voz no disponible';
+
+  @override
+  String get voiceIdReset => 'Volver a aprender mi voz';
 }

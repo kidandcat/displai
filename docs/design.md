@@ -234,7 +234,8 @@ i.e. we would have to ship espeak-ng (GPL-3.0) ourselves. Supertonic does not ne
 | TTS (default) | **Supertonic 3** int8 (31 languages incl. es) | 122 MB | code MIT, weights OpenRAIL-M | short sentence ~0.4–0.5 s, RTF ~0.17–0.2; no phonemizer |
 | TTS alt | Piper es_ES (miro-high, davefx) | 64 MB | per voice (miro: CC0) | short sentence ~75 ms, RTF ~0.04; **needs espeak-ng** |
 | TTS alt | Kokoro v1.0 fp32 (ef_dora, em_alex) | 333 MB | Apache-2.0 | RTF ~0.37 (int8 slower: ~0.6); **needs espeak-ng** |
-| Wake word | sherpa-onnx KWS | — | — | only English/Chinese models published |
+| Wake word | sherpa-onnx KWS | — | — | only English/Chinese models published (Minerva matches the transcript instead, see 5) |
+| Speaker ID | 3D-Speaker CAM++ VoxCeleb (192-dim embedding) | 28 MB | Apache-2.0 | ~80 ms per 5 s utterance (1 thread); downloaded only for the "by voice" wake word mode |
 
 Notes:
 - STT tests used macOS `say` (voice Mónica) as input; Parakeet misheard "bisiesto" once in the e2e
@@ -388,15 +389,15 @@ The one exception is its camera: the brain's `camera` tool (3.5) takes a photo w
     injected messages).
 - **Protocol** (`app/lib/remote/protocol.dart`), inside the encrypted channel: audio frames are byte 0 =
   kind (1 mic, phone→desktop; 2 voice, desktop→phone) then PCM16LE. JSON messages:
-  - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,muted}`, `stop`, `reset`,
+  - desktop→phone: `hello{rate}`, `state{mode,activity,heard,jobs,muted,wake}`, `stop`, `reset`,
     `tool{id?,name,args}` (no id = replay; name `camera` with `{facing}` takes a photo), `partial{name,json}`, `cancel_partial`,
-    `settings{brain,workers,catalog,fast_unavailable,language,voice,vault,webhooks?}` (whenever they change;
+    `settings{brain,workers,catalog,fast_unavailable,language,voice,wake_mode,wake_timeout,voice_id,voice_samples,vault,webhooks?}` (whenever they change;
     credential and field names only, never values);
   - phone→desktop: `hello{w,h,platform}`, `result{id,text,error,png?,jpeg?}`, `idle{n}`, `event{text}`,
     `mute{on}`, `vault{name,description,fields}` (a credential typed in a vault form, see 3.9),
-    `set{brain?,workers?,language?,voice?}`, `vault_delete{name}`.
+    `set{brain?,workers?,language?,voice?,wake_mode?,wake_timeout?,voice_reset?}`, `vault_delete{name}`.
 - **Settings on the phone**: the phone's settings screen (tune button) has what the desktop's status bar has
-  (conversation and worker models with effort and speed, voice, language, credentials, webhooks). They are
+  (conversation and worker models with effort and speed, voice, language, wake word, credentials, webhooks). They are
   the desktop's: the phone shows the last `settings` it got and sends changes with `set`, which the desktop
   applies as if made there. The phone's screens follow the desktop's language setting. On top, the phone's own:
   "display over other apps", for the orb below.
@@ -641,9 +642,33 @@ barge-in.
   Monitoring on some systems: Minerva asks for it when the tap cannot be created) and is retried
   every few seconds until it is granted; the settings dialog says when it is missing. Caps Lock
   arrives as a modifier change: each press that turns it on counts, and Minerva turns it off again
-  through the HID system, so it never stays on (if macOS refuses, each toggle counts). A spoken wake word is not in v0: sherpa-onnx ships
-  only English/Chinese KWS models. Options later: English-token wake word ("Hey Display") with the
-  gigaspeech KWS model, or a custom-trained one.
+  through the HID system, so it never stays on (if macOS refuses, each toggle counts).
+- **Wake word mode** (`lib/voice/wake_word.dart`; the ear button in the status bar, also in the phone's
+  bar and settings; `kv.wake_mode`, off by default). sherpa-onnx has no Spanish keyword spotter, so it
+  matches the transcript: while the mode is active, an utterance from the mic (the Mac's or the phone's)
+  reaches the brain only when it starts with "Minerva", loosely (case, punctuation, "oye/hey/ok"
+  before it, and Parakeet's spellings: "mi nerva", "minerba", "menerva"…); the name is stripped. Anything
+  else is dropped silently: no reply, no barge-in, nothing sent. "Minerva" alone plays the earcon and
+  lets the next utterance within 8 s through. An addressed utterance interrupts Minerva once it is
+  transcribed (no barge-in at speech start while the mode is active). Telegram, webhooks and display
+  taps are not affected. While it is active the orb turns blue (`PresenceSignal.wake`, Mac and phone).
+  Modes: off, always, and **by voice**: speaker identification turns the mode on while someone else is
+  talking:
+  - Each utterance of 1 s or more gets a speaker embedding (CAM++, see 3.2) in the listener's isolate,
+    compared by cosine with the owner's profile (`lib/voice/voice_profile.dart`): the running mean of
+    their embeddings in `voice_profile.json` in the data directory (mode 600; never in git, never sent
+    anywhere). The first 5 utterances of 1.5 s or more enroll it (each one must already resemble the
+    others); after that, clear matches (≥ 0.55) of 1.5 s or more keep refining it (weight capped at 50,
+    so it follows the voice over time).
+  - A clear non-match (< 0.40) turns the mode on; it goes off after N minutes without another one
+    (`kv.wake_timeout`, 1–30, default 5). In between is unsure and changes nothing. Measured with
+    macOS voices: the same voice 0.6–0.97, different ones mostly below 0.3, two similar Spanish female
+    voices up to 0.5.
+  - Speech heard while Minerva speaks is not judged (it may be its own echo). "Reset" in the menu deletes
+    the profile and enrolls again.
+  - Limits: the first utterance from someone else can still barge in before the mode turns on; with the
+    phone connected, its mic is another channel and scores run lower; no model or a failed one leaves
+    the mode off (the menu says why).
 - Known STT issue: Parakeet v3 detects the language itself, and very short fragments ("for",
   "Yeah") are sometimes decoded as English. To try: re-run short segments with the Spanish-only
   FastConformer model, or bias with a language hint if sherpa-onnx exposes one.
@@ -663,7 +688,7 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
   rate, seen from the front and dimmer through to the back); a *gyroscope* of three tilted orbits
   with comets that pass behind and in front of the shell; and a slightly tilted *HUD* plane with a
   ring of spectrum bars, a tick dial with a radar sweep, a data track, bracket arcs and drifting
-  motes. Two colors on near-black: violet (`kPresenceAccent`) is Minerva's side, ice blue
+  motes. Two colors on near-black (true black on the phone, for OLED screens): violet (`kPresenceAccent`) is Minerva's side, ice blue
   (`kPresenceAccent2`) is the input side.
 - **States** (cross-faded, so a change never jumps):
   - *Idle*: everything slow and dim, the nucleus breathes.
@@ -675,6 +700,7 @@ full-screen JARVIS-style animation that reacts to sound. It is the app's "face".
   - *Speaking*: the nucleus and the plasma flare with Minerva's voice, ripples travel outward and a
     voice contour blooms around the shell; the bars turn violet.
   - *Muted*: both colors fade to red.
+  - *Wake word mode active*: both colors fade to blue (muted wins over it).
 - **Compact orb** (corner of a view, the always-on-top orb, the phone remote): the same core with
   fewer, larger dots and only the spectrum bars of the HUD, so it reads at 96 to 180 px.
 - **Uniforms** (58 floats; the shader's header lists the indices): `uTime`, `uOrigin` + `uSize` (the

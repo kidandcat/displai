@@ -16,10 +16,14 @@ class SpeechDropped extends HeardEvent {}
 /// A finished utterance (end of turn after [endSilence] of silence) and its transcript (empty
 /// when nothing intelligible was recognized, common for one short word).
 class Utterance extends HeardEvent {
-  Utterance(this.text, this.seconds, this.speechEnd, this.sttDone);
+  Utterance(this.text, this.seconds, this.speechEnd, this.sttDone, {this.voice});
 
   final String text;
   final double seconds;
+
+  /// The speaker embedding of its audio, while speaker identification is on
+  /// ([Listener.identifySpeakers]) and it is long enough to tell.
+  final Float32List? voice;
 
   /// Estimated real end of speech (VAD close minus the end silence) and when STT finished.
   final DateTime speechEnd;
@@ -30,8 +34,9 @@ class Utterance extends HeardEvent {
 ///
 /// Feed it echo-cancelled 16 kHz mic audio with [add]; it emits [SpeechStarted], then [Utterance]
 /// or [SpeechDropped]. The same recognizer also transcribes recorded audio ([transcribe]).
+/// With a speaker-embedding model ([identifySpeakers]) each utterance carries its voice too.
 class Listener {
-  Listener._(this._isolate, this._send, this.events, this._transcripts);
+  Listener._(this._isolate, this._send, this.events, this._transcripts, this._speakerReplies);
 
   static const double endSilence = 0.4;
   static const double bargeInSeconds = 0.3;
@@ -41,6 +46,10 @@ class Listener {
   final Stream<HeardEvent> events;
   final Map<int, Completer<String>> _transcripts;
   int _nextTranscript = 0;
+  final StreamController<String?> _speakerReplies;
+
+  /// Utterances shorter than this carry no voice (see [Utterance.voice]).
+  static const double voiceMinSeconds = 1.0;
 
   static Future<Listener> start({
     required String vadModel,
@@ -55,8 +64,12 @@ class Listener {
     final ready = Completer<SendPort>();
     final ctrl = StreamController<HeardEvent>.broadcast();
     final transcripts = <int, Completer<String>>{};
+    final speakerReplies = StreamController<String?>.broadcast();
     rx.listen((m) {
-      if (m is Map) {
+      if (m is Map && m.containsKey('speaker')) {
+        // [identifySpeakers]: null when the model loaded, else why not.
+        speakerReplies.add(m['speaker'] as String?);
+      } else if (m is Map) {
         // A recording's transcript ([transcribe]).
         final c = transcripts.remove(m['id'] as int);
         if (m['error'] != null) {
@@ -79,11 +92,21 @@ class Listener {
             m[1] as double,
             DateTime.fromMicrosecondsSinceEpoch(m[2] as int),
             DateTime.fromMicrosecondsSinceEpoch(m[3] as int),
+            voice: m.length > 4 ? m[4] as Float32List? : null,
           ),
         );
       }
     });
-    return Listener._(isolate, await ready.future, ctrl.stream, transcripts);
+    return Listener._(isolate, await ready.future, ctrl.stream, transcripts, speakerReplies);
+  }
+
+  /// Computes each utterance's speaker embedding with the ONNX [model] from now on (null: stops).
+  /// Throws when the model can't be loaded.
+  Future<void> identifySpeakers(String? model) async {
+    final reply = _speakerReplies.stream.first;
+    _send.send(['speaker', model]);
+    final error = await reply;
+    if (error != null) throw Exception(error);
   }
 
   void add(Float32List samples) =>
@@ -111,6 +134,7 @@ class Listener {
       c.completeError(StateError('the listener stopped'));
     }
     _transcripts.clear();
+    unawaited(_speakerReplies.close());
   }
 
   static void _main(List<Object> args) {
@@ -135,6 +159,20 @@ class Listener {
         config: vadConfig,
         bufferSizeInSeconds: 60,
       );
+      so.SpeakerEmbeddingExtractor? speaker;
+      Float32List? voiceOf(Float32List samples) {
+        final s = speaker;
+        if (s == null || samples.length < voiceMinSeconds * 16000) return null;
+        final stream = s.createStream();
+        try {
+          stream.acceptWaveform(samples: samples, sampleRate: 16000);
+          stream.inputFinished();
+          return s.isReady(stream) ? s.compute(stream) : null;
+        } finally {
+          stream.free();
+        }
+      }
+
       final asr = so.OfflineRecognizer(
         so.OfflineRecognizerConfig(
           model: so.OfflineModelConfig(
@@ -214,11 +252,19 @@ class Listener {
           final speechEnd = closedAt.subtract(
             Duration(milliseconds: (endSilence * 1000).round()),
           );
+          final sttDone = DateTime.now();
+          Float32List? voice;
+          try {
+            voice = voiceOf(seg);
+          } catch (_) {
+            voice = null;
+          }
           out.send([
             text,
             seg.length / 16000,
             speechEnd.microsecondsSinceEpoch,
-            DateTime.now().microsecondsSinceEpoch,
+            sttDone.microsecondsSinceEpoch,
+            voice,
           ]);
         }
       }
@@ -226,6 +272,22 @@ class Listener {
       final rx = ReceivePort();
       out.send(rx.sendPort);
       rx.listen((m) {
+        if (m is List && m.first == 'speaker') {
+          speaker?.free();
+          speaker = null;
+          final model = m[1] as String?;
+          try {
+            if (model != null) {
+              speaker = so.SpeakerEmbeddingExtractor(
+                config: so.SpeakerEmbeddingExtractorConfig(model: model, numThreads: 1, debug: false),
+              );
+            }
+            out.send({'speaker': null});
+          } catch (e) {
+            out.send({'speaker': '$e'});
+          }
+          return;
+        }
         if (m is List && m.first == 'transcribe') {
           final id = m[1] as int;
           final samples = (m[2] as TransferableTypedData).materialize().asFloat32List();

@@ -176,5 +176,19 @@
   "timeJustNow": "ahora mismo",
   "timeMinutesAgo": "hace {count} min",
   "timeHoursAgo": "hace {count} h",
-  "timeDaysAgo": "{count, plural, =1{ayer} other{hace {count} días}}"
+  "timeDaysAgo": "{count, plural, =1{ayer} other{hace {count} días}}",
+  "modelSpeaker": "Identificación de voz (CAM++)",
+  "wakeMode": "Palabra de activación",
+  "wakeModeOff": "Desactivada",
+  "wakeModeOn": "Siempre",
+  "wakeModeAuto": "Por voz",
+  "wakeActive": "Palabra de activación: di «Minerva…»",
+  "wakeTimeout": "Desactivar tras",
+  "wakeTimeoutMinutes": "Desactivar tras {minutes} min",
+  "minutes": "{minutes} min",
+  "voiceIdLoading": "Cargando la identificación de voz…",
+  "voiceIdEnrolling": "Aprendiendo tu voz ({done}/{total})",
+  "voiceIdReady": "Tu voz está aprendida",
+  "voiceIdFailed": "Identificación de voz no disponible",
+  "voiceIdReset": "Volver a aprender mi voz"
 }

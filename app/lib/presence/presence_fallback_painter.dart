@@ -13,11 +13,13 @@ class PresenceFallbackPainter extends CustomPainter {
     required this.frame,
     required this.accent,
     required this.compact,
+    this.background = kPresenceBackground,
   }) : super(repaint: frame);
 
   final PresenceFrame frame;
   final Color accent;
   final bool compact;
+  final Color background;
 
   static const int _bars = 48;
   static const Color _white = Color(0xFFFFFFFF);
@@ -26,7 +28,7 @@ class PresenceFallbackPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     if (!compact) {
-      canvas.drawRect(Offset.zero & size, Paint()..color = kPresenceBackground);
+      canvas.drawRect(Offset.zero & size, Paint()..color = background);
     }
     final accent = frame.tint(this.accent);
     final accent2 = frame.tint2;
@@ -185,5 +187,5 @@ class PresenceFallbackPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(PresenceFallbackPainter old) =>
-      old.frame != frame || old.accent != accent || old.compact != compact;
+      old.frame != frame || old.accent != accent || old.compact != compact || old.background != background;
 }

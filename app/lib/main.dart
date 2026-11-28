@@ -15,6 +15,7 @@ import 'app/mute_key.dart';
 import 'app/overlay_shell.dart';
 import 'app/projects_panel.dart';
 import 'app/settings.dart';
+import 'app/wake_button.dart';
 import 'app/workers_panel.dart';
 import 'l10n/l10n.dart';
 import 'store/legacy_data.dart';
@@ -29,6 +30,12 @@ void main() {
   // On a phone Minerva is the remote of a desktop that does all the processing, held upright.
   if (Platform.isAndroid || Platform.isIOS) {
     unawaited(SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]));
+    // True black bars around its true black screens, so an OLED screen switches them off.
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.black,
+      systemNavigationBarColor: Colors.black,
+      systemNavigationBarDividerColor: Colors.black,
+    ));
     runApp(const RemoteApp());
   } else {
     runApp(const MinervaApp());
@@ -143,6 +150,7 @@ class HomePage extends StatelessWidget {
                   if (a.ready) ModelButton(assistant: a),
                   if (a.ready) _LanguageButton(assistant: a),
                   if (a.ready) _VoiceButton(assistant: a),
+                  if (a.ready) WakeButton(assistant: a),
                   if (a.ready) _MuteKeyButton(assistant: a),
                   if (a.ready) _PhoneButton(assistant: a),
                 ],

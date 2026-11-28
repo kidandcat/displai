@@ -651,4 +651,52 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get modelSpeaker => 'Voice identification (CAM++)';
+
+  @override
+  String get wakeMode => 'Wake word';
+
+  @override
+  String get wakeModeOff => 'Off';
+
+  @override
+  String get wakeModeOn => 'Always';
+
+  @override
+  String get wakeModeAuto => 'By voice';
+
+  @override
+  String get wakeActive => 'Wake word on: say \"Minerva…\"';
+
+  @override
+  String get wakeTimeout => 'Back off after';
+
+  @override
+  String wakeTimeoutMinutes(int minutes) {
+    return 'Back off after $minutes min';
+  }
+
+  @override
+  String minutes(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get voiceIdLoading => 'Loading voice identification…';
+
+  @override
+  String voiceIdEnrolling(int done, int total) {
+    return 'Learning your voice ($done/$total)';
+  }
+
+  @override
+  String get voiceIdReady => 'Your voice is learned';
+
+  @override
+  String get voiceIdFailed => 'Voice identification unavailable';
+
+  @override
+  String get voiceIdReset => 'Learn my voice again';
 }

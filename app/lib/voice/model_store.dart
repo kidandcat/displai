@@ -23,6 +23,7 @@ const _base = 'https://github.com/k2-fsa/sherpa-onnx/releases/download';
 const vadFile = 'silero_vad_v5.onnx';
 const parakeetDir = 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8';
 const supertonicDir = 'sherpa-onnx-supertonic-3-tts-int8-2026-05-11';
+const speakerFile = '3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx';
 
 String _vadLabel(AppLocalizations l) => l.modelVad;
 String _sttLabel(AppLocalizations l) => l.modelStt;
@@ -42,6 +43,13 @@ const models = [
       archive: true),
 ];
 
+String _speakerLabel(AppLocalizations l) => l.modelSpeaker;
+
+/// Tells the owner's voice from others' (automatic wake word mode); downloaded when that mode is
+/// first used, not on the first run.
+const speakerModel = ModelSpec(
+    label: _speakerLabel, url: '$_base/speaker-recongition-models/$speakerFile', checkPath: speakerFile);
+
 /// Finds or downloads the local voice models (first run).
 ///
 /// Location: `~/Library/Application Support/<bundle id>/models`, or `MINERVA_MODELS_DIR` if set.
@@ -58,6 +66,22 @@ class ModelStore extends ChangeNotifier {
   String get vad => '$dir/$vadFile';
   String get parakeet => '$dir/$parakeetDir';
   String get supertonic => '$dir/$supertonicDir';
+
+  /// The speaker-embedding model's path, downloaded first if needed (once at a time).
+  Future<String> speaker() => _speaker ??= () async {
+        final path = '$dir/${speakerModel.checkPath}';
+        try {
+          if (!File(path).existsSync()) {
+            await _download(speakerModel);
+            status = '';
+          }
+          return path;
+        } catch (e) {
+          _speaker = null;
+          rethrow;
+        }
+      }();
+  Future<String>? _speaker;
 
   Future<void> ensure() async {
     final override = Platform.environment['MINERVA_MODELS_DIR'];

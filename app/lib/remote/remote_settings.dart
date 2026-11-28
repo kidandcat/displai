@@ -9,7 +9,7 @@ import '../l10n/l10n.dart';
 import 'remote_assistant.dart';
 
 /// The desktop's settings on the phone: the same ones its status bar has (the models, the
-/// language, the voice, the credentials and the webhooks), in one scrolling screen. Every change
+/// language, the voice, the wake word, the credentials and the webhooks), in one scrolling screen. Every change
 /// goes to the desktop, which applies it.
 class RemoteSettingsPage extends StatelessWidget {
   const RemoteSettingsPage({super.key, required this.assistant});
@@ -22,7 +22,7 @@ class RemoteSettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l.settings), backgroundColor: kBackground),
+      appBar: AppBar(title: Text(l.settings), backgroundColor: Theme.of(context).scaffoldBackgroundColor),
       body: ListenableBuilder(
         listenable: assistant,
         builder: (context, _) {
@@ -59,6 +59,7 @@ class RemoteSettingsPage extends StatelessWidget {
                 items: {_system: l.languageSystem, for (final c in languageChoices) c: languageNames[c] ?? c},
                 onChanged: (v) => a.setLanguage(v == _system ? null : v),
               ),
+              ..._wake(context, on),
               _Section(l.vaultCredentials),
               ..._credentials(context, on),
               if (a.webhooks != null) ...[
@@ -118,6 +119,45 @@ class RemoteSettingsPage extends StatelessWidget {
           onChanged: enabled ? (v) => v == null ? null : onChanged(v) : null,
         ),
       );
+
+  /// Wake word mode, and in automatic mode how long it stays on and the voice profile.
+  List<Widget> _wake(BuildContext context, bool enabled) {
+    final a = assistant;
+    final l = AppLocalizations.of(context);
+    final note = voiceIdNote(l, a.voiceId, a.voiceSamples);
+    return [
+      _menuTile<WakeMode>(
+        context,
+        icon: Icons.hearing,
+        title: l.wakeMode,
+        value: a.wakeMode,
+        enabled: enabled,
+        items: {for (final m in WakeMode.values) m: wakeModeName(l, m)},
+        onChanged: a.setWakeMode,
+      ),
+      if (a.wakeMode == WakeMode.auto) ...[
+        _menuTile<int>(
+          context,
+          icon: Icons.timer_outlined,
+          title: l.wakeTimeout,
+          value: a.wakeTimeout,
+          enabled: enabled,
+          items: {for (final n in wakeTimeouts) n: l.minutes(n)},
+          onChanged: a.setWakeTimeout,
+        ),
+        ListTile(
+          enabled: enabled,
+          leading: const Icon(Icons.record_voice_over),
+          title: Text(note ?? l.wakeModeAuto),
+          trailing: IconButton(
+            tooltip: l.voiceIdReset,
+            icon: const Icon(Icons.restart_alt),
+            onPressed: enabled && a.voiceSamples > 0 ? a.resetVoiceProfile : null,
+          ),
+        ),
+      ],
+    ];
+  }
 
   List<Widget> _credentials(BuildContext context, bool enabled) {
     final a = assistant;

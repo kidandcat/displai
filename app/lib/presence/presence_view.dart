@@ -23,6 +23,12 @@ const Color kPresenceMutedAccent = Color(0xFFFF2A2A);
 /// What the second accent fades to while the microphone is muted.
 const Color kPresenceMutedAccent2 = Color(0xFFFF6A3C);
 
+/// Accent the presence fades to while wake word mode is on.
+const Color kPresenceWakeAccent = Color(0xFF3D7BFF);
+
+/// What the second accent fades to while wake word mode is on.
+const Color kPresenceWakeAccent2 = Color(0xFF6FA8FF);
+
 /// Colour of the running background workers: amber, apart from both accents
 /// and the muted reds, so a worker never reads as one of the idle comets.
 /// shaders/presence.frag has it as WORK.
@@ -60,6 +66,9 @@ class PresenceFrame extends ChangeNotifier {
   /// Mute blend, 0 (normal accent) .. 1 (muted red), eased over time.
   double muted = 0;
 
+  /// Wake word blend, 0 (normal accent) .. 1 (blue), eased over time; under [muted].
+  double wake = 0;
+
   /// Rows of the shell's rotation matrix (view space -> the shell's own).
   final Float64List rotation = Float64List(9);
 
@@ -80,14 +89,19 @@ class PresenceFrame extends ChangeNotifier {
   /// Per orbit, the flare of a worker that just ended (1, fading to 0).
   final Float64List done = Float64List(ringCount);
 
-  /// [accent] blended toward [kPresenceMutedAccent] by [muted].
-  Color tint(Color accent) =>
-      muted <= 0 ? accent : Color.lerp(accent, kPresenceMutedAccent, muted)!;
+  /// [accent] blended toward [kPresenceWakeAccent] by [wake], then toward
+  /// [kPresenceMutedAccent] by [muted].
+  Color tint(Color accent) {
+    final base = wake <= 0 ? accent : Color.lerp(accent, kPresenceWakeAccent, wake)!;
+    return muted <= 0 ? base : Color.lerp(base, kPresenceMutedAccent, muted)!;
+  }
 
-  /// [kPresenceAccent2] blended toward its muted color by [muted].
-  Color get tint2 => muted <= 0
-      ? kPresenceAccent2
-      : Color.lerp(kPresenceAccent2, kPresenceMutedAccent2, muted)!;
+  /// [kPresenceAccent2] blended toward its wake word color by [wake], then
+  /// toward its muted color by [muted].
+  Color get tint2 {
+    final base = wake <= 0 ? kPresenceAccent2 : Color.lerp(kPresenceAccent2, kPresenceWakeAccent2, wake)!;
+    return muted <= 0 ? base : Color.lerp(base, kPresenceMutedAccent2, muted)!;
+  }
 
   /// Advances the clock by [dt] seconds, [spinRate] times faster for [spin],
   /// and recomputes the orientation of every moving part. All trigonometry
@@ -175,11 +189,15 @@ class PresenceView extends StatefulWidget {
     this.compact = false,
     this.accent = kPresenceAccent,
     this.compactSize = 36,
+    this.background = kPresenceBackground,
   });
 
   final PresenceSignal signal;
   final bool compact;
   final Color accent;
+
+  /// Painted behind the full orb (not the compact one).
+  final Color background;
 
   /// Orb diameter in logical pixels when [compact] is true.
   final double compactSize;
@@ -274,6 +292,7 @@ class _PresenceViewState extends State<PresenceView> {
       ..fillRange(0, 4, 0)
       ..[widget.signal.mode.index] = 1;
     _frame.muted = widget.signal.muted ? 1 : 0;
+    _frame.wake = widget.signal.wake ? 1 : 0;
     for (var i = 0; i < PresenceFrame.ringCount; i++) {
       _frame.work[i] = widget.signal.workerOn(i) ? 1 : 0;
       _workerEnds[i] = widget.signal.workerEnds(i);
@@ -381,6 +400,9 @@ class _PresenceViewState extends State<PresenceView> {
     _frame.muted +=
         (mutedTarget - _frame.muted) * (1 - math.exp(-dt / _muteTau));
     if ((_frame.muted - mutedTarget).abs() < 1e-3) _frame.muted = mutedTarget;
+    final wakeTarget = signal.wake ? 1.0 : 0.0;
+    _frame.wake += (wakeTarget - _frame.wake) * (1 - math.exp(-dt / _muteTau));
+    if ((_frame.wake - wakeTarget).abs() < 1e-3) _frame.wake = wakeTarget;
 
     final react = w[1] + w[3];
     _frame
@@ -425,6 +447,7 @@ class _PresenceViewState extends State<PresenceView> {
         target >= PresenceMode.thinking.index ||
         signal.level > 0.02 ||
         _frame.muted != mutedTarget ||
+        _frame.wake != wakeTarget ||
         settling;
     _frame.markDirty();
   }
@@ -445,14 +468,16 @@ class _PresenceViewState extends State<PresenceView> {
         shader: _shader!,
         accent: widget.accent,
         compact: widget.compact,
+        background: widget.background,
         pixelRatio: MediaQuery.devicePixelRatioOf(context),
       ),
       _RenderPath.fallback => PresenceFallbackPainter(
         frame: _frame,
         accent: widget.accent,
         compact: widget.compact,
+        background: widget.background,
       ),
-      _RenderPath.loading => _BackgroundPainter(compact: widget.compact),
+      _RenderPath.loading => _BackgroundPainter(compact: widget.compact, background: widget.background),
     };
     final paint = RepaintBoundary(
       child: CustomPaint(painter: painter, isComplex: true, willChange: true),
@@ -470,6 +495,7 @@ class _ShaderPainter extends CustomPainter {
     required this.shader,
     required this.accent,
     required this.compact,
+    required this.background,
     required this.pixelRatio,
   }) : super(repaint: frame);
 
@@ -480,6 +506,7 @@ class _ShaderPainter extends CustomPainter {
   final ui.FragmentShader shader;
   final Color accent;
   final bool compact;
+  final Color background;
   final double pixelRatio;
 
   final Paint _paint = Paint();
@@ -488,7 +515,7 @@ class _ShaderPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
     if (!compact) {
-      canvas.drawRect(Offset.zero & size, Paint()..color = kPresenceBackground);
+      canvas.drawRect(Offset.zero & size, Paint()..color = background);
     }
     // Only the square around the orb runs the shader.
     final rect = PresenceView.orbRect(size, compact: compact);
@@ -548,21 +575,23 @@ class _ShaderPainter extends CustomPainter {
       old.shader != shader ||
       old.accent != accent ||
       old.compact != compact ||
+      old.background != background ||
       old.pixelRatio != pixelRatio ||
       old.frame != frame;
 }
 
 class _BackgroundPainter extends CustomPainter {
-  const _BackgroundPainter({required this.compact});
+  const _BackgroundPainter({required this.compact, required this.background});
 
   final bool compact;
+  final Color background;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (compact) return;
-    canvas.drawRect(Offset.zero & size, Paint()..color = kPresenceBackground);
+    canvas.drawRect(Offset.zero & size, Paint()..color = background);
   }
 
   @override
-  bool shouldRepaint(_BackgroundPainter old) => old.compact != compact;
+  bool shouldRepaint(_BackgroundPainter old) => old.compact != compact || old.background != background;
 }

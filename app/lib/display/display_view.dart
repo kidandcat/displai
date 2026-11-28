@@ -19,6 +19,7 @@ class DisplayView extends StatelessWidget {
     required this.controller,
     this.cornerReserve = Size.zero,
     this.scale,
+    this.background,
   });
 
   final DisplayController controller;
@@ -29,6 +30,10 @@ class DisplayView extends StatelessWidget {
 
   /// The display's scale ([DisplayScale]); null: from the width.
   final double? scale;
+
+  /// Behind a view, flat (null: the themed near-black with a faint glow from
+  /// the top left). The phone uses true black, for OLED screens.
+  final Color? background;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +72,8 @@ class DisplayView extends StatelessWidget {
       duration: const Duration(milliseconds: 300),
       decoration: entry == null
           ? const BoxDecoration()
+          : background != null
+          ? BoxDecoration(color: background)
           : const BoxDecoration(
               color: DisplayColors.background,
               gradient: RadialGradient(

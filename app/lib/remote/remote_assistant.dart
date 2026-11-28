@@ -96,6 +96,16 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
   String? fastUnavailable;
   @override
   int voice = defaultVoice;
+  @override
+  WakeMode wakeMode = WakeMode.off;
+  @override
+  int wakeTimeout = defaultWakeTimeout;
+  @override
+  bool wakeActive = false;
+  @override
+  VoiceIdState voiceId = VoiceIdState.off;
+  @override
+  int voiceSamples = 0;
 
   /// The desktop's saved credentials: names, descriptions and field names (never values).
   List<({String name, String description, List<String> fields})> credentials = const [];
@@ -181,6 +191,8 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
         presence.workers = [for (final id in m['workers'] as List? ?? const []) (id as num).toInt()];
         muted = m['muted'] == true;
         presence.muted = muted;
+        wakeActive = m['wake'] == true;
+        presence.wake = wakeActive;
         if (_unmuteOnState) {
           _unmuteOnState = false;
           if (muted) return toggleMute();
@@ -240,6 +252,10 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     // The phone's screens follow the desktop's language too.
     languageSetting.value = validLanguage(m['language'] as String?);
     voice = validVoice((m['voice'] as num?)?.toInt()) ?? voice;
+    wakeMode = WakeMode.values.where((w) => w.name == m['wake_mode']).firstOrNull ?? wakeMode;
+    wakeTimeout = (m['wake_timeout'] as num?)?.toInt() ?? wakeTimeout;
+    voiceId = VoiceIdState.values.where((v) => v.name == m['voice_id']).firstOrNull ?? voiceId;
+    voiceSamples = (m['voice_samples'] as num?)?.toInt() ?? voiceSamples;
     final vault = m['vault'] is Map ? m['vault'] as Map : const {};
     vaultError = vault['error'] as String?;
     credentials = [
@@ -309,6 +325,21 @@ class RemoteAssistant extends ChangeNotifier implements AssistantUi, AssistantSe
     this.voice = v;
     _set({'voice': v});
   }
+
+  @override
+  void setWakeMode(WakeMode mode) {
+    wakeMode = mode;
+    _set({'wake_mode': mode.name});
+  }
+
+  @override
+  void setWakeTimeout(int minutes) {
+    wakeTimeout = minutes;
+    _set({'wake_timeout': minutes});
+  }
+
+  @override
+  void resetVoiceProfile() => _set({'voice_reset': true});
 
   /// Deletes one of the desktop's credentials.
   void deleteCredential(String name) {

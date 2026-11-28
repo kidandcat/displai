@@ -91,6 +91,17 @@ class PresenceSignal extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _wake = false;
+
+  /// Whether wake word mode is on (Minerva only takes what begins with her name); the view fades
+  /// the accent to blue.
+  bool get wake => _wake;
+  set wake(bool value) {
+    if (value == _wake) return;
+    _wake = value;
+    notifyListeners();
+  }
+
   /// Orbits of the gyroscope that can show a background worker.
   static const int maxWorkers = 3;
 
