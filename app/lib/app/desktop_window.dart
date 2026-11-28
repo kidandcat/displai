@@ -68,6 +68,11 @@ class DesktopWindow extends ChangeNotifier {
 
   bool _typing = false;
 
+  bool _outputSilent = false;
+
+  /// Nobody can hear the Mac: its output is muted or at volume 0 (the native side watches it).
+  bool get outputSilent => _outputSilent;
+
   Future<void>? _connected;
 
   /// Connects to the native window; again later (the assistant, once its language is known),
@@ -88,12 +93,15 @@ class DesktopWindow extends ChangeNotifier {
           onMuteKey?.call();
         case 'muteKeyStatus':
           _applyKeyStatus(call.arguments);
+        case 'outputSilent':
+          _applyOutputSilent(call.arguments);
       }
       return null;
     });
     try {
       final state = await _channel.invokeMethod<Map<Object?, Object?>>('state');
       if (state != null) _apply(state);
+      _applyOutputSilent(await _channel.invokeMethod<bool>('outputSilent'));
     } on MissingPluginException {
       // Not the macOS runner (e.g. a test): behave as an always open window.
     }
@@ -229,6 +237,13 @@ class DesktopWindow extends ChangeNotifier {
     if (access == _keyAccess && active == _keyActive) return;
     _keyAccess = access;
     _keyActive = active;
+    notifyListeners();
+  }
+
+  void _applyOutputSilent(Object? silent) {
+    if (silent is! bool || silent == _outputSilent) return;
+    debugPrint('window: output ${silent ? 'silent' : 'audible'}');
+    _outputSilent = silent;
     notifyListeners();
   }
 

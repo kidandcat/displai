@@ -69,7 +69,8 @@ See [Build and run](#build-and-run) for development, the login service and the r
   [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). No cloud speech. Models are downloaded on first
   run, not bundled.
 - **Full duplex**: echo-cancelled audio (macOS voice processing), so you can interrupt Minerva by
-  talking over it.
+  talking over it. Muting the Mac (or turning its volume to 0) mutes Minerva too, until the sound
+  comes back.
 - **Wake word mode** (optional, the ear button): Minerva only answers what starts with "Minerva" and
   ignores the rest; the orb turns blue meanwhile. Always, or **by voice**: it learns your voice on the
   Mac (a local speaker-ID model, profile never leaves the Mac) and turns the mode on while someone

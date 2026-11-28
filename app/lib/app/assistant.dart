@@ -47,6 +47,7 @@ import '../voice/wake_word.dart';
 import '../webhooks/webhook_tools.dart';
 import '../webhooks/webhooks.dart';
 import 'assistant_ui.dart';
+import 'auto_mute.dart';
 import 'mute_key.dart';
 import 'settings.dart';
 
@@ -318,6 +319,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   /// The turn that was answering when the mic was muted: it is still spoken to its end.
   int? _voicedTurn;
 
+  /// Mutes Minerva while the Mac's output is muted or at volume 0 ([_syncOutput]).
+  final _autoMute = AutoMute();
+
   /// Last thing the user said (shown in the status bar).
   @override
   String lastHeard = '';
@@ -480,7 +484,9 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       unawaited(window.setMuteKey(_muteKey));
       window.addListener(_syncAudio);
       window.addListener(_syncAway);
+      window.addListener(_syncOutput);
       _syncAudio();
+      _syncOutput();
       _earcon = _makeEarcon(_speaker.sampleRate);
       presence.addListener(_pushState);
       if (store.get('remote_key') != null) _startPhone();
@@ -795,7 +801,10 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
       ..onVault = _onVaultSubmission
       ..onSettings = _onPhoneSettings
       ..onVaultDelete = _onPhoneVaultDelete
-      ..onMute = ((on) => muted = on)
+      ..onMute = ((on) {
+        _autoMute.manual();
+        muted = on;
+      })
       ..onIdle = _onAudioIdle
       ..onJoin = _phoneJoined
       ..onLeave = _phoneLeft;
@@ -809,6 +818,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     _usingMac = false;
     unawaited(window.setOverlay(true));
     _syncAudio();
+    _syncOutput();
     _listener.reset();
     _pushState();
     _updatePresence();
@@ -818,6 +828,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   void _phoneLeft() {
     unawaited(window.setOverlay(false));
     _syncAudio();
+    _syncOutput();
     _listener.reset();
     // Bring the display back to the Mac as the phone had it.
     display.reset();
@@ -969,14 +980,18 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     super.notifyListeners();
   }
 
-  set muted(bool value) {
+  set muted(bool value) => _setMuted(value);
+
+  /// [silent]: muted because nobody can hear the Mac, so the answer in progress is not spoken to
+  /// its end either (what is left of it is held like the later ones).
+  void _setMuted(bool value, {bool silent = false}) {
     if (value == _muted) return;
     _muted = value;
     presence.muted = value;
     if (value) {
       _listener.flush();
       // Only the mic goes off: the answer in progress is still spoken (later ones are held).
-      _voicedTurn = busy && !_telegramTurn ? _generation : null;
+      _voicedTurn = busy && !_telegramTurn && !silent ? _generation : null;
     }
     _updatePresence();
     if (!value) _drainNotices();
@@ -984,7 +999,19 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
   }
 
   @override
-  void toggleMute() => muted = !_muted;
+  void toggleMute() {
+    _autoMute.manual();
+    muted = !_muted;
+  }
+
+  /// Minerva is muted while the Mac's output is muted or at volume 0 (not while a phone is
+  /// connected: it speaks there), and back as it was when the sound returns ([AutoMute]).
+  void _syncOutput() {
+    final m = _autoMute.output(silent: window.outputSilent && !onPhone, muted: _muted);
+    if (m == null) return;
+    debugPrint('auto mute: ${m ? 'on' : 'off'} (Mac output ${window.outputSilent ? 'silent' : 'audible'})');
+    _setMuted(m, silent: m);
+  }
 
   // ---------------------------------------------------------------- input
 
@@ -1626,6 +1653,7 @@ class Assistant extends ChangeNotifier implements AssistantUi, AssistantSettings
     telegram?.dispose();
     window.removeListener(_syncAudio);
     window.removeListener(_syncAway);
+    window.removeListener(_syncOutput);
     window.dispose();
     presence.removeListener(_pushState);
     unawaited(phone?.close());

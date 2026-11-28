@@ -1,6 +1,8 @@
 import AVFoundation
+import AudioToolbox
 import Carbon.HIToolbox
 import Cocoa
+import CoreAudio
 import FlutterMacOS
 import IOKit.hidsystem
 import WebKit
@@ -20,7 +22,8 @@ import webview_flutter_wkwebview
 ///            other apps of the Mac (reason "computer") or while the user is in another app (reason
 ///            "away"). It never keeps the keyboard: the app the user (or Minerva) works in stays
 ///            in front. It goes back to open or hidden afterwards.
-/// The mute key (the space bar by default) toggles the mic from any app ([MuteKey]).
+/// The mute key (the space bar by default) toggles the mic from any app ([MuteKey]). Minerva is
+/// also muted while the Mac's output is muted or at volume 0 ([OutputVolume]).
 ///
 /// Method channel `minerva/window`:
 ///   Dart → native  state() -> State   setOverlay({on, reason})   show()   hide()
@@ -28,9 +31,10 @@ import webview_flutter_wkwebview
 ///                  contextMenu()   setLanguage({code, save})   systemLanguages() -> [String]
 ///                  setMuteKey({code, modifiers}) -> MuteKeyStatus   muteKeyStatus() -> MuteKeyStatus
 ///                  recordMuteKey() -> {code, modifiers, char} or nil   cancelMuteKey()
-///                  setTyping(bool)   requestKeyAccess() -> MuteKeyStatus
+///                  setTyping(bool)   requestKeyAccess() -> MuteKeyStatus   outputSilent() -> bool
 ///   native → Dart  state(State)   openRequested()   (the user asked for the window while it is
 ///                  the orb)   muteKey()   (the mute key was pressed)   muteKeyStatus(MuteKeyStatus)
+///                  outputSilent(bool)   (the Mac's output was muted or set to volume 0, or back)
 /// State: {open, overlay, reason, insets: [left, top, right, bottom] (the menu bar and the Dock),
 /// panel: [x, y, w, h], orb: [x, y] or nil}. Rects are in points from the window's top-left.
 /// MuteKeyStatus: {accessibility, active} (the permission, and the key works).
@@ -40,6 +44,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var camera: CameraCapture?
   private var channel: FlutterMethodChannel?
   private let muteKey = MuteKey()
+  private let output = OutputVolume()
   /// The pending recordMuteKey call.
   private var recording: FlutterResult?
 
@@ -112,6 +117,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       self.channel?.invokeMethod("muteKeyStatus", arguments: self.muteKeyStatus)
     }
     muteKey.start()
+    output.onChange = { [weak self] silent in self?.channel?.invokeMethod("outputSilent", arguments: silent) }
+    output.start()
     delegate = self
     NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -217,6 +224,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       recording?(nil)
       recording = nil
       result(nil)
+    case "outputSilent":
+      result(output.silent)
     case "setTyping":
       muteKey.typing = call.arguments as? Bool ?? false
       result(nil)
@@ -825,6 +834,109 @@ final class MuteKey {
     var settable: DarwinBoolean = false
     return AXUIElementIsAttributeSettable(el, kAXSelectedTextRangeAttribute as CFString, &settable) == .success
       && settable.boolValue
+  }
+}
+
+/// Tells when nobody can hear the Mac: its default output device is muted or its volume is 0.
+/// CoreAudio property listeners on the default output device, and on which device that is, so
+/// nothing polls. A device without a mute or volume control (HDMI, some USB) never counts as silent.
+final class OutputVolume {
+  /// Called on the main thread when [silent] changes.
+  var onChange: ((Bool) -> Void)?
+  /// The output is muted or at volume 0. Main thread.
+  private(set) var silent = false
+
+  private static let system = AudioObjectID(kAudioObjectSystemObject)
+  private static let defaultOutput = address(kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal)
+  /// What is watched on the device: the main mute and volume, and each stereo channel's for the
+  /// devices that only have those.
+  private static let watched: [AudioObjectPropertyAddress] = [
+    address(kAudioDevicePropertyMute),
+    address(kAudioHardwareServiceDeviceProperty_VirtualMainVolume),
+    address(kAudioDevicePropertyMute, element: 1),
+    address(kAudioDevicePropertyMute, element: 2),
+    address(kAudioDevicePropertyVolumeScalar, element: 1),
+    address(kAudioDevicePropertyVolumeScalar, element: 2),
+  ]
+
+  private var device = AudioObjectID(kAudioObjectUnknown)
+  /// The properties of [device] listened to.
+  private var listening: [AudioObjectPropertyAddress] = []
+  private lazy var changed: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.update() }
+  private lazy var deviceChanged: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+    self?.watchDevice()
+    self?.update()
+  }
+
+  private static func address(
+    _ selector: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope = kAudioDevicePropertyScopeOutput,
+    element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain
+  ) -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: element)
+  }
+
+  /// Starts listening. Main thread.
+  func start() {
+    var a = Self.defaultOutput
+    let status = AudioObjectAddPropertyListenerBlock(Self.system, &a, .main, deviceChanged)
+    if status != noErr { NSLog("output volume: cannot watch the default output device (\(status))") }
+    watchDevice()
+    silent = Self.isSilent(device)
+  }
+
+  private func watchDevice() {
+    for var a in listening { AudioObjectRemovePropertyListenerBlock(device, &a, .main, changed) }
+    listening = []
+    var a = Self.defaultOutput
+    var id = AudioObjectID(kAudioObjectUnknown)
+    var size = UInt32(MemoryLayout<AudioObjectID>.size)
+    guard AudioObjectGetPropertyData(Self.system, &a, 0, nil, &size, &id) == noErr else {
+      device = AudioObjectID(kAudioObjectUnknown)
+      return
+    }
+    device = id
+    for var w in Self.watched where AudioObjectHasProperty(id, &w) {
+      if AudioObjectAddPropertyListenerBlock(id, &w, .main, changed) == noErr { listening.append(w) }
+    }
+  }
+
+  private func update() {
+    let s = Self.isSilent(device)
+    guard s != silent else { return }
+    silent = s
+    NSLog("output volume: \(s ? "silent" : "audible")")
+    onChange?(s)
+  }
+
+  private static let stereo: [AudioObjectPropertyElement] = [1, 2]
+
+  static func isSilent(_ device: AudioObjectID) -> Bool {
+    guard device != kAudioObjectUnknown else { return false }
+    if let m = uint32(device, address(kAudioDevicePropertyMute)) {
+      if m != 0 { return true }
+    } else {
+      let channels = stereo.compactMap { uint32(device, address(kAudioDevicePropertyMute, element: $0)) }
+      if !channels.isEmpty && channels.allSatisfy({ $0 != 0 }) { return true }
+    }
+    if let v = float32(device, address(kAudioHardwareServiceDeviceProperty_VirtualMainVolume)) { return v < 0.001 }
+    let channels = stereo.compactMap { float32(device, address(kAudioDevicePropertyVolumeScalar, element: $0)) }
+    return !channels.isEmpty && channels.allSatisfy { $0 < 0.001 }
+  }
+
+  private static func uint32(_ device: AudioObjectID, _ address: AudioObjectPropertyAddress) -> UInt32? {
+    var a = address
+    guard AudioObjectHasProperty(device, &a) else { return nil }
+    var v: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    return AudioObjectGetPropertyData(device, &a, 0, nil, &size, &v) == noErr ? v : nil
+  }
+
+  private static func float32(_ device: AudioObjectID, _ address: AudioObjectPropertyAddress) -> Float32? {
+    var a = address
+    guard AudioObjectHasProperty(device, &a) else { return nil }
+    var v: Float32 = 0
+    var size = UInt32(MemoryLayout<Float32>.size)
+    return AudioObjectGetPropertyData(device, &a, 0, nil, &size, &v) == noErr ? v : nil
   }
 }
 

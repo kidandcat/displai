@@ -645,6 +645,15 @@ barge-in.
   every few seconds until it is granted; the settings dialog says when it is missing. Caps Lock
   arrives as a modifier change: each press that turns it on counts, and Minerva turns it off again
   through the HID system, so it never stays on (if macOS refuses, each toggle counts).
+- **Muted with the Mac**: while the Mac's output is muted or at volume 0, nobody can hear Minerva,
+  so it mutes itself (the same mute as the key: no listening, no voice, Telegram or held answers),
+  and the answer in progress is held rather than spoken into silence. When the sound comes back the
+  mute goes back to what it was before (still muted if the user had muted it). Muting or unmuting
+  by hand meanwhile wins: the sound coming back leaves it as the user set it (`AutoMute`). Natively
+  (`OutputVolume` in MainFlutterWindow.swift) CoreAudio property listeners watch the default output
+  device (which one it is, its mute and its virtual main volume, or its channels' when it has only
+  those), so nothing polls; a device without those controls (HDMI, some USB) never counts as silent.
+  Not while a phone is connected: Minerva speaks there.
 - **Wake word mode** (`lib/voice/wake_word.dart`; the ear button in the status bar, also in the phone's
   bar and settings; `kv.wake_mode`, off by default). sherpa-onnx has no Spanish keyword spotter, so it
   matches the transcript: while the mode is active, an utterance from the mic (the Mac's or the phone's)
